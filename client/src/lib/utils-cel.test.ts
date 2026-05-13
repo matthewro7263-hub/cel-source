@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
-import { initials, formatDeadline } from "./utils-cel.ts";
-
+import { initials, formatDeadline, vimeoId } from "./utils-cel.ts";
 // --- initials tests ---
 
 // Standard two names
@@ -64,3 +63,27 @@ assert.deepEqual(formatDeadline(getOffsetDateString(15)), { text: "in 15d", tone
 assert.deepEqual(formatDeadline(getOffsetDateString(30)), { text: "in 30d", tone: "muted" });
 
 console.log("utils-cel formatDeadline tests passed");
+// --- vimeoId tests ---
+
+// Standard URL
+assert.equal(vimeoId("https://vimeo.com/123456789"), "123456789");
+
+// URL without https
+assert.equal(vimeoId("vimeo.com/123456789"), "123456789");
+
+// URL with www
+assert.equal(vimeoId("https://www.vimeo.com/123456789"), "123456789");
+
+// URL with parameters
+assert.equal(vimeoId("https://vimeo.com/123456789?param=value"), "123456789");
+
+// Invalid URL (no ID)
+assert.equal(vimeoId("https://vimeo.com/"), null);
+
+// Invalid URL (not vimeo)
+assert.equal(vimeoId("https://youtube.com/123456789"), null);
+
+// Invalid URL (letters instead of numbers)
+assert.equal(vimeoId("https://vimeo.com/abcdef"), null);
+
+console.log("utils-cel tests passed");
