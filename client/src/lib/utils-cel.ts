@@ -32,7 +32,7 @@ export function initials(name: string) {
 }
 
 export function youTubeId(url: string): string | null {
-  const m = url.match(/(?:youtube\.com\/(?:[^/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([\w-]{6,})/);
+  const m = url.match(/(?:youtube\.com\/(?:[^/]+\/.+\/|(?:v|e(?:mbed)?|shorts)\/|.*[?&]v=)|youtu\.be\/)([\w-]{6,})/);
   return m ? m[1] : null;
 }
 export function vimeoId(url: string): string | null {

@@ -23,3 +23,32 @@ assert.equal(initials(""), "");
 assert.equal(initials("123 456"), "14");
 
 console.log("utils-cel initials tests passed");
+
+import { youTubeId } from "./utils-cel.ts";
+
+// YouTube ID tests
+// Full URL
+assert.equal(youTubeId("https://www.youtube.com/watch?v=dQw4w9WgXcQ"), "dQw4w9WgXcQ");
+
+// Short URL
+assert.equal(youTubeId("https://youtu.be/dQw4w9WgXcQ"), "dQw4w9WgXcQ");
+
+// Embed URL
+assert.equal(youTubeId("https://www.youtube.com/embed/dQw4w9WgXcQ"), "dQw4w9WgXcQ");
+
+// Additional query parameters
+assert.equal(youTubeId("https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=42s"), "dQw4w9WgXcQ");
+
+// Shorts URL
+assert.equal(youTubeId("https://www.youtube.com/shorts/dQw4w9WgXcQ"), "dQw4w9WgXcQ");
+
+// Invalid URL
+assert.equal(youTubeId("https://www.youtube.com/watch?v="), null);
+
+// Non-YouTube URL
+assert.equal(youTubeId("https://vimeo.com/123456789"), null);
+
+// Empty string
+assert.equal(youTubeId(""), null);
+
+console.log("utils-cel youTubeId tests passed");
