@@ -44,7 +44,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
   };
 
   handleHardReload = () => {
-    window.location.hash = "#/";
+    window.location.hash = "#/dashboard";
     window.location.reload();
   };
 
