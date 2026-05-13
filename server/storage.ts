@@ -28,6 +28,7 @@ import {
 } from "@shared/schema";
 import { a11y_user_prefs } from "@shared/a11y_schema";
 import { challenge_prompts, challenge_reactions, challenge_submissions } from "@shared/challenge_schema";
+import { lor_continuity_facts, lor_palettes, lor_asset_versions, lor_casting_matrix } from "@shared/lor_schema";
 
 import type {
   ProjectAiKey, InsertProjectAiKey,
@@ -44,6 +45,12 @@ import type {
 } from "@shared/schema";
 import type { A11yPrefs, InsertA11yPrefs } from "@shared/a11y_schema";
 import type { ChallengePrompt, ChallengeReaction, ChallengeSubmission, InsertChallengeSubmission } from "@shared/challenge_schema";
+import type {
+  LorContinuityFact, InsertLorContinuityFact,
+  LorPalette, InsertLorPalette,
+  LorAssetVersion, InsertLorAssetVersion,
+  LorCastingMatrix, InsertLorCastingMatrix,
+} from "@shared/lor_schema";
 
 // === AGENT_STUDIO ADDITIONS START ===
 import {
@@ -1125,4 +1132,52 @@ Object.assign(storage, {
     return result;
   },
   // === AGENT_STUDIO ADDITIONS END ===
+
+  // === LORE ADDITIONS START ===
+  listLorFacts: (projectId: number): LorContinuityFact[] =>
+    db.select().from(lor_continuity_facts).where(eq(lor_continuity_facts.projectId, projectId)).all(),
+  createLorFact: (f: InsertLorContinuityFact): LorContinuityFact =>
+    db.insert(lor_continuity_facts).values({ ...f, createdAt: new Date().toISOString() }).returning().get(),
+  updateLorFact: (id: number, patch: Partial<InsertLorContinuityFact>): LorContinuityFact | undefined =>
+    db.update(lor_continuity_facts).set(patch).where(eq(lor_continuity_facts.id, id)).returning().get(),
+  deleteLorFact: (id: number) => db.delete(lor_continuity_facts).where(eq(lor_continuity_facts.id, id)).run(),
+  getLorFact: (id: number): LorContinuityFact | undefined =>
+    db.select().from(lor_continuity_facts).where(eq(lor_continuity_facts.id, id)).get(),
+
+  listLorPalettes: (projectId: number): LorPalette[] =>
+    db.select().from(lor_palettes).where(eq(lor_palettes.projectId, projectId)).all(),
+  createLorPalette: (p: InsertLorPalette): LorPalette =>
+    db.insert(lor_palettes).values({ ...p, createdAt: new Date().toISOString() }).returning().get(),
+  deleteLorPalette: (id: number) => db.delete(lor_palettes).where(eq(lor_palettes.id, id)).run(),
+  getLorPalette: (id: number): LorPalette | undefined =>
+    db.select().from(lor_palettes).where(eq(lor_palettes.id, id)).get(),
+
+  listLorAssetVersions: (assetId: number): LorAssetVersion[] =>
+    db.select().from(lor_asset_versions).where(eq(lor_asset_versions.assetId, assetId)).orderBy(desc(lor_asset_versions.versionNum)).all(),
+  createLorAssetVersion: (v: InsertLorAssetVersion): LorAssetVersion =>
+    db.insert(lor_asset_versions).values({ ...v, uploadedAt: new Date().toISOString() }).returning().get(),
+  updateLorAssetVersionsForAsset: (assetId: number, patch: Partial<LorAssetVersion>) =>
+    db.update(lor_asset_versions).set(patch).where(eq(lor_asset_versions.assetId, assetId)).run(),
+  updateLorAssetVersion: (id: number, patch: Partial<LorAssetVersion>): LorAssetVersion | undefined =>
+    db.update(lor_asset_versions).set(patch).where(eq(lor_asset_versions.id, id)).returning().get(),
+  getLorAssetVersion: (id: number): LorAssetVersion | undefined =>
+    db.select().from(lor_asset_versions).where(eq(lor_asset_versions.id, id)).get(),
+
+  listLorCasting: (projectId: number): LorCastingMatrix[] =>
+    db.select().from(lor_casting_matrix).where(eq(lor_casting_matrix.projectId, projectId)).all(),
+  upsertLorCasting: (projectId: number, sceneId: number, entityId: number, present: boolean) => {
+    const existing = db.select().from(lor_casting_matrix).where(
+      and(
+        eq(lor_casting_matrix.projectId, projectId),
+        eq(lor_casting_matrix.sceneId, sceneId),
+        eq(lor_casting_matrix.entityId, entityId)
+      )
+    ).get();
+    if (existing) {
+      return db.update(lor_casting_matrix).set({ present }).where(eq(lor_casting_matrix.id, existing.id)).run();
+    } else {
+      return db.insert(lor_casting_matrix).values({ projectId, sceneId, entityId, present }).run();
+    }
+  },
+  // === LORE ADDITIONS END ===
 });
