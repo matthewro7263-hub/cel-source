@@ -28,7 +28,7 @@ export function statusClass(status: string) {
 }
 
 export function initials(name: string) {
-  return name.split(/\s+/).slice(0, 2).map((n) => n[0]?.toUpperCase()).join("");
+  return name.trim().split(/\s+/).slice(0, 2).map((n) => n[0]?.toUpperCase()).join("");
 }
 
 export function youTubeId(url: string): string | null {
