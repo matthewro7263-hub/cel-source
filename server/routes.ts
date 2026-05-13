@@ -7,10 +7,7 @@ import {
   getSessionUser, destroySession, genToken,
 } from "./storage";
 import {
-  insertProjectSchema, insertScriptSchema, insertStoryboardSchema,
-  insertPanelSchema, insertAnimaticSchema, insertSceneSchema, insertCommentSchema,
-  insertAssetSchema, insertCommissionSchema, insertRenderSchema,
-  insertAnimaticProjectSchema, insertAnimaticTrackSchema, insertAnimaticClipSchema,
+  insertCommissionSchema,
   audVoiceTakes, insertAudVoiceTakeSchema, audCaptions, insertAudCaptionSchema,
   dltCommissionHours, sceneTimeEntries, scenes, commissions, projects
 } from "@shared/schema";
