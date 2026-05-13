@@ -296,7 +296,7 @@ export default function AnimaticEditor() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/animatics-v2", animaticId] });
     },
-    onError: (e: any) => toast({ title: "Failed to add clip", description: String(e.message || e), variant: "destructive" }),
+    onError: (e: Error) => toast({ title: "Failed to add clip", description: String(e.message || e), variant: "destructive" }),
   });
 
   const patchClip = useMutation({
