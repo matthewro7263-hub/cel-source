@@ -937,22 +937,22 @@ function AddAnimaticDialog(props: any) {
         <div className="space-y-4 pt-2">
           <div className="space-y-1.5">
             <Label>Title</Label>
-            <Input value={title} onChange={(e: any) => setTitle(e.target.value)} placeholder="Rough cut v1" data-testid="input-animatic-title" />
+            <Input value={title} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTitle(e.target.value)} placeholder="Rough cut v1" data-testid="input-animatic-title" />
           </div>
           <div className="space-y-1.5">
             <Label>YouTube or Vimeo URL</Label>
-            <Input value={url} onChange={(e: any) => setUrl(e.target.value)} placeholder="https://youtube.com/watch?v=…" data-testid="input-animatic-url" />
+            <Input value={url} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setUrl(e.target.value)} placeholder="https://youtube.com/watch?v=…" data-testid="input-animatic-url" />
           </div>
           <div className="text-xs text-muted-foreground text-center">or</div>
           <div>
-            <input ref={fileRef} type="file" accept="video/*" className="hidden" onChange={(e: any) => e.target.files?.[0] && onFile(e.target.files[0])} data-testid="input-upload-animatic" />
+            <input ref={fileRef} type="file" accept="video/*" className="hidden" onChange={(e: React.ChangeEvent<HTMLInputElement>) => e.target.files?.[0] && onFile(e.target.files[0])} data-testid="input-upload-animatic" />
             <Button variant="outline" type="button" className="w-full" onClick={() => fileRef.current?.click()} disabled={uploading} data-testid="button-upload-animatic">
               <Upload size={14} className="mr-1.5" />{uploading ? "Uploading…" : "Upload video file (≤10MB)"}
             </Button>
           </div>
           <div className="space-y-1.5">
             <Label>Notes</Label>
-            <Textarea value={notes} onChange={(e: any) => setNotes(e.target.value)} rows={2} placeholder="Optional notes" data-testid="input-animatic-notes" />
+            <Textarea value={notes} onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setNotes(e.target.value)} rows={2} placeholder="Optional notes" data-testid="input-animatic-notes" />
           </div>
         </div>
         <DialogFooter>
