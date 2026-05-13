@@ -1,6 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { db, getSessionUser, storage } from "./storage";
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { audio2_lipsync, audio2_cues, insertAudio2LipsyncSchema, insertAudio2CueSchema } from "../shared/audio2_schema";
 import { projects } from "../shared/schema";
 import { z } from "zod";
