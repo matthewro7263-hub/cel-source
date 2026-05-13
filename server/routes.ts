@@ -545,7 +545,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   const commissionRateLimit = new Map<string, { count: number; resetAt: number }>();
 
   app.post("/api/commissions", (req, res) => {
-    const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.socket.remoteAddress || "unknown";
+    const ip = req.ip || req.socket.remoteAddress || "unknown";
     const now = Date.now();
     const entry = commissionRateLimit.get(ip);
     if (entry) {
