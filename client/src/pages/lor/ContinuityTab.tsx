@@ -8,6 +8,7 @@ import { Plus, Search, Trash2, Info, Check, Image as ImageIcon } from "lucide-re
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import ReactMarkdown from "react-markdown";
+import { LorFact } from "@shared/lor_schema";
 
 export default function ContinuityTab({ projectId }: { projectId: number }) {
   const { toast } = useToast();
@@ -17,12 +18,12 @@ export default function ContinuityTab({ projectId }: { projectId: number }) {
   const [adding, setAdding] = useState(false);
   const [newFact, setNewFact] = useState({ category: "character", title: "", body: "", imageData: "" });
 
-  const { data: facts = [] as any[], isLoading } = useQuery<any[]>({
+  const { data: facts = [] as LorFact[], isLoading } = useQuery<LorFact[]>({
     queryKey: [`/api/projects/${projectId}/lor_facts`],
   });
 
   const createFact = useMutation({
-    mutationFn: async (fact: any) => {
+    mutationFn: async (fact: Partial<LorFact>) => {
       const res = await apiRequest("POST", `/api/projects/${projectId}/lor_facts`, fact);
       return res.json();
     },
@@ -56,7 +57,7 @@ export default function ContinuityTab({ projectId }: { projectId: number }) {
     reader.readAsDataURL(file);
   };
 
-  const filteredFacts = facts.filter((f: any) => {
+  const filteredFacts = facts.filter((f: LorFact) => {
     if (filter !== "all" && f.category !== filter) return false;
     if (search && !f.title.toLowerCase().includes(search.toLowerCase()) && !f.body.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
@@ -153,7 +154,7 @@ export default function ContinuityTab({ projectId }: { projectId: number }) {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredFacts.map((fact: any) => (
+          {filteredFacts.map((fact: LorFact) => (
             <div key={fact.id} className="bg-card rounded-lg border shadow-sm overflow-hidden flex flex-col group">
               {fact.imageData && (
                 <div className="h-32 bg-muted flex items-center justify-center border-b">
