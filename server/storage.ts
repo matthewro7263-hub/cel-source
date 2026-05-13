@@ -375,7 +375,14 @@ export const storage = {
   // ===== MEMBERS =====
   listMembers: (projectId: number): (ProjectMember & { user: User })[] => {
     const rows = db.select().from(projectMembers).where(eq(projectMembers.projectId, projectId)).all();
-    return rows.map((r) => ({ ...r, user: db.select().from(users).where(eq(users.id, r.userId)).get()! }));
+    if (rows.length === 0) return [];
+    const userIds = rows.map(r => r.userId);
+    const allUsers = db.select().from(users).where(inArray(users.id, userIds)).all();
+    const userMap = allUsers.reduce((acc, u) => {
+      acc[u.id] = u;
+      return acc;
+    }, {} as Record<number, User>);
+    return rows.map((r) => ({ ...r, user: userMap[r.userId]! }));
   },
   addMember: (m: InsertProjectMember) => db.insert(projectMembers).values(m).returning().get(),
   removeMember: (projectId: number, userId: number) =>
