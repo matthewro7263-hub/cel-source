@@ -46,7 +46,7 @@ export const MetalGlassButton = forwardRef<HTMLButtonElement, MetalGlassButtonPr
     const innerClassName = className;
     const wrapperClassName = cn(
       "metal-fx-wrapper align-middle",
-      isFullWidth ? "flex w-full" : "inline-flex"
+      isFullWidth ? "flex w-full [&>.metal-fx-content]:w-full" : "inline-flex"
     );
 
     return (
