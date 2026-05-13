@@ -1508,7 +1508,7 @@ function SettingsTab({ project, members }: { project: Project; members: ProjectD
   const { toast } = useToast();
 
   const patch = useMutation({
-    mutationFn: async (data: any) => (await apiRequest("PATCH", `/api/projects/${project.id}`, data)).json(),
+    mutationFn: async (data: Partial<Project>) => (await apiRequest("PATCH", `/api/projects/${project.id}`, data)).json(),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/projects", project.id] });
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
