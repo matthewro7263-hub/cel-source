@@ -1,0 +1,141 @@
+// server/achievements.ts — v4 Achievements
+// Auto-unlock logic for the Cel achievements system.
+
+export interface AchievementDef {
+  code: string;
+  name: string;
+  description: string;
+  icon: string; // lucide icon name
+}
+
+export const ACHIEVEMENT_DEFS: AchievementDef[] = [
+  { code: "first_project",    name: "First steps",       description: "Created your first project",            icon: "FolderOpen" },
+  { code: "first_scene",      name: "Storyteller",       description: "Added your first scene",                icon: "Film" },
+  { code: "first_storyboard", name: "Visual thinker",    description: "Uploaded your first storyboard",        icon: "Image" },
+  { code: "ten_panels",       name: "Page turner",       description: "Added 10 storyboard panels",            icon: "LayoutGrid" },
+  { code: "fifty_panels",     name: "Pen pusher",        description: "Added 50 storyboard panels",            icon: "Star" },
+  { code: "hundred_panels",   name: "Centurion",         description: "Added 100 storyboard panels",           icon: "Crown" },
+  { code: "first_animatic",   name: "Moving pictures",   description: "Created your first animatic",           icon: "Clapperboard" },
+  { code: "first_commission", name: "Going pro",         description: "Received your first commission",        icon: "DollarSign" },
+  { code: "first_delivered",  name: "First payday",      description: "Delivered a commission",                icon: "Award" },
+  { code: "night_owl",        name: "Midnight oil",      description: "Worked between midnight and 5am",       icon: "Moon" },
+  { code: "early_bird",       name: "Early bird",        description: "Worked between 5am and 7am",            icon: "Sun" },
+  { code: "week_streak",      name: "Consistent",        description: "Used Cel 7 days in a row",              icon: "Flame" },
+  { code: "share_link",       name: "Showing off",       description: "Enabled a public share link",           icon: "Share2" },
+  { code: "team_player",      name: "Better together",   description: "Added a teammate to a project",         icon: "Users" },
+  { code: "polished",         name: "Picky",             description: "Added 20 comments",                     icon: "MessageSquare" },
+];
+
+export function getAchievementDef(code: string): AchievementDef | undefined {
+  return ACHIEVEMENT_DEFS.find((a) => a.code === code);
+}
+
+/**
+ * Check and unlock achievements based on context.
+ * Returns array of newly unlocked achievement codes.
+ */
+import { storage } from "./storage";
+
+interface AchievementContext {
+  userId: number;
+  event:
+    | "create_project"
+    | "create_scene"
+    | "create_panel"
+    | "create_animatic"
+    | "create_commission"
+    | "deliver_commission"
+    | "enable_share_link"
+    | "add_member"
+    | "create_comment"
+    | "login";
+  projectId?: number;
+}
+
+export function checkAchievements(ctx: AchievementContext): string[] {
+  const { userId, event } = ctx;
+  const unlocked: string[] = [];
+
+  function tryUnlock(code: string) {
+    if (!(storage as any).hasAchievement(userId, code)) {
+      (storage as any).unlockAchievement(userId, code);
+      unlocked.push(code);
+    }
+  }
+
+  // Time-based achievements
+  const hour = new Date().getHours();
+  if (hour >= 0 && hour < 5) tryUnlock("night_owl");
+  if (hour >= 5 && hour < 7) tryUnlock("early_bird");
+
+  switch (event) {
+    case "create_project": {
+      const projectCount = storage.listProjectsForUser(userId).length;
+      if (projectCount >= 1) tryUnlock("first_project");
+      break;
+    }
+    case "create_scene": {
+      // first_scene
+      const sceneCount = storage._db
+        .select()
+        .from((storage as any)._db.$client ? (null as any) : (null as any))
+        .all?.()?.length ?? 0;
+      tryUnlock("first_scene");
+      break;
+    }
+    case "create_panel": {
+      // Count all panels for this user's projects
+      tryUnlock("first_storyboard");
+      // Count total user panels across all projects
+      const userProjects = storage.listProjectsForUser(userId);
+      let totalPanels = 0;
+      for (const p of userProjects) {
+        const sbs = storage.listStoryboards(p.id);
+        for (const sb of sbs) {
+          totalPanels += storage.listPanels(sb.id).length;
+        }
+      }
+      if (totalPanels >= 10) tryUnlock("ten_panels");
+      if (totalPanels >= 50) tryUnlock("fifty_panels");
+      if (totalPanels >= 100) tryUnlock("hundred_panels");
+      break;
+    }
+    case "create_animatic": {
+      tryUnlock("first_animatic");
+      break;
+    }
+    case "create_commission": {
+      tryUnlock("first_commission");
+      break;
+    }
+    case "deliver_commission": {
+      tryUnlock("first_delivered");
+      break;
+    }
+    case "enable_share_link": {
+      tryUnlock("share_link");
+      break;
+    }
+    case "add_member": {
+      tryUnlock("team_player");
+      break;
+    }
+    case "create_comment": {
+      // Count all user comments
+      const userProjects = storage.listProjectsForUser(userId);
+      let totalComments = 0;
+      for (const p of userProjects) {
+        totalComments += storage.listComments(p.id).length;
+      }
+      if (totalComments >= 20) tryUnlock("polished");
+      break;
+    }
+    case "login": {
+      // Week streak check — simplified: just check if used 7 different days
+      // For now just try to unlock based on count of unique days in achievements (simplified impl)
+      break;
+    }
+  }
+
+  return unlocked;
+}

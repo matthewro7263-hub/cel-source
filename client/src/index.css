@@ -1,0 +1,683 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================ */
+/*  CEL DESIGN SYSTEM — soft glass / ambient                    */
+/* ============================================================ */
+
+@layer base {
+  :root {
+    /* Light theme — warm paper */
+    --background: 36 33% 97%;
+    --foreground: 222 18% 14%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 18% 14%;
+    --card-border: rgba(20, 24, 40, 0.08);
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 18% 14%;
+    --popover-border: rgba(20, 24, 40, 0.10);
+
+    --primary: 222 18% 14%;
+    --primary-foreground: 0 0% 100%;
+    --primary-border: rgba(20,24,40,0.18);
+
+    --secondary: 220 25% 96%;
+    --secondary-foreground: 222 18% 18%;
+    --secondary-border: rgba(20,24,40,0.06);
+
+    --muted: 220 18% 94%;
+    --muted-foreground: 220 8% 42%;
+    --muted-border: rgba(20,24,40,0.05);
+
+    --accent: 210 100% 92%;
+    --accent-foreground: 217 60% 18%;
+    --accent-border: rgba(50,120,255,0.18);
+
+    --destructive: 0 70% 52%;
+    --destructive-foreground: 0 0% 100%;
+    --destructive-border: rgba(220,70,70,0.30);
+
+    --border: 220 14% 88%;
+    --input: 0 0% 100%;
+    --ring: 210 90% 72%;
+    --radius: 12px;
+
+    /* Sidebar */
+    --sidebar: 36 33% 98%;
+    --sidebar-foreground: 222 18% 18%;
+    --sidebar-border: rgba(20,24,40,0.06);
+    --sidebar-ring: 210 90% 72%;
+    --sidebar-primary: 210 100% 75%;
+    --sidebar-primary-foreground: 217 60% 14%;
+    --sidebar-primary-border: rgba(50,120,255,0.18);
+    --sidebar-accent: 210 100% 92%;
+    --sidebar-accent-foreground: 217 60% 18%;
+    --sidebar-accent-border: rgba(50,120,255,0.18);
+
+    /* Charts */
+    --chart-1: 210 90% 62%;
+    --chart-2: 280 70% 65%;
+    --chart-3: 160 60% 50%;
+    --chart-4: 35 90% 60%;
+    --chart-5: 0 75% 60%;
+
+    /* Brand */
+    --brand-sky: #9DD0FF;
+    --brand-sky-deep: #6FB6FF;
+    --brand-purple: #C4B5FD;
+    --brand-warm: #FFD9A8;
+
+    /* Surfaces */
+    --surface-1: rgba(255, 255, 255, 0.72);
+    --surface-2: rgba(255, 255, 255, 0.55);
+    --surface-3: rgba(255, 255, 255, 0.35);
+    --surface-ink: rgba(20, 24, 40, 0.06);
+    --shadow-soft: 0 1px 2px rgba(20,24,40,0.04), 0 8px 24px rgba(20,24,40,0.06);
+    --shadow-pop: 0 1px 2px rgba(20,24,40,0.05), 0 20px 48px rgba(20,24,40,0.10);
+  }
+
+  .dark {
+    /* Dark theme — deep midnight with ambient warmth */
+    --background: 230 25% 7%;
+    --foreground: 220 15% 95%;
+
+    --card: 230 22% 11%;
+    --card-foreground: 220 15% 95%;
+    --card-border: rgba(255,255,255,0.08);
+
+    --popover: 230 22% 13%;
+    --popover-foreground: 220 15% 95%;
+    --popover-border: rgba(255,255,255,0.10);
+
+    --primary: 210 100% 80%;
+    --primary-foreground: 220 60% 12%;
+    --primary-border: rgba(157,208,255,0.40);
+
+    --secondary: 230 18% 16%;
+    --secondary-foreground: 220 15% 92%;
+    --secondary-border: rgba(255,255,255,0.06);
+
+    --muted: 230 16% 18%;
+    --muted-foreground: 220 10% 65%;
+    --muted-border: rgba(255,255,255,0.05);
+
+    --accent: 217 60% 22%;
+    --accent-foreground: 210 100% 88%;
+    --accent-border: rgba(157,208,255,0.25);
+
+    --destructive: 0 65% 55%;
+    --destructive-foreground: 0 0% 100%;
+    --destructive-border: rgba(255,90,90,0.35);
+
+    --border: 230 18% 18%;
+    --input: 230 22% 13%;
+    --ring: 210 90% 70%;
+
+    --sidebar: 230 24% 9%;
+    --sidebar-foreground: 220 15% 90%;
+    --sidebar-border: rgba(255,255,255,0.06);
+    --sidebar-ring: 210 90% 70%;
+    --sidebar-primary: 210 100% 75%;
+    --sidebar-primary-foreground: 220 60% 12%;
+    --sidebar-primary-border: rgba(157,208,255,0.30);
+    --sidebar-accent: 217 50% 22%;
+    --sidebar-accent-foreground: 210 100% 88%;
+    --sidebar-accent-border: rgba(157,208,255,0.30);
+
+    --chart-1: 210 90% 70%;
+    --chart-2: 280 70% 75%;
+    --chart-3: 160 60% 60%;
+    --chart-4: 35 90% 65%;
+    --chart-5: 0 75% 65%;
+
+    --surface-1: rgba(255, 255, 255, 0.06);
+    --surface-2: rgba(255, 255, 255, 0.04);
+    --surface-3: rgba(255, 255, 255, 0.025);
+    --surface-ink: rgba(0,0,0,0.20);
+    --shadow-soft: 0 1px 2px rgba(0,0,0,0.30), 0 12px 32px rgba(0,0,0,0.40);
+    --shadow-pop: 0 2px 4px rgba(0,0,0,0.40), 0 30px 60px rgba(0,0,0,0.55);
+  }
+
+  * {
+    border-color: hsl(var(--border));
+  }
+
+  html, body, #root {
+    height: 100%;
+  }
+
+  body {
+    color: hsl(var(--foreground));
+    background-color: hsl(var(--background));
+    /* Body font — General Sans (Fontshare) with robust system fallbacks so we
+       never render in serif Times if the Fontshare CDN is slow. */
+    font-family: "General Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+      "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-feature-settings: "ss01", "cv11";
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    min-height: 100vh;
+    position: relative;
+  }
+
+  /* Display font — Cabinet Grotesk for headings, with fallback. */
+  h1, h2, h3, h4, h5, h6, .font-display, .font-headline, .font-headline-md, .font-headline-lg, .font-display-xl {
+    font-family: "Cabinet Grotesk", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+      "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+
+  /* Ambient mesh — radial gradient bloom behind everything */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(80vw 60vh at 12% -10%, rgba(157,208,255,0.32), transparent 60%),
+      radial-gradient(70vw 50vh at 100% 15%, rgba(196,181,253,0.28), transparent 65%),
+      radial-gradient(60vw 70vh at 60% 110%, rgba(255,217,168,0.22), transparent 60%);
+  }
+
+  .dark body::before {
+    background:
+      radial-gradient(80vw 60vh at 10% -10%, rgba(94,140,210,0.22), transparent 60%),
+      radial-gradient(70vw 50vh at 100% 20%, rgba(140,118,210,0.18), transparent 65%),
+      radial-gradient(60vw 70vh at 65% 115%, rgba(210,170,120,0.10), transparent 60%);
+  }
+
+  /* Selection */
+  ::selection {
+    background: rgba(157,208,255,0.45);
+    color: hsl(var(--foreground));
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background: var(--surface-ink);
+    border-radius: 10px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(120,130,160,0.45); background-clip: padding-box; }
+
+  h1, h2, h3, h4 { letter-spacing: -0.02em; }
+}
+
+/* ============================================================ */
+/*  CORE COMPONENT CLASSES                                       */
+/* ============================================================ */
+
+@layer components {
+  /* Glass surface — frosted panel */
+  .glass {
+    background: var(--surface-1);
+    backdrop-filter: blur(22px) saturate(160%);
+    -webkit-backdrop-filter: blur(22px) saturate(160%);
+    border: 1px solid hsl(var(--card-border, var(--border)));
+    box-shadow: var(--shadow-soft);
+  }
+
+  .glass-strong {
+    background: rgba(255,255,255,0.85);
+    backdrop-filter: blur(28px) saturate(180%);
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
+    border: 1px solid hsl(var(--card-border, var(--border)));
+    box-shadow: var(--shadow-soft);
+  }
+
+  .dark .glass-strong {
+    background: rgba(28, 32, 50, 0.85);
+  }
+
+  /* Panel — slightly more opaque card */
+  .panel {
+    background: hsl(var(--card));
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-soft);
+  }
+
+  .panel-soft {
+    background: var(--surface-2);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius);
+  }
+
+  /* Sky button — canonical flat sky with white halo */
+  .btn-sky {
+    background: var(--brand-sky);
+    color: #0d1e3a;
+    border: 1px solid rgba(255,255,255,0.7);
+    border-radius: 10px;
+    padding: 0.55rem 1rem;
+    font-weight: 600;
+    font-size: 0.875rem;
+    box-shadow:
+      0 0 0 4px rgba(255,255,255,0.08),
+      0 1px 2px rgba(20,24,40,0.10),
+      0 8px 24px rgba(157,208,255,0.30);
+    transition: transform 120ms ease, box-shadow 120ms ease, filter 120ms ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+  }
+
+  .btn-sky:hover {
+    filter: brightness(1.04);
+    transform: translateY(-1px);
+    box-shadow:
+      0 0 0 4px rgba(255,255,255,0.12),
+      0 2px 4px rgba(20,24,40,0.12),
+      0 12px 28px rgba(157,208,255,0.40);
+  }
+
+  .btn-sky:active { transform: translateY(0); filter: brightness(0.98); }
+  .btn-sky:disabled { opacity: 0.55; cursor: not-allowed; }
+
+  .btn-ghost {
+    background: transparent;
+    color: hsl(var(--foreground));
+    border: 1px solid var(--card-border);
+    border-radius: 10px;
+    padding: 0.5rem 0.9rem;
+    font-weight: 500;
+    font-size: 0.875rem;
+    transition: all 120ms ease;
+  }
+
+  .btn-ghost:hover {
+    background: var(--surface-1);
+    border-color: hsl(var(--ring) / 0.4);
+  }
+
+  /* Sidebar nav items — soft hover ring */
+  .sidebar-nav-item {
+    position: relative;
+    color: hsl(var(--sidebar-foreground));
+  }
+
+  .sidebar-nav-item:hover {
+    background: var(--surface-1);
+  }
+
+  .sidebar-nav-item.active,
+  .sidebar-nav-item[data-active="true"] {
+    background: hsl(var(--sidebar-accent));
+    color: hsl(var(--sidebar-accent-foreground));
+  }
+
+  /* Inputs */
+  input, textarea, select {
+    background: hsl(var(--input));
+    border: 1px solid var(--card-border);
+    border-radius: 10px;
+    transition: border-color 120ms ease, box-shadow 120ms ease;
+  }
+
+  input:focus, textarea:focus, select:focus {
+    outline: none;
+    border-color: hsl(var(--ring));
+    box-shadow: 0 0 0 4px hsl(var(--ring) / 0.18);
+  }
+
+  /* Chips / badges */
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.25rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    background: var(--surface-1);
+    border: 1px solid var(--card-border);
+    color: hsl(var(--muted-foreground));
+  }
+
+  .chip-sky { background: rgba(157,208,255,0.22); border-color: rgba(157,208,255,0.45); color: #0d3b66; }
+  .dark .chip-sky { color: #B8DEFF; }
+
+  /* Soft divider */
+  .hr-soft { height: 1px; background: linear-gradient(to right, transparent, var(--card-border), transparent); border: none; }
+}
+
+/* ============================================================ */
+/*  LEGACY SUPPORT — atmosphere blobs + grid + glass-input       */
+/* ============================================================ */
+
+.blob {
+  position: fixed;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.55;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.blob-lavender {
+  width: 540px; height: 540px;
+  background: radial-gradient(circle, #C4B5FD 0%, transparent 65%);
+  top: -160px; right: -140px;
+}
+
+.blob-peach {
+  width: 480px; height: 480px;
+  background: radial-gradient(circle, #FFD9A8 0%, transparent 65%);
+  bottom: -160px; left: -160px;
+}
+
+.blob-sky {
+  width: 600px; height: 600px;
+  background: radial-gradient(circle, #9DD0FF 0%, transparent 60%);
+  top: 30%; left: 20%;
+  opacity: 0.4;
+}
+
+.dark .blob { opacity: 0.18; }
+
+.dot-grid {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image: radial-gradient(rgba(20,24,40,0.06) 1px, transparent 1px);
+  background-size: 22px 22px;
+  mask-image: radial-gradient(80vw 60vh at 50% 40%, black, transparent 75%);
+}
+
+.dark .dot-grid {
+  background-image: radial-gradient(rgba(255,255,255,0.06) 1px, transparent 1px);
+}
+
+.glass-input {
+  background: var(--surface-1) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  border: 1px solid var(--card-border) !important;
+  border-radius: 10px !important;
+}
+
+.glass-input:focus, .glass-input:focus-visible {
+  border-color: hsl(var(--ring)) !important;
+  box-shadow: 0 0 0 4px hsl(var(--ring) / 0.18) !important;
+  outline: none !important;
+}
+
+/* CelLogo + font-display fallback */
+.font-display { font-family: "Plus Jakarta Sans", "Inter", system-ui, -apple-system, sans-serif; }
+
+/* ============================================================ */
+/*  A11Y MODES                                                  */
+/* ============================================================ */
+
+.a11y-focus-mode .sidebar-nav-item:not(.active) { opacity: 0.35; }
+.a11y-focus-mode .toolbar { opacity: 0.55; }
+.a11y-focus-mode .toolbar:hover { opacity: 1; }
+
+.a11y-dyslexia, .a11y-dyslexia * {
+  font-family: "Comic Sans MS", "Trebuchet MS", system-ui, sans-serif !important;
+  letter-spacing: 0.01em;
+}
+
+.a11y-colorblind {
+  filter: saturate(0.65) hue-rotate(-8deg);
+}
+
+.a11y-reduced-motion *,
+.a11y-reduced-motion *::before,
+.a11y-reduced-motion *::after {
+  transition-duration: 0.01ms !important;
+  animation-duration: 0.01ms !important;
+}
+
+.a11y-large-touch button,
+.a11y-large-touch [role="button"],
+.a11y-large-touch input,
+.a11y-large-touch select,
+.a11y-large-touch textarea,
+.a11y-large-touch a[href] {
+  min-height: 44px;
+}
+
+.a11y-large-touch button,
+.a11y-large-touch [role="button"],
+.a11y-large-touch a[href] {
+  padding-inline: max(0.75rem, var(--large-touch-inline, 0.75rem));
+}
+
+/* ============================================================ */
+/*  KEYFRAMES                                                   */
+/* ============================================================ */
+
+@keyframes cel-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.animate-cel-fade-in { animation: cel-fade-in 220ms ease-out both; }
+
+@keyframes cel-pulse-soft {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.animate-cel-pulse { animation: cel-pulse-soft 1.6s ease-in-out infinite; }
+
+.perspective-1000 { perspective: 1000px; }
+.transform-style-3d { transform-style: preserve-3d; }
+.backface-hidden { backface-visibility: hidden; }
+.rotate-y-180 { transform: rotateY(180deg); }
+
+/* ============================================================ */
+/*  LANDING PAGE — public marketing                             */
+/* ============================================================ */
+
+.landing-root {
+  background-color: #f5f8fc;
+  color: #1a1a2e;
+}
+
+.dark .landing-root {
+  background-color: #0a0b18;
+  color: #e8ebf5;
+}
+
+.landing-bg {
+  background-image:
+    radial-gradient(circle at 15% 50%, rgba(157, 208, 255, 0.45), transparent 50%),
+    radial-gradient(circle at 85% 30%, rgba(205, 229, 255, 0.40), transparent 50%),
+    radial-gradient(circle at 50% 85%, rgba(227, 223, 255, 0.45), transparent 50%),
+    radial-gradient(circle at 30% 90%, rgba(255, 224, 200, 0.30), transparent 55%);
+  background-color: #f5f8fc;
+}
+
+.dark .landing-bg {
+  background-image:
+    radial-gradient(circle at 15% 50%, rgba(80, 130, 200, 0.30), transparent 50%),
+    radial-gradient(circle at 85% 30%, rgba(120, 110, 200, 0.25), transparent 50%),
+    radial-gradient(circle at 50% 85%, rgba(180, 120, 200, 0.20), transparent 55%);
+  background-color: #0a0b18;
+}
+
+.landing-dot-grid {
+  background-image:
+    radial-gradient(rgba(44, 99, 140, 0.10) 1px, transparent 1px),
+    radial-gradient(circle at 15% 50%, rgba(157, 208, 255, 0.45), transparent 50%),
+    radial-gradient(circle at 85% 30%, rgba(205, 229, 255, 0.40), transparent 50%),
+    radial-gradient(circle at 50% 85%, rgba(227, 223, 255, 0.45), transparent 50%);
+  background-size: 22px 22px, 100% 100%, 100% 100%, 100% 100%;
+}
+
+.dark .landing-dot-grid {
+  background-image:
+    radial-gradient(rgba(180, 210, 255, 0.06) 1px, transparent 1px),
+    radial-gradient(circle at 15% 50%, rgba(80, 130, 200, 0.30), transparent 50%),
+    radial-gradient(circle at 85% 30%, rgba(120, 110, 200, 0.25), transparent 50%),
+    radial-gradient(circle at 50% 85%, rgba(180, 120, 200, 0.20), transparent 55%);
+  background-size: 22px 22px, 100% 100%, 100% 100%, 100% 100%;
+}
+
+.landing-panel {
+  background-color: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  box-shadow:
+    inset 1px 1px 0 rgba(255, 255, 255, 0.6),
+    0 8px 32px -8px rgba(20, 40, 80, 0.10);
+}
+
+.dark .landing-panel {
+  background-color: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    inset 1px 1px 0 rgba(255, 255, 255, 0.05),
+    0 8px 32px -8px rgba(0, 0, 0, 0.5);
+}
+
+.landing-chip {
+  background-color: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  color: #2c638c;
+}
+
+.dark .landing-chip {
+  background-color: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #9dd0ff;
+}
+
+.landing-pill {
+  background-color: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+}
+
+.dark .landing-pill {
+  background-color: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.landing-mini-feature {
+  background-color: rgba(255, 255, 255, 0.45);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  transition: all 200ms ease;
+}
+
+.landing-mini-feature:hover {
+  background-color: rgba(255, 255, 255, 0.65);
+  transform: translateY(-2px);
+}
+
+.dark .landing-mini-feature {
+  background-color: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.dark .landing-mini-feature:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+/* Canonical sky button with halo */
+.btn-sky-halo {
+  background-color: #9dd0ff;
+  color: #064b73;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.7),
+    0 8px 16px -4px rgba(157, 208, 255, 0.55);
+  transition: all 180ms ease;
+}
+
+.btn-sky-halo:hover {
+  background-color: #b8dcff;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.85),
+    0 12px 24px -4px rgba(157, 208, 255, 0.65);
+}
+
+.dark .btn-sky-halo {
+  background-color: #9dd0ff;
+  color: #064b73;
+}
+
+.landing-glass-btn {
+  background-color: rgba(255, 255, 255, 0.50);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  color: #1a1a2e;
+  transition: all 180ms ease;
+}
+
+.landing-glass-btn:hover {
+  background-color: rgba(255, 255, 255, 0.70);
+}
+
+.dark .landing-glass-btn {
+  background-color: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #e8ebf5;
+}
+
+/* Decorative blob colors for bento cards */
+.landing-blob-sky { background-color: rgba(157, 208, 255, 0.7); }
+.landing-blob-lavender { background-color: rgba(202, 197, 255, 0.7); }
+.landing-blob-peach { background-color: rgba(255, 220, 190, 0.7); }
+
+/* UI preview placeholders — abstract dashboard mockup */
+.landing-preview-back {
+  background: linear-gradient(135deg, #cde5ff 0%, #e3dfff 100%);
+}
+
+.landing-preview-front {
+  background: linear-gradient(135deg, #f5f2ff 0%, #efecff 60%, #cde5ff 100%);
+}
+
+.landing-mini-sidebar {
+  background: linear-gradient(180deg, rgba(255,255,255,0.7), rgba(255,255,255,0.5));
+  border: 1px solid rgba(255,255,255,0.6);
+}
+
+.landing-mini-row {
+  background: rgba(255,255,255,0.6);
+  border: 1px solid rgba(255,255,255,0.6);
+}
+
+.landing-mini-card {
+  background: linear-gradient(135deg, rgba(157,208,255,0.5), rgba(205,229,255,0.4));
+  border: 1px solid rgba(255,255,255,0.6);
+}
+
+.landing-mini-card-2 {
+  background: linear-gradient(135deg, rgba(202,197,255,0.5), rgba(227,223,255,0.4));
+  border: 1px solid rgba(255,255,255,0.6);
+}
+
+.landing-mini-card-3 {
+  background: linear-gradient(135deg, rgba(255,220,190,0.5), rgba(255,235,215,0.4));
+  border: 1px solid rgba(255,255,255,0.6);
+}
+
+.landing-mini-timeline {
+  background:
+    linear-gradient(90deg,
+      rgba(157,208,255,0.5) 0%,
+      rgba(157,208,255,0.5) 25%,
+      rgba(202,197,255,0.5) 25%,
+      rgba(202,197,255,0.5) 55%,
+      rgba(255,220,190,0.5) 55%,
+      rgba(255,220,190,0.5) 80%,
+      rgba(205,229,255,0.5) 80%,
+      rgba(205,229,255,0.5) 100%);
+  border: 1px solid rgba(255,255,255,0.6);
+}

@@ -1,0 +1,65 @@
+import { sqliteTable, integer, text, real } from "drizzle-orm/sqlite-core";
+import { createInsertSchema } from "drizzle-zod";
+import { z } from "zod";
+
+// ===== STUDIO: RENDER EVENTS =====
+export const studio_render_events = sqliteTable("studio_render_events", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  projectId: integer("project_id").notNull(),
+  label: text("label").notNull(),
+  minutes: real("minutes").notNull(),
+  cost: real("cost").default(0),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertStudioRenderEventSchema = createInsertSchema(studio_render_events).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertStudioRenderEvent = z.infer<typeof insertStudioRenderEventSchema>;
+export type StudioRenderEvent = typeof studio_render_events.$inferSelect;
+
+// ===== STUDIO: RENDER BUDGET =====
+export const studio_render_budget = sqliteTable("studio_render_budget", {
+  projectId: integer("project_id").primaryKey(),
+  totalMinutes: real("total_minutes").notNull().default(600),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export type StudioRenderBudget = typeof studio_render_budget.$inferSelect;
+
+// ===== STUDIO: SNAPSHOTS =====
+export const studio_snapshots = sqliteTable("studio_snapshots", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  projectId: integer("project_id").notNull(),
+  label: text("label").notNull(),
+  parentId: integer("parent_id"),
+  notes: text("notes"),
+  restoredFromId: integer("restored_from_id"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertStudioSnapshotSchema = createInsertSchema(studio_snapshots).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertStudioSnapshot = z.infer<typeof insertStudioSnapshotSchema>;
+export type StudioSnapshot = typeof studio_snapshots.$inferSelect;
+
+// ===== STUDIO: CREDIT ENTRIES =====
+export const studio_credit_entries = sqliteTable("studio_credit_entries", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  projectId: integer("project_id").notNull(),
+  section: text("section").notNull(), // 'cast' | 'crew'
+  role: text("role").notNull(),
+  name: text("name").notNull(),
+  orderIdx: integer("order_idx").notNull().default(0),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertStudioCreditEntrySchema = createInsertSchema(studio_credit_entries).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertStudioCreditEntry = z.infer<typeof insertStudioCreditEntrySchema>;
+export type StudioCreditEntry = typeof studio_credit_entries.$inferSelect;
