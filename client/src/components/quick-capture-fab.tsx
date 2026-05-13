@@ -81,7 +81,7 @@ export function QuickCaptureFAB() {
               {tags.map((t) => (
                 <Badge key={t} variant="secondary" className="gap-1 text-xs h-5 px-1.5">
                   {t}
-                  <button onClick={() => setTags(tags.filter((x) => x !== t))} className="hover:text-destructive">
+                  <button onClick={() => setTags(tags.filter((x) => x !== t))} className="hover:text-destructive" aria-label="Remove tag">
                     <X size={9} />
                   </button>
                 </Badge>
