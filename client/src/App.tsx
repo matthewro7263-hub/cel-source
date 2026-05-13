@@ -251,6 +251,9 @@ function AppRouter() {
         <Route path="/projects/:id/review-room">
           <ProtectedShell><ReviewRoomPage /></ProtectedShell>
         </Route>
+        <Route path="/projects/:id/review">
+            <ProtectedShell><ReviewRoomPage /></ProtectedShell>
+          </Route>
         <Route path="/projects/:id/inbetween">
           <ProtectedShell><InbetweenColorLab /></ProtectedShell>
         </Route>
