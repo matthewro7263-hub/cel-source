@@ -183,11 +183,17 @@ bakRouter.post("/projects/:id/snapshot", requireAuth, async (req, res) => {
 
   const { label } = req.body;
 
+  const projStoryboards = db.select().from(storyboards).where(eq(storyboards.projectId, projectId)).all();
+  const storyboardIds = projStoryboards.map(sb => sb.id);
+  const projPanels = storyboardIds.length > 0
+    ? db.select().from(storyboardPanels).where(inArray(storyboardPanels.storyboardId, storyboardIds)).all()
+    : [];
+
   const snapshotData = {
     project: storage.getProject(projectId),
     scripts: db.select().from(scripts).where(eq(scripts.projectId, projectId)).all(),
-    storyboards: db.select().from(storyboards).where(eq(storyboards.projectId, projectId)).all(),
-    panels: db.select().from(storyboards).where(eq(storyboards.projectId, projectId)).all().flatMap(sb => db.select().from(storyboardPanels).where(eq(storyboardPanels.storyboardId, sb.id)).all()),
+    storyboards: projStoryboards,
+    panels: projPanels,
     scenes: db.select().from(scenes).where(eq(scenes.projectId, projectId)).all(),
     comments: db.select().from(comments).where(eq(comments.projectId, projectId)).all()
   };
@@ -486,9 +492,10 @@ bakRouter.get("/projects/:id/trash/integrity", requireAuth, async (req, res) => 
 
   const projAssets = db.select().from(assets).where(eq(assets.projectId, projectId)).all();
   const projStoryboards = db.select().from(storyboards).where(eq(storyboards.projectId, projectId)).all();
-  const projPanels = projStoryboards.flatMap((storyboard) =>
-    db.select().from(storyboardPanels).where(eq(storyboardPanels.storyboardId, storyboard.id)).all(),
-  );
+  const storyboardIds = projStoryboards.map(sb => sb.id);
+  const projPanels = storyboardIds.length > 0
+    ? db.select().from(storyboardPanels).where(inArray(storyboardPanels.storyboardId, storyboardIds)).all()
+    : [];
 
   const items = [
     ...projAssets.map((asset) => ({
@@ -549,9 +556,10 @@ bakRouter.get("/projects/:id/trash", requireAuth, async (req, res) => {
   const delScenes = db.select().from(scenes).where(eq(scenes.projectId, projectId)).all().filter(x => x.deletedAt !== null);
   const delAssets = db.select().from(assets).where(eq(assets.projectId, projectId)).all().filter(x => x.deletedAt !== null);
   const projStoryboards = db.select().from(storyboards).where(eq(storyboards.projectId, projectId)).all();
-  const delPanels = projStoryboards.flatMap(sb =>
-    db.select().from(storyboardPanels).where(eq(storyboardPanels.storyboardId, sb.id)).all().filter(x => x.deletedAt !== null),
-  );
+  const storyboardIds = projStoryboards.map(sb => sb.id);
+  const delPanels = storyboardIds.length > 0
+    ? db.select().from(storyboardPanels).where(inArray(storyboardPanels.storyboardId, storyboardIds)).all().filter(x => x.deletedAt !== null)
+    : [];
   
   res.json({
     scripts: delScripts,
