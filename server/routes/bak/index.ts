@@ -313,8 +313,22 @@ bakRouter.get("/projects/:id/export/:kind", requireAuth, async (req, res) => {
     const archive = archiver('zip', { zlib: { level: 9 } });
     archive.pipe(res);
 
+    const storyboardIds = projStoryboards.map(sb => sb.id);
+    const allPanels = storyboardIds.length > 0
+      ? db.select().from(storyboardPanels).where(inArray(storyboardPanels.storyboardId, storyboardIds)).all()
+      : [];
+
+    const panelsByStoryboardId = allPanels.reduce((acc, panel) => {
+      const id = panel.storyboardId;
+      if (id !== null) {
+        if (!acc[id]) acc[id] = [];
+        acc[id].push(panel);
+      }
+      return acc;
+    }, {} as Record<number, typeof allPanels>);
+
     for (const sb of projStoryboards) {
-      const panels = db.select().from(storyboardPanels).where(eq(storyboardPanels.storyboardId, sb.id)).all();
+      const panels = panelsByStoryboardId[sb.id] || [];
       panels.forEach((panel, i) => {
         const base64Data = panel.imageData.replace(/^data:image\/\w+;base64,/, "");
         const buffer = Buffer.from(base64Data, 'base64');
