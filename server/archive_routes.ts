@@ -8,7 +8,7 @@ import {
   assets, animaticProjects, animaticTracks, animaticClips,
   audVoiceTakes, audCaptions, cli_approvals, cli_feedback,
   renders, projectAiKeys, panelPins, sceneTimeEntries,
-  commissionPricingPresets, dltCommissionHours
+  commissionPricingPresets
 } from "@shared/schema";
 import { 
   lor_continuity_facts, lor_palettes, lor_asset_versions, lor_casting_matrix 
