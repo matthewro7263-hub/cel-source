@@ -32,6 +32,8 @@ export class PlaybackEngine {
   private audioCtx: AudioContext | null = null;
   private masterGain: GainNode | null = null;
   private audioNodes = new Map<number, AudioNode_>(); // clipId -> node
+  private clipsById = new Map<number, AnimaticClipData>();
+  private tracksByClipId = new Map<number, AnimaticTrackData>();
 
   private onTimeUpdate: ((ms: number) => void) | null = null;
   private onPanelChange: ((clipId: number | null) => void) | null = null;
@@ -47,6 +49,7 @@ export class PlaybackEngine {
     this.totalDurationMs = totalDurationMs;
     this.onTimeUpdate = onTimeUpdate;
     this.onPanelChange = onPanelChange;
+    this.rebuildLookups();
   }
 
   private getOrCreateAudioCtx(): AudioContext {
@@ -63,9 +66,10 @@ export class PlaybackEngine {
   updateTracks(tracks: AnimaticTrackData[], totalDurationMs: number) {
     this.tracks = tracks;
     this.totalDurationMs = totalDurationMs;
+    this.rebuildLookups();
     // Dispose old audio nodes that no longer exist
     const clipIds = new Set(tracks.flatMap((t) => t.clips.map((c) => c.id)));
-    for (const [id, node] of Array.from(this.audioNodes)) {
+    for (const [id, node] of this.audioNodes) {
       if (!clipIds.has(id)) {
         node.audioEl.pause();
         node.audioEl.src = "";
@@ -100,7 +104,7 @@ export class PlaybackEngine {
       this.rafHandle = null;
     }
     // Pause all audio
-    for (const node of Array.from(this.audioNodes.values())) {
+    for (const node of this.audioNodes.values()) {
       if (node.isPlaying) {
         node.audioEl.pause();
         node.isPlaying = false;
@@ -115,7 +119,7 @@ export class PlaybackEngine {
     this.onTimeUpdate?.(this.currentMs);
     this.updatePanelDisplay();
     // Seek audio elements if they exist
-    for (const node of Array.from(this.audioNodes.values())) {
+    for (const node of this.audioNodes.values()) {
       const clip = this.findClip(node.clipId);
       if (!clip) continue;
       const relativeMs = this.currentMs - clip.startMs;
@@ -166,15 +170,22 @@ export class PlaybackEngine {
   }
 
   private findClip(clipId: number): AnimaticClipData | undefined {
-    for (const t of this.tracks) {
-      const c = t.clips.find((c) => c.id === clipId);
-      if (c) return c;
-    }
-    return undefined;
+    return this.clipsById.get(clipId);
   }
 
   private findTrackForClip(clipId: number): AnimaticTrackData | undefined {
-    return this.tracks.find((t) => t.clips.some((c) => c.id === clipId));
+    return this.tracksByClipId.get(clipId);
+  }
+
+  private rebuildLookups() {
+    this.clipsById.clear();
+    this.tracksByClipId.clear();
+    for (const track of this.tracks) {
+      for (const clip of track.clips) {
+        this.clipsById.set(clip.id, clip);
+        this.tracksByClipId.set(clip.id, track);
+      }
+    }
   }
 
   /** Start/stop audio elements based on playhead position */
@@ -289,7 +300,7 @@ export class PlaybackEngine {
 
   dispose() {
     this.pause();
-    for (const node of Array.from(this.audioNodes.values())) {
+    for (const node of this.audioNodes.values()) {
       node.audioEl.pause();
       node.audioEl.src = "";
     }
