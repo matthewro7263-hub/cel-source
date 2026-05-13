@@ -8,7 +8,7 @@ import { Plus, Search, Trash2, Info, Check, Image as ImageIcon } from "lucide-re
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import ReactMarkdown from "react-markdown";
-import { LorFact } from "@shared/lor_schema";
+import { LorFact, InsertLorContinuityFact } from "@shared/lor_schema";
 
 export default function ContinuityTab({ projectId }: { projectId: number }) {
   const { toast } = useToast();
@@ -23,7 +23,7 @@ export default function ContinuityTab({ projectId }: { projectId: number }) {
   });
 
   const createFact = useMutation({
-    mutationFn: async (fact: Partial<LorFact>) => {
+    mutationFn: async (fact: Omit<InsertLorContinuityFact, "projectId">) => {
       const res = await apiRequest("POST", `/api/projects/${projectId}/lor_facts`, fact);
       return res.json();
     },
