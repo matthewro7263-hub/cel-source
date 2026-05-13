@@ -1,0 +1,11 @@
+--- client/src/lib/aud_web_audio.ts
++++ client/src/lib/aud_web_audio.ts
+@@ -2,8 +2,7 @@
+ export const getAudioContext = () => {
+   if (typeof window === 'undefined') return null;
+-  // @ts-ignore
+-  const AudioContext = window.AudioContext || window.webkitAudioContext;
++  const AudioContext = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+   if (!window._sharedAudioContext) {
+     window._sharedAudioContext = new AudioContext();
+   }

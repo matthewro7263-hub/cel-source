@@ -1,9 +1,10 @@
 // Shared web audio context utility to prevent creating multiple contexts
 export const getAudioContext = () => {
   if (typeof window === 'undefined') return null;
-  const AudioContextConstructor = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  // @ts-ignore
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
   if (!window._sharedAudioContext) {
-    window._sharedAudioContext = new AudioContextConstructor();
+    window._sharedAudioContext = new AudioContext();
   }
   return window._sharedAudioContext;
 };
@@ -11,6 +12,5 @@ export const getAudioContext = () => {
 declare global {
   interface Window {
     _sharedAudioContext: AudioContext;
-    webkitAudioContext: typeof AudioContext;
   }
 }
