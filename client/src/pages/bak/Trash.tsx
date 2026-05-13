@@ -5,17 +5,18 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, ShieldCheck, Trash2, Undo } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
+import { Script, Scene, Asset, Panel } from "@shared/schema";
 
 export default function BakTrashPage() {
   const { id } = useParams();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const { data: trashItems, isLoading } = useQuery<any>({
+  const { data: trashItems, isLoading } = useQuery<{ scripts: Script[]; scenes: Scene[]; assets: Asset[]; panels: Panel[] }>({
     queryKey: [`/api/projects/${id}/trash`],
   });
 
-  const { data: integrity, refetch: runIntegrity, isFetching: scanning } = useQuery<any>({
+  const { data: integrity, refetch: runIntegrity, isFetching: scanning } = useQuery<{ checkedAt: string; ok: boolean; counts: { total: number; ok: number; missing: number; corrupt: number }; items: { kind: string; id: number; name: string | null; deletedAt: string | null; status: "ok" | "missing" | "corrupt"; sha256: string | null; bytes: number; message?: string }[] }>({
     queryKey: [`/api/projects/${id}/trash/integrity`],
     enabled: false,
   });
@@ -43,10 +44,10 @@ export default function BakTrashPage() {
 
   if (isLoading) return <div>Loading trash...</div>;
 
-  const hasItems = (trashItems?.scripts?.length > 0) || 
-                   (trashItems?.scenes?.length > 0) || 
-                   (trashItems?.assets?.length > 0) ||
-                   (trashItems?.panels?.length > 0);
+  const hasItems = ((trashItems?.scripts?.length ?? 0) > 0) ||
+                   ((trashItems?.scenes?.length ?? 0) > 0) ||
+                   ((trashItems?.assets?.length ?? 0) > 0) ||
+                   ((trashItems?.panels?.length ?? 0) > 0);
 
   return (
     <div className="p-8 max-w-4xl mx-auto">
@@ -77,7 +78,7 @@ export default function BakTrashPage() {
               <div className="rounded-lg border p-3"><div className="text-xs text-muted-foreground">Corrupt</div><div className="font-semibold text-destructive">{integrity.counts.corrupt}</div></div>
             </div>
             <div className="max-h-48 overflow-y-auto rounded-lg border">
-              {integrity.items.map((item: any) => (
+              {integrity.items.map((item: { kind: string; id: number; name: string | null; deletedAt: string | null; status: "ok" | "missing" | "corrupt"; sha256: string | null; bytes: number; message?: string }) => (
                 <div key={`${item.kind}-${item.id}`} className="flex items-center justify-between gap-3 border-b px-3 py-2 text-xs last:border-b-0">
                   <span className="font-medium">{item.kind} #{item.id} - {item.name}</span>
                   <span className={item.status === "ok" ? "text-emerald-600" : "text-destructive"}>
@@ -98,11 +99,11 @@ export default function BakTrashPage() {
         </Card>
       ) : (
         <div className="space-y-6">
-          {trashItems.scripts?.length > 0 && (
+          {trashItems?.scripts && trashItems.scripts.length > 0 && (
             <Card>
               <CardHeader><CardTitle>Scripts</CardTitle></CardHeader>
               <CardContent className="space-y-4">
-                {trashItems.scripts.map((s: any) => (
+                {trashItems?.scripts?.map((s: Script) => (
                   <div key={s.id} className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
                     <span>{s.title || "Untitled"}</span>
                     <div className="flex gap-2">
@@ -119,11 +120,11 @@ export default function BakTrashPage() {
             </Card>
           )}
 
-          {trashItems.scenes?.length > 0 && (
+          {trashItems?.scenes && trashItems.scenes.length > 0 && (
             <Card>
               <CardHeader><CardTitle>Scenes</CardTitle></CardHeader>
               <CardContent className="space-y-4">
-                {trashItems.scenes.map((s: any) => (
+                {trashItems?.scenes?.map((s: Scene) => (
                   <div key={s.id} className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
                     <span>Scene {s.number}: {s.title}</span>
                     <div className="flex gap-2">
@@ -140,11 +141,11 @@ export default function BakTrashPage() {
             </Card>
           )}
 
-          {trashItems.assets?.length > 0 && (
+          {trashItems?.assets && trashItems.assets.length > 0 && (
             <Card>
               <CardHeader><CardTitle>Assets</CardTitle></CardHeader>
               <CardContent className="space-y-4">
-                {trashItems.assets.map((a: any) => (
+                {trashItems?.assets?.map((a: Asset) => (
                   <div key={a.id} className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
                     <span>{a.filename}</span>
                     <div className="flex gap-2">
@@ -161,11 +162,11 @@ export default function BakTrashPage() {
             </Card>
           )}
 
-          {trashItems.panels?.length > 0 && (
+          {trashItems?.panels && trashItems.panels.length > 0 && (
             <Card>
               <CardHeader><CardTitle>Storyboard Panels</CardTitle></CardHeader>
               <CardContent className="space-y-4">
-                {trashItems.panels.map((p: any) => (
+                {trashItems?.panels?.map((p: Panel) => (
                   <div key={p.id} className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
                     <span>Panel #{p.id}</span>
                     <div className="flex gap-2">
