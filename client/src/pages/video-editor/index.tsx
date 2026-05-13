@@ -110,7 +110,7 @@ const EXPORT_RESOLUTIONS = [
 ];
 
 function createClipId(prefix = "clip") {
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  return `${prefix}-${Date.now()}-${crypto.randomUUID()}`;
 }
 
 function isEditableTarget(target: EventTarget | null) {
