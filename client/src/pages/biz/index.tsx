@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
@@ -61,6 +61,8 @@ const KIND_LABELS: Record<string, string> = {
   nda: "NDA",
   model_release: "Model Release",
 };
+const FESTIVAL_STATUSES = ["planned", "submitted", "accepted", "rejected"];
+const FESTIVAL_SORT_STORAGE_KEY = "cel.biz.festivals.sort";
 
 // ===== FESTIVAL TAB =====
 function FestivalsTab() {
@@ -68,6 +70,8 @@ function FestivalsTab() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<BizFestival | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [sortBy, setSortBy] = useState(() => localStorage.getItem(FESTIVAL_SORT_STORAGE_KEY) || "deadline-asc");
+  const [deadlineSoonOnly, setDeadlineSoonOnly] = useState(false);
   const [form, setForm] = useState({
     name: "", deadline: "", status: "planned", fee: "", notes: "", projectId: "",
   });
@@ -75,6 +79,10 @@ function FestivalsTab() {
   const { data: festivals = [], isLoading } = useQuery<BizFestival[]>({
     queryKey: ["/api/biz/festivals"],
   });
+
+  useEffect(() => {
+    localStorage.setItem(FESTIVAL_SORT_STORAGE_KEY, sortBy);
+  }, [sortBy]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -111,6 +119,17 @@ function FestivalsTab() {
     },
   });
 
+  const statusMutation = useMutation({
+    mutationFn: async ({ id, status }: { id: number; status: string }) => {
+      await apiRequest("PATCH", `/api/biz/festivals/${id}`, { status });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/biz/festivals"] });
+      toast({ description: "Festival status updated." });
+    },
+    onError: (e: any) => toast({ description: String(e.message), variant: "destructive" }),
+  });
+
   function openNew() {
     setEditing(null);
     setForm({ name: "", deadline: "", status: "planned", fee: "", notes: "", projectId: "" });
@@ -129,13 +148,58 @@ function FestivalsTab() {
     setDialogOpen(true);
   }
 
+  const visibleFestivals = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const soon = new Date(today);
+    soon.setDate(soon.getDate() + 30);
+
+    return [...festivals]
+      .filter((festival) => {
+        if (!deadlineSoonOnly) return true;
+        if (!festival.deadline) return false;
+        const deadline = new Date(`${festival.deadline}T00:00:00`);
+        return deadline >= today && deadline <= soon;
+      })
+      .sort((a, b) => {
+        if (sortBy === "deadline-desc") return (b.deadline ?? "9999-12-31").localeCompare(a.deadline ?? "9999-12-31");
+        if (sortBy === "name") return a.name.localeCompare(b.name);
+        if (sortBy === "newest") return b.createdAt.localeCompare(a.createdAt);
+        return (a.deadline ?? "9999-12-31").localeCompare(b.deadline ?? "9999-12-31");
+      });
+  }, [deadlineSoonOnly, festivals, sortBy]);
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">Track film festival and competition submissions.</p>
         <Button size="sm" onClick={openNew} data-testid="button-add-festival">
           <Plus size={14} className="mr-1" /> Add Festival
         </Button>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          type="button"
+          variant={deadlineSoonOnly ? "default" : "outline"}
+          size="sm"
+          className="h-8"
+          onClick={() => setDeadlineSoonOnly((value) => !value)}
+          data-testid="filter-festival-deadline-soon"
+        >
+          Deadline within 30 days
+        </Button>
+        <Select value={sortBy} onValueChange={setSortBy}>
+          <SelectTrigger className="h-8 w-44" data-testid="select-festival-sort">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="deadline-asc">Deadline ↑</SelectItem>
+            <SelectItem value="deadline-desc">Deadline ↓</SelectItem>
+            <SelectItem value="name">Name A–Z</SelectItem>
+            <SelectItem value="newest">Newest</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       {isLoading ? (
@@ -143,6 +207,10 @@ function FestivalsTab() {
       ) : festivals.length === 0 ? (
         <div className="py-12 text-center text-muted-foreground text-sm">
           No festivals tracked yet. Add your first submission above.
+        </div>
+      ) : visibleFestivals.length === 0 ? (
+        <div className="py-12 text-center text-muted-foreground text-sm">
+          No festivals match the current filters.
         </div>
       ) : (
         <div className="rounded-lg border border-border overflow-x-auto">
@@ -158,14 +226,31 @@ function FestivalsTab() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {festivals.map((f) => (
+              {visibleFestivals.map((f) => (
                 <TableRow key={f.id} data-testid={`row-festival-${f.id}`}>
                   <TableCell className="font-medium">{f.name}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">{f.deadline ?? "—"}</TableCell>
                   <TableCell>
-                    <Badge variant="outline" className={FESTIVAL_STATUS_COLORS[f.status] ?? ""}>
-                      {f.status}
-                    </Badge>
+                    <Select
+                      value={f.status}
+                      onValueChange={(status) => statusMutation.mutate({ id: f.id, status })}
+                      disabled={statusMutation.isPending}
+                    >
+                      <SelectTrigger
+                        className="h-auto w-auto border-0 bg-transparent p-0 shadow-none focus:ring-0"
+                        aria-label={`Change status for ${f.name}`}
+                        data-testid={`select-festival-status-inline-${f.id}`}
+                      >
+                        <Badge variant="outline" className={FESTIVAL_STATUS_COLORS[f.status] ?? ""}>
+                          <SelectValue />
+                        </Badge>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {FESTIVAL_STATUSES.map((status) => (
+                          <SelectItem key={status} value={status}>{status}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </TableCell>
                   <TableCell className="text-sm">{f.fee ? `$${f.fee.toFixed(2)}` : "—"}</TableCell>
                   <TableCell className="text-sm text-muted-foreground max-w-[160px] truncate">{f.notes ?? "—"}</TableCell>
@@ -258,6 +343,7 @@ function ContractsTab() {
   const [viewContract, setViewContract] = useState<BizContract | null>(null);
   const [editing, setEditing] = useState<BizContract | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [templateSearch, setTemplateSearch] = useState("");
   const [form, setForm] = useState({ name: "", kind: "commission" as string, body: "" });
 
   const { data: contracts = [], isLoading } = useQuery<BizContract[]>({
@@ -289,6 +375,21 @@ function ContractsTab() {
     },
   });
 
+  const duplicateMutation = useMutation({
+    mutationFn: async (contract: BizContract) => {
+      await apiRequest("POST", "/api/biz/contracts", {
+        name: `${contract.name} Copy`,
+        kind: contract.kind,
+        body: contract.body,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/biz/contracts"] });
+      toast({ description: "Template duplicated." });
+    },
+    onError: (e: any) => toast({ description: String(e.message), variant: "destructive" }),
+  });
+
   function openNew() {
     setEditing(null);
     setForm({ name: "", kind: "commission", body: "" });
@@ -300,22 +401,38 @@ function ContractsTab() {
     setDialogOpen(true);
   }
 
+  const filteredContracts = useMemo(() => {
+    const query = templateSearch.trim().toLowerCase();
+    if (!query) return contracts;
+    return contracts.filter((contract) =>
+      [contract.name, contract.kind, contract.body].some((value) => value.toLowerCase().includes(query)),
+    );
+  }, [contracts, templateSearch]);
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">Saved contract & release form templates. Click a template to view/copy.</p>
         <Button size="sm" onClick={openNew} data-testid="button-add-contract">
           <Plus size={14} className="mr-1" /> New Template
         </Button>
       </div>
+      <Input
+        value={templateSearch}
+        onChange={(e) => setTemplateSearch(e.target.value)}
+        placeholder="Search templates by name, kind, or text…"
+        data-testid="input-contract-search"
+      />
 
       {isLoading ? (
         <div className="text-sm text-muted-foreground py-6 text-center">Loading…</div>
       ) : contracts.length === 0 ? (
         <div className="py-12 text-center text-muted-foreground text-sm">No templates yet.</div>
+      ) : filteredContracts.length === 0 ? (
+        <div className="py-12 text-center text-muted-foreground text-sm">No templates match your search.</div>
       ) : (
         <div className="grid gap-3">
-          {contracts.map((c) => (
+          {filteredContracts.map((c) => (
             <div
               key={c.id}
               className="flex items-center gap-3 p-3 rounded-lg border border-border bg-card hover:bg-accent/30 transition-colors cursor-pointer"
@@ -330,6 +447,16 @@ function ContractsTab() {
                 </div>
               </div>
               <div className="flex gap-1" onClick={e => e.stopPropagation()}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-xs"
+                  onClick={() => duplicateMutation.mutate(c)}
+                  disabled={duplicateMutation.isPending}
+                  data-testid={`button-duplicate-contract-${c.id}`}
+                >
+                  Duplicate
+                </Button>
                 <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(c)} data-testid={`button-edit-contract-${c.id}`}>
                   <Pencil size={13} />
                 </Button>
@@ -445,27 +572,30 @@ function TaxCsvTab() {
 
   // Group by client name + year to compute 1099 eligibility
   const rows = useMemo(() => {
-    return completed.map((c) => {
-      const amount = c.quoteCents ? c.quoteCents / 100 : 0;
-      // Platform fee: 0 (we don't know it here, show 0)
-      const fee = 0;
-      const net = amount - fee;
-      // Sum all completed commissions from same client in same year
-      const clientYear = c.createdAt ? c.createdAt.slice(0, 4) : "—";
-      const clientTotal = completed
-        .filter((x) => x.clientName === c.clientName && (x.createdAt ?? "").slice(0, 4) === clientYear)
-        .reduce((sum, x) => sum + (x.quoteCents ? x.quoteCents / 100 : 0), 0);
-      const eligible1099 = clientTotal >= 600 ? "Y" : "N";
-      return {
-        date: c.createdAt ? c.createdAt.slice(0, 10) : "",
-        client: c.clientName,
-        amount,
-        fee,
-        net,
-        eligible1099,
-        year: clientYear,
-      };
-    });
+    return completed
+      .map((c) => {
+        const amount = c.quoteCents ? c.quoteCents / 100 : 0;
+        // Platform fee: 0 (we don't know it here, show 0)
+        const fee = 0;
+        const net = amount - fee;
+        // Sum all completed commissions from same client in same year
+        const clientYear = c.createdAt ? c.createdAt.slice(0, 4) : "—";
+        const clientTotal = completed
+          .filter((x) => x.clientName === c.clientName && (x.createdAt ?? "").slice(0, 4) === clientYear)
+          .reduce((sum, x) => sum + (x.quoteCents ? x.quoteCents / 100 : 0), 0);
+        const eligible1099 = clientTotal >= 600 ? "Y" : "N";
+        return {
+          date: c.createdAt ? c.createdAt.slice(0, 10) : "",
+          client: c.clientName,
+          amount,
+          fee,
+          net,
+          eligible1099,
+          year: clientYear,
+          clientTotal,
+        };
+      })
+      .sort((a, b) => b.date.localeCompare(a.date));
   }, [completed]);
 
   const filteredRows = useMemo(
@@ -478,7 +608,8 @@ function TaxCsvTab() {
     const lines = filteredRows.map((r) =>
       [r.date, `"${r.client.replace(/"/g, '""')}"`, r.amount.toFixed(2), r.fee.toFixed(2), r.net.toFixed(2), r.eligible1099].join(",")
     );
-    const csv = [header, ...lines].join("\n");
+    const totalsLine = ["TOTAL", "", totalAmount.toFixed(2), totalFee.toFixed(2), totalNet.toFixed(2), ""].join(",");
+    const csv = [header, ...lines, totalsLine].join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -493,7 +624,17 @@ function TaxCsvTab() {
     return ys;
   }, [rows]);
 
+  const totalAmount = useMemo(() => filteredRows.reduce((s, r) => s + r.amount, 0), [filteredRows]);
+  const totalFee = useMemo(() => filteredRows.reduce((s, r) => s + r.fee, 0), [filteredRows]);
   const totalNet = useMemo(() => filteredRows.reduce((s, r) => s + r.net, 0), [filteredRows]);
+  const eligibleClientCount = useMemo(() => {
+    const uniqueClients = new Set(
+      filteredRows
+        .filter((r) => r.clientTotal >= 600)
+        .map((r) => `${r.client}::${r.year}`),
+    );
+    return uniqueClients.size;
+  }, [filteredRows]);
 
   return (
     <div className="space-y-4">
@@ -515,6 +656,12 @@ function TaxCsvTab() {
             <Download size={14} className="mr-1" /> Export Tax CSV
           </Button>
         </div>
+      </div>
+
+      <div className="rounded-lg border border-border bg-card p-3 text-sm" data-testid="card-tax-1099-summary">
+        <div className="text-xs uppercase tracking-wide text-muted-foreground">1099-ready clients</div>
+        <div className="mt-1 text-2xl font-semibold text-foreground">{eligibleClientCount}</div>
+        <p className="text-xs text-muted-foreground">Unique client/year totals at or above $600 in the current filter.</p>
       </div>
 
       {isLoading ? (
@@ -546,7 +693,11 @@ function TaxCsvTab() {
                     <TableCell className="text-sm">${r.fee.toFixed(2)}</TableCell>
                     <TableCell className="text-sm">${r.net.toFixed(2)}</TableCell>
                     <TableCell>
-                      <Badge variant="outline" className={r.eligible1099 === "Y" ? "bg-amber-500/15 text-amber-400 border-amber-500/20" : ""}>
+                      <Badge
+                        variant="outline"
+                        className={r.eligible1099 === "Y" ? "bg-amber-500/15 text-amber-400 border-amber-500/20" : ""}
+                        title={`${r.client} ${r.year} total: $${r.clientTotal.toFixed(2)}`}
+                      >
                         {r.eligible1099}
                       </Badge>
                     </TableCell>
@@ -570,6 +721,7 @@ function ExpensesTab() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<BizExpense | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [receiptPreviewUrl, setReceiptPreviewUrl] = useState<string | null>(null);
   const [form, setForm] = useState({
     date: new Date().toISOString().slice(0, 10),
     category: "",
@@ -589,6 +741,17 @@ function ExpensesTab() {
     return expenses
       .filter((e) => e.date.startsWith(ym))
       .reduce((s, e) => s + e.amount, 0);
+  }, [expenses]);
+
+  const ytdTotal = useMemo(() => {
+    const year = new Date().toISOString().slice(0, 4);
+    return expenses
+      .filter((e) => e.date.startsWith(year))
+      .reduce((s, e) => s + e.amount, 0);
+  }, [expenses]);
+
+  const categories = useMemo(() => {
+    return Array.from(new Set(expenses.map((e) => e.category).filter(Boolean))).sort((a, b) => a.localeCompare(b));
   }, [expenses]);
 
   const saveMutation = useMutation({
@@ -642,6 +805,18 @@ function ExpensesTab() {
     setDialogOpen(true);
   }
 
+  function isImageReceipt(url: string) {
+    return /\.(png|jpe?g|gif|webp|avif|svg)(\?.*)?$/i.test(url) || url.startsWith("data:image/");
+  }
+
+  function openReceipt(url: string) {
+    if (isImageReceipt(url)) {
+      setReceiptPreviewUrl(url);
+      return;
+    }
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+
   // Group by month for display
   const grouped = useMemo(() => {
     const map = new Map<string, BizExpense[]>();
@@ -661,6 +836,8 @@ function ExpensesTab() {
           <p className="text-sm text-muted-foreground">Track project-linked and general business expenses.</p>
           <p className="text-sm font-medium mt-1">
             This month: <span className="text-primary">${monthlyTotal.toFixed(2)}</span>
+            <span className="mx-2 text-muted-foreground">•</span>
+            YTD: <span className="text-primary">${ytdTotal.toFixed(2)}</span>
           </p>
         </div>
         <Button size="sm" onClick={openNew} data-testid="button-add-expense">
@@ -707,9 +884,16 @@ function ExpensesTab() {
                           <TableCell className="text-sm text-muted-foreground max-w-[140px] truncate">{exp.notes ?? "—"}</TableCell>
                           <TableCell>
                             {exp.receiptUrl ? (
-                              <a href={exp.receiptUrl} target="_blank" rel="noopener noreferrer" className="text-primary text-xs underline">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 px-2 text-primary text-xs underline"
+                                onClick={() => openReceipt(exp.receiptUrl!)}
+                                data-testid={`button-preview-receipt-${exp.id}`}
+                              >
                                 View
-                              </a>
+                              </Button>
                             ) : "—"}
                           </TableCell>
                           <TableCell>
@@ -752,7 +936,18 @@ function ExpensesTab() {
             </div>
             <div>
               <Label>Category</Label>
-              <Input value={form.category} onChange={e => setForm(p => ({ ...p, category: e.target.value }))} placeholder="Software, Equipment, Travel…" data-testid="input-expense-category" />
+              <Input
+                value={form.category}
+                onChange={e => setForm(p => ({ ...p, category: e.target.value }))}
+                placeholder="Software, Equipment, Travel…"
+                list="expense-category-suggestions"
+                data-testid="input-expense-category"
+              />
+              <datalist id="expense-category-suggestions">
+                {categories.map((category) => (
+                  <option key={category} value={category} />
+                ))}
+              </datalist>
             </div>
             <div>
               <Label>Notes</Label>
@@ -772,6 +967,27 @@ function ExpensesTab() {
             >
               {saveMutation.isPending ? "Saving…" : "Save"}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!receiptPreviewUrl} onOpenChange={() => setReceiptPreviewUrl(null)}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Receipt preview</DialogTitle>
+          </DialogHeader>
+          {receiptPreviewUrl && (
+            <div className="rounded-lg border border-border bg-muted/30 p-2">
+              <img src={receiptPreviewUrl} alt="Receipt preview" className="max-h-[70vh] w-full rounded object-contain" />
+            </div>
+          )}
+          <DialogFooter>
+            {receiptPreviewUrl && (
+              <Button variant="outline" onClick={() => window.open(receiptPreviewUrl, "_blank", "noopener,noreferrer")}>
+                Open in new tab
+              </Button>
+            )}
+            <Button onClick={() => setReceiptPreviewUrl(null)}>Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
