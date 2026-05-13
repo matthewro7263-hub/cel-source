@@ -208,8 +208,22 @@ export function registerArchiveRoutes(app: Express) {
         res.setHeader("Content-Disposition", `attachment; filename="project-${projectId}-storyboards.zip"`);
         archive.pipe(res);
 
+        const storyboardIds = sbs.map(sb => sb.id);
+        const allPanels = storyboardIds.length > 0
+          ? db.select().from(storyboardPanels).where(inArray(storyboardPanels.storyboardId, storyboardIds)).all()
+          : [];
+
+        const panelsByStoryboardId = allPanels.reduce((acc, panel) => {
+          const id = panel.storyboardId;
+          if (id !== null) {
+            if (!acc[id]) acc[id] = [];
+            acc[id].push(panel);
+          }
+          return acc;
+        }, {} as Record<number, typeof allPanels>);
+
         for (const sb of sbs) {
-          const panels = db.select().from(storyboardPanels).where(eq(storyboardPanels.storyboardId, sb.id)).all();
+          const panels = panelsByStoryboardId[sb.id] || [];
           const safeTitle = sb.title ? sb.title.replace(/[^a-zA-Z0-9_\-\.]/g, '_') : 'storyboard';
           for (let i = 0; i < panels.length; i++) {
             const p = panels[i];
