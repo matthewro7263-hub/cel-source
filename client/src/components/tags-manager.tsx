@@ -47,6 +47,7 @@ export function TagsSettingsPanel() {
             <button
               onClick={() => deleteTag.mutate(t.id)}
               className="hover:opacity-70"
+              aria-label="Remove tag"
               data-testid={`button-delete-tag-${t.id}`}
             >
               <X size={10} />
@@ -137,7 +138,7 @@ export function InlineTagSelector({ entityKind, entityId }: InlineTagSelectorPro
           className="gap-1 border text-xs h-5 px-1.5"
         >
           {t.name}
-          <button onClick={() => toggleTag.mutate(t.id)} className="hover:opacity-70"><X size={8} /></button>
+          <button onClick={() => toggleTag.mutate(t.id)} className="hover:opacity-70" aria-label="Remove tag"><X size={8} /></button>
         </Badge>
       ))}
       <Popover open={open} onOpenChange={setOpen}>
