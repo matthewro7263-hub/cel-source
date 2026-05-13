@@ -15,6 +15,7 @@ export const lor_continuity_facts = sqliteTable("lor_continuity_facts", {
 export const insertLorContinuityFactSchema = createInsertSchema(lor_continuity_facts).omit({ id: true, createdAt: true });
 export type InsertLorContinuityFact = z.infer<typeof insertLorContinuityFactSchema>;
 export type LorContinuityFact = typeof lor_continuity_facts.$inferSelect;
+export type LorFact = LorContinuityFact;
 
 // 3. Color Palette Matcher
 export const lor_palettes = sqliteTable("lor_palettes", {

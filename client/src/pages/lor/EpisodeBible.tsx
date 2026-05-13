@@ -7,16 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-
-interface LorFact {
-  id: number;
-  projectId: number;
-  category: string;
-  title: string;
-  body: string;
-  imageData: string | null;
-  createdAt: string;
-}
+import { LorFact } from "@shared/lor_schema";
 
 interface LoreCheckResult {
   matchedEntities: LorFact[];
