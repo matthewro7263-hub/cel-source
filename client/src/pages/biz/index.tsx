@@ -469,7 +469,7 @@ function TaxCsvTab() {
   }, [completed]);
 
   const filteredRows = useMemo(
-    () => (year ? rows.filter((r) => r.year === year) : rows),
+    () => (year && year !== "all" ? rows.filter((r) => r.year === year) : rows),
     [rows, year]
   );
 
@@ -482,7 +482,7 @@ function TaxCsvTab() {
     const blob = new Blob([csv], { type: "text/csv" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `commissions_tax_${year || "all"}.csv`;
+    a.download = `commissions_tax_${year && year !== "all" ? year : "all"}.csv`;
     a.click();
     URL.revokeObjectURL(a.href);
     toast({ description: "CSV downloaded." });
@@ -507,7 +507,7 @@ function TaxCsvTab() {
               <SelectValue placeholder="All years" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All years</SelectItem>
+              <SelectItem value="all">All years</SelectItem>
               {years.map((y) => <SelectItem key={y} value={y}>{y}</SelectItem>)}
             </SelectContent>
           </Select>
@@ -521,7 +521,7 @@ function TaxCsvTab() {
         <div className="text-sm text-muted-foreground py-6 text-center">Loading…</div>
       ) : filteredRows.length === 0 ? (
         <div className="py-12 text-center text-muted-foreground text-sm">
-          No completed commissions found{year ? ` for ${year}` : ""}.
+          No completed commissions found{year && year !== "all" ? ` for ${year}` : ""}.
         </div>
       ) : (
         <>
