@@ -270,20 +270,35 @@ CREATE TABLE IF NOT EXISTS approval_signoffs (
 `);
 
 // ===== PASSWORD UTILS =====
+const SCRYPT_PARAMS = { N: 65536, r: 8, p: 1, maxmem: 128 * 1024 * 1024 };
+
 export function hashPassword(password: string): string {
   const salt = randomBytes(16).toString("hex");
-  const hash = scryptSync(password, salt, 64).toString("hex");
-  return `${salt}:${hash}`;
+  const hash = scryptSync(password, salt, 64, SCRYPT_PARAMS).toString("hex");
+  return `v2:${salt}:${hash}`;
 }
 export function verifyPassword(password: string, stored: string): boolean {
-  const [salt, hash] = stored.split(":");
-  if (!salt || !hash) return false;
-  const check = scryptSync(password, salt, 64).toString("hex");
-  try {
-    return timingSafeEqual(Buffer.from(hash, "hex"), Buffer.from(check, "hex"));
-  } catch {
-    return false;
+  const parts = stored.split(":");
+  if (parts.length === 2) {
+    // Legacy format: salt:hash (uses default scrypt params)
+    const [salt, hash] = parts;
+    const check = scryptSync(password, salt, 64).toString("hex");
+    try {
+      return timingSafeEqual(Buffer.from(hash, "hex"), Buffer.from(check, "hex"));
+    } catch {
+      return false;
+    }
+  } else if (parts.length === 3 && parts[0] === "v2") {
+    // New format: v2:salt:hash
+    const [, salt, hash] = parts;
+    const check = scryptSync(password, salt, 64, SCRYPT_PARAMS).toString("hex");
+    try {
+      return timingSafeEqual(Buffer.from(hash, "hex"), Buffer.from(check, "hex"));
+    } catch {
+      return false;
+    }
   }
+  return false;
 }
 export function genToken(len = 16): string {
   return randomBytes(len).toString("hex").slice(0, len);
