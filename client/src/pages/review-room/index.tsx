@@ -35,6 +35,7 @@ function drawSegment(canvas: HTMLCanvasElement, from: { x: number; y: number }, 
   ctx.stroke();
 }
 
+// This page currently has no Radix Select controls; keep any future empty options on non-empty sentinels.
 export default function ReviewRoomPage() {
   const params = useParams() as { id: string };
   const projectId = parseInt(params.id, 10);
@@ -212,7 +213,7 @@ export default function ReviewRoomPage() {
           <Button variant="outline" size="sm" onClick={exportPDF}>
             <FileDown size={16} className="mr-1.5" /> Export PDF
           </Button>
-          <Button variant="primary" size="sm" onClick={flipStatus} disabled={!panel} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+          <Button variant="default" size="sm" onClick={flipStatus} disabled={!panel} className="bg-emerald-600 hover:bg-emerald-700 text-white">
             <CheckCircle2 size={16} className="mr-1.5" /> Approve Panel
           </Button>
         </div>

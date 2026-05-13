@@ -127,6 +127,10 @@ function ProtectedFullscreen({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function ReviewRoomRoute() {
+  return <ProtectedShell><ReviewRoomPage /></ProtectedShell>;
+}
+
 // Landing page handles its own auth-redirect (logged-in users go to dashboard)
 // so unauthenticated visitors see the marketing page at "/".
 
@@ -249,11 +253,11 @@ function AppRouter() {
           <ProtectedShell><ComparePage /></ProtectedShell>
         </Route>
         <Route path="/projects/:id/review-room">
-          <ProtectedShell><ReviewRoomPage /></ProtectedShell>
+          <ReviewRoomRoute />
         </Route>
         <Route path="/projects/:id/review">
-            <ProtectedShell><ReviewRoomPage /></ProtectedShell>
-          </Route>
+          <ReviewRoomRoute />
+        </Route>
         <Route path="/projects/:id/inbetween">
           <ProtectedShell><InbetweenColorLab /></ProtectedShell>
         </Route>

@@ -1,4 +1,5 @@
 import React from "react";
+import { toast } from "@/hooks/use-toast";
 
 interface State {
   error: Error | null;
@@ -48,8 +49,38 @@ export class ErrorBoundary extends React.Component<Props, State> {
     window.location.reload();
   };
 
+  getErrorDetails = () => {
+    const { error, errorInfo } = this.state;
+    if (!error) return "";
+    return [
+      `${error.name}: ${error.message}`,
+      error.stack,
+      errorInfo?.componentStack ? `Component stack:${errorInfo.componentStack}` : "",
+    ].filter(Boolean).join("\n\n");
+  };
+
+  handleCopyErrorDetails = async () => {
+    const details = this.getErrorDetails();
+    try {
+      await navigator.clipboard.writeText(details);
+      toast({ description: "Error details copied to clipboard." });
+    } catch {
+      const textarea = document.createElement("textarea");
+      textarea.value = details;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textarea);
+      toast({ description: "Error details copied to clipboard." });
+    }
+  };
+
   render() {
     if (!this.state.error) return this.props.children;
+
+    const scopeLabel = this.props.scope ? ` in ${this.props.scope}` : "";
 
     return (
       <div
@@ -108,7 +139,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
               lineHeight: 1.15,
             }}
           >
-            Cel hit an unexpected error.
+            Cel hit an unexpected error{scopeLabel}.
           </h1>
           <p style={{ margin: "0 0 1.25rem", color: "rgba(26,26,46,0.7)", lineHeight: 1.55 }}>
             Don't worry — your data is safe. Try the buttons below. If it keeps happening,
@@ -132,6 +163,23 @@ export class ErrorBoundary extends React.Component<Props, State> {
               }}
             >
               Try again
+            </button>
+            <button
+              onClick={this.handleCopyErrorDetails}
+              style={{
+                background: "rgba(255,255,255,0.55)",
+                color: "#1a1a2e",
+                fontWeight: 600,
+                fontSize: 14,
+                padding: "10px 20px",
+                borderRadius: 999,
+                border: "1px solid rgba(255,255,255,0.6)",
+                cursor: "pointer",
+                backdropFilter: "blur(14px)",
+              }}
+              data-testid="button-copy-error-details"
+            >
+              Copy error details
             </button>
             <button
               onClick={this.handleHardReload}
