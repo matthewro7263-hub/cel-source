@@ -11,5 +11,6 @@ export const getAudioContext = () => {
 declare global {
   interface Window {
     _sharedAudioContext: AudioContext;
+    webkitAudioContext: typeof AudioContext;
   }
 }

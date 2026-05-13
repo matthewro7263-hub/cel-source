@@ -926,7 +926,22 @@ function AnimaticCard({ a, onDelete }: { a: Animatic; onDelete: () => void }) {
   );
 }
 
-function AddAnimaticDialog(props: any) {
+interface AddAnimaticDialogProps {
+  open: boolean;
+  setOpen: (open: boolean) => void;
+  title: string;
+  setTitle: (title: string) => void;
+  url: string;
+  setUrl: (url: string) => void;
+  notes: string;
+  setNotes: (notes: string) => void;
+  fileRef: React.RefObject<HTMLInputElement>;
+  uploading: boolean;
+  onSubmit: () => void;
+  onFile: (file: File) => void;
+}
+
+function AddAnimaticDialog(props: AddAnimaticDialogProps) {
   const { open, setOpen, title, setTitle, url, setUrl, notes, setNotes, fileRef, uploading, onSubmit, onFile } = props;
   return (
     <Dialog open={open} onOpenChange={setOpen}>
