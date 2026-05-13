@@ -5,7 +5,7 @@ import {
   scripts, storyboardPanels, scenes, assets, bakSnapshots, bakGltfExports,
   projects, comments, projectMembers, storyboards
 } from "@shared/schema";
-import { eq, isNull, lt, inArray } from "drizzle-orm";
+import { eq, isNull, lt, inArray, isNotNull, and } from "drizzle-orm";
 import archiver from "archiver";
 import jsPDF from "jspdf";
 import { createHash } from "node:crypto";
@@ -486,9 +486,10 @@ bakRouter.get("/projects/:id/trash/integrity", requireAuth, async (req, res) => 
 
   const projAssets = db.select().from(assets).where(eq(assets.projectId, projectId)).all();
   const projStoryboards = db.select().from(storyboards).where(eq(storyboards.projectId, projectId)).all();
-  const projPanels = projStoryboards.flatMap((storyboard) =>
-    db.select().from(storyboardPanels).where(eq(storyboardPanels.storyboardId, storyboard.id)).all(),
-  );
+  const storyboardIds = projStoryboards.map(sb => sb.id);
+  const projPanels = storyboardIds.length > 0
+    ? db.select().from(storyboardPanels).where(inArray(storyboardPanels.storyboardId, storyboardIds)).all()
+    : [];
 
   const items = [
     ...projAssets.map((asset) => ({
@@ -549,9 +550,10 @@ bakRouter.get("/projects/:id/trash", requireAuth, async (req, res) => {
   const delScenes = db.select().from(scenes).where(eq(scenes.projectId, projectId)).all().filter(x => x.deletedAt !== null);
   const delAssets = db.select().from(assets).where(eq(assets.projectId, projectId)).all().filter(x => x.deletedAt !== null);
   const projStoryboards = db.select().from(storyboards).where(eq(storyboards.projectId, projectId)).all();
-  const delPanels = projStoryboards.flatMap(sb =>
-    db.select().from(storyboardPanels).where(eq(storyboardPanels.storyboardId, sb.id)).all().filter(x => x.deletedAt !== null),
-  );
+  const storyboardIds = projStoryboards.map(sb => sb.id);
+  const delPanels = storyboardIds.length > 0
+    ? db.select().from(storyboardPanels).where(and(inArray(storyboardPanels.storyboardId, storyboardIds), isNotNull(storyboardPanels.deletedAt))).all()
+    : [];
   
   res.json({
     scripts: delScripts,
