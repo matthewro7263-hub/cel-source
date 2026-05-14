@@ -14,16 +14,39 @@ import { createServer } from "node:http";
 const app = express();
 app.set("trust proxy", 1);
 
-// CORS for cross-origin deployed frontend. Reflect the request origin so credentials are allowed.
+// CORS: only allow known origins. In development allow localhost on any port.
+// Set ALLOWED_ORIGINS env var as a comma-separated list for production.
+const ALLOWED_ORIGINS: Set<string> = new Set(
+  (process.env.ALLOWED_ORIGINS ?? "")
+    .split(",")
+    .map((o) => o.trim())
+    .filter(Boolean)
+);
+
+function isAllowedOrigin(origin: string | undefined): boolean {
+  if (!origin) return false;
+  if (ALLOWED_ORIGINS.has(origin)) return true;
+  // Allow any localhost origin in development
+  if (process.env.NODE_ENV !== "production") {
+    try {
+      const u = new URL(origin);
+      if (u.hostname === "localhost" || u.hostname === "127.0.0.1") return true;
+    } catch {
+      // ignore malformed
+    }
+  }
+  return false;
+}
+
 app.use((req, res, next) => {
   const origin = req.headers.origin as string | undefined;
-  if (origin) {
+  if (isAllowedOrigin(origin)) {
     res.header("Access-Control-Allow-Origin", origin);
     res.header("Vary", "Origin");
+    res.header("Access-Control-Allow-Credentials", "true");
+    res.header("Access-Control-Allow-Methods", "GET,POST,PATCH,PUT,DELETE,OPTIONS");
+    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
   }
-  res.header("Access-Control-Allow-Credentials", "true");
-  res.header("Access-Control-Allow-Methods", "GET,POST,PATCH,PUT,DELETE,OPTIONS");
-  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
   if (req.method === "OPTIONS") {
     return res.sendStatus(204);
   }
