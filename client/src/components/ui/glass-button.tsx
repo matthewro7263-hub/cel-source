@@ -23,13 +23,14 @@ import { cn } from "@/lib/utils";
 const glassButtonVariants = cva(
   [
     "relative inline-flex items-center justify-center gap-2",
+    "cel-soft-button",
     "font-semibold select-none cursor-pointer",
     // NO translateY or translate3d — these cause the "dodge" effect
     "transition-all duration-200 ease-[cubic-bezier(0.4,0,0.2,1)]",
     "active:scale-[0.97]",
     "disabled:pointer-events-none disabled:opacity-50",
     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40",
-    "overflow-hidden",
+    "overflow-visible",
   ],
   {
     variants: {
@@ -108,6 +109,7 @@ export const GlassButton = forwardRef<HTMLButtonElement, GlassButtonProps>(
       <button
         ref={ref}
         className={cn(glassButtonVariants({ variant, size }), className)}
+        data-variant={variant ?? "default"}
         {...props}
       >
         {/* Inner specular glint — top-center highlight for sphere illusion */}

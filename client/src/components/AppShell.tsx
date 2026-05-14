@@ -1,4 +1,4 @@
-import { ReactNode, useState } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
@@ -18,7 +18,7 @@ import type { Project } from "@shared/schema";
 
 export function AppShell({ children }: { children: ReactNode }) {
   const [location, setLocation] = useLocation();
-  const { user, logout } = useAuth();
+  const { user, isLoading: authLoading, logout } = useAuth();
   const { theme, toggle } = useTheme();
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -34,12 +34,21 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const projectId = location.match(/^\/projects\/(\d+)/)?.[1];
 
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [location]);
+
   return (
     <div className="flex min-h-screen w-full bg-background text-foreground relative overflow-hidden">
       {/* Atmosphere blobs — fixed, behind everything */}
       <div className="blob blob-lavender" style={{ zIndex: 0 }} />
       <div className="blob blob-peach" style={{ zIndex: 0 }} />
       <div className="blob blob-sky" style={{ zIndex: 0 }} />
+      <div
+        aria-hidden="true"
+        data-liquid-gl="true"
+        className="liquid-gl-ambient"
+      />
 
       {/* Mobile top bar */}
       <div className="lg:hidden fixed top-0 left-0 right-0 z-40 h-14 glass flex items-center justify-between px-4">
@@ -57,21 +66,30 @@ export function AppShell({ children }: { children: ReactNode }) {
         </Button>
       </div>
 
+      {mobileOpen && (
+        <button
+          type="button"
+          aria-label="Close navigation"
+          className="lg:hidden fixed left-0 right-0 top-14 bottom-0 z-20 bg-black/20 backdrop-blur-sm"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
       <aside
         className={`${
           mobileOpen ? "block" : "hidden"
-        } lg:block fixed lg:relative inset-0 z-30 w-full lg:w-[240px] flex-shrink-0 glass border-r border-sidebar-border pt-14 lg:pt-0`}
+        } lg:block fixed lg:relative left-0 top-14 bottom-0 lg:inset-auto z-30 h-[calc(100vh-3.5rem)] lg:h-screen w-[min(22rem,calc(100vw-2rem))] lg:w-[240px] flex-shrink-0 glass border-r border-sidebar-border`}
         data-testid="sidebar-main"
         style={{ borderRadius: 0 }}
       >
-        <div className="flex h-full flex-col">
+        <div className="flex h-full min-h-0 flex-col">
           <div className="hidden lg:flex items-center gap-2.5 px-5 h-14 border-b border-sidebar-border/60">
             <span className="text-primary"><CelLogo size={22} /></span>
             <span className="font-display text-lg font-bold tracking-tight">Cel</span>
           </div>
 
-          <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
+          <nav className="min-h-0 flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
             <Link href="/dashboard">
               <div
                 className={`sidebar-nav-item flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer transition-all duration-150 hover:bg-white/40 dark:hover:bg-white/5 ${
@@ -172,8 +190,8 @@ export function AppShell({ children }: { children: ReactNode }) {
           </nav>
 
           {/* User menu at bottom — glass pill */}
-          {user && (
-            <div className="px-3 py-3 border-t border-sidebar-border/60">
+          <div className="shrink-0 px-3 py-3 border-t border-sidebar-border/60">
+            {user ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button
@@ -226,8 +244,16 @@ export function AppShell({ children }: { children: ReactNode }) {
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-            </div>
-          )}
+            ) : authLoading ? (
+              <div className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl glass-pill">
+                <div className="h-7 w-7 flex-shrink-0 animate-pulse rounded-full bg-muted" />
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <div className="h-3 w-24 animate-pulse rounded bg-muted" />
+                  <div className="h-3 w-32 animate-pulse rounded bg-muted" />
+                </div>
+              </div>
+            ) : null}
+          </div>
         </div>
       </aside>
 

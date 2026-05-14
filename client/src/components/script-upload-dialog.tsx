@@ -11,19 +11,19 @@ interface ScriptUploadDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   projectId: number;
+  onUploaded?: (scriptId: number) => void;
 }
 
-export function ScriptUploadDialog({ open, onOpenChange, projectId }: ScriptUploadDialogProps) {
+export function ScriptUploadDialog({ open, onOpenChange, projectId, onUploaded }: ScriptUploadDialogProps) {
   const { toast } = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [fileName, setFileName] = useState("");
 
-  const allowedExtensions = [".pdf", ".docx", ".doc", ".txt", ".md", ".markdown"];
+  const allowedExtensions = [".pdf", ".docx", ".txt", ".md", ".markdown"];
   const allowedMimes = [
     "application/pdf",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    "application/msword",
     "text/plain",
     "text/markdown",
     "text/x-markdown",
@@ -81,6 +81,7 @@ export function ScriptUploadDialog({ open, onOpenChange, projectId }: ScriptUplo
       
       // Invalidate queries to refresh script list
       queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId, "scripts"] });
+      onUploaded?.(script.id);
       
       toast({
         title: "Script uploaded",
@@ -120,7 +121,7 @@ export function ScriptUploadDialog({ open, onOpenChange, projectId }: ScriptUplo
             <div className="text-sm text-blue-700 dark:text-blue-300">
               <p className="font-medium mb-1">Supported formats:</p>
               <ul className="text-xs space-y-0.5">
-                <li>• <strong>PDF</strong> - Text extracted from first page</li>
+                <li>• <strong>PDF</strong> - Text extracted from the document</li>
                 <li>• <strong>DOCX</strong> - Word documents</li>
                 <li>• <strong>TXT</strong> - Plain text</li>
                 <li>• <strong>Markdown</strong> - MD files</li>
@@ -166,7 +167,7 @@ export function ScriptUploadDialog({ open, onOpenChange, projectId }: ScriptUplo
           <div className="text-xs text-muted-foreground space-y-1">
             <p>✓ Text will be automatically extracted and searchable</p>
             <p>✓ Original file is stored for download</p>
-            <p>✓ You can edit the script in the app after uploading</p>
+            <p>✓ The extracted script opens in the reader after upload</p>
           </div>
         </div>
 

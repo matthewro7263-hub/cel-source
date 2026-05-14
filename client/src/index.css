@@ -253,17 +253,24 @@
 
   /* Sky button — canonical flat sky with white halo */
   .btn-sky {
-    background: var(--brand-sky);
+    position: relative;
+    isolation: isolate;
+    background:
+      radial-gradient(circle at 50% 15%, rgba(255,255,255,0.72), transparent 34%),
+      linear-gradient(135deg, #9DD0FF 0%, #C4B5FD 56%, #FFD9A8 125%);
     color: #0d1e3a;
-    border: 1px solid rgba(255,255,255,0.7);
-    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.78);
+    border-radius: 16px;
     padding: 0.55rem 1rem;
     font-weight: 600;
     font-size: 0.875rem;
     box-shadow:
-      0 0 0 4px rgba(255,255,255,0.08),
-      0 1px 2px rgba(20,24,40,0.10),
-      0 8px 24px rgba(157,208,255,0.30);
+      0 1px 2px rgba(20,24,40,0.08),
+      0 10px 24px -12px rgba(111,182,255,0.72),
+      0 18px 34px -24px rgba(196,181,253,0.72),
+      0 18px 38px -30px rgba(255,170,96,0.72),
+      inset 0 1px 0 rgba(255,255,255,0.72),
+      inset 0 -1px 0 rgba(20,24,40,0.08);
     transition: transform 120ms ease, box-shadow 120ms ease, filter 120ms ease;
     display: inline-flex;
     align-items: center;
@@ -275,28 +282,151 @@
     filter: brightness(1.04);
     transform: translateY(-1px);
     box-shadow:
-      0 0 0 4px rgba(255,255,255,0.12),
-      0 2px 4px rgba(20,24,40,0.12),
-      0 12px 28px rgba(157,208,255,0.40);
+      0 1px 2px rgba(20,24,40,0.10),
+      0 14px 30px -14px rgba(111,182,255,0.86),
+      0 22px 42px -24px rgba(196,181,253,0.78),
+      0 20px 42px -30px rgba(255,170,96,0.78),
+      inset 0 1px 0 rgba(255,255,255,0.86);
   }
 
   .btn-sky:active { transform: translateY(0); filter: brightness(0.98); }
   .btn-sky:disabled { opacity: 0.55; cursor: not-allowed; }
 
   .btn-ghost {
-    background: transparent;
+    position: relative;
+    isolation: isolate;
+    background:
+      radial-gradient(circle at 50% 10%, rgba(255,255,255,0.62), transparent 34%),
+      linear-gradient(135deg, rgba(157,208,255,0.16), rgba(196,181,253,0.14) 55%, rgba(255,217,168,0.18));
     color: hsl(var(--foreground));
-    border: 1px solid var(--card-border);
-    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.38);
+    border-radius: 16px;
     padding: 0.5rem 0.9rem;
     font-weight: 500;
     font-size: 0.875rem;
+    box-shadow:
+      0 10px 24px -18px rgba(111,182,255,0.58),
+      0 14px 30px -24px rgba(196,181,253,0.52),
+      inset 0 1px 0 rgba(255,255,255,0.52);
     transition: all 120ms ease;
   }
 
   .btn-ghost:hover {
-    background: var(--surface-1);
+    background:
+      radial-gradient(circle at 50% 10%, rgba(255,255,255,0.72), transparent 36%),
+      linear-gradient(135deg, rgba(157,208,255,0.22), rgba(196,181,253,0.18) 55%, rgba(255,217,168,0.24));
     border-color: hsl(var(--ring) / 0.4);
+  }
+
+  .cel-soft-button {
+    overflow: visible;
+    border-radius: 1rem;
+    transition:
+      transform 140ms ease,
+      filter 140ms ease,
+      box-shadow 140ms ease,
+      background 140ms ease;
+    box-shadow:
+      0 1px 2px rgba(20,24,40,0.08),
+      0 12px 24px -18px rgba(111,182,255,0.66),
+      0 16px 34px -26px rgba(196,181,253,0.58),
+      0 18px 38px -32px rgba(255,170,96,0.52),
+      inset 0 1px 0 rgba(255,255,255,0.68),
+      inset 0 -1px 0 rgba(20,24,40,0.08);
+  }
+
+  .cel-soft-button::after,
+  .btn-sky::after,
+  .btn-ghost::after {
+    content: "";
+    position: absolute;
+    left: 14%;
+    right: 14%;
+    bottom: -9px;
+    height: 15px;
+    z-index: -1;
+    pointer-events: none;
+    border-radius: 999px;
+    background:
+      radial-gradient(ellipse at center, rgba(255,255,255,0.78) 0%, rgba(255,255,255,0.36) 25%, rgba(157,208,255,0.24) 52%, rgba(196,181,253,0.16) 72%, transparent 100%);
+    filter: blur(8px);
+    opacity: 0.78;
+  }
+
+  .cel-soft-button[data-variant="default"] {
+    color: #10203a;
+    border-color: rgba(255,255,255,0.72);
+    background:
+      radial-gradient(circle at 50% 12%, rgba(255,255,255,0.72), transparent 34%),
+      linear-gradient(135deg, #9DD0FF 0%, #BFD7FF 42%, #C4B5FD 100%);
+  }
+
+  .cel-soft-button[data-variant="secondary"] {
+    color: #241946;
+    border-color: rgba(255,255,255,0.64);
+    background:
+      radial-gradient(circle at 50% 12%, rgba(255,255,255,0.66), transparent 34%),
+      linear-gradient(135deg, #C4B5FD 0%, #DACDFF 48%, #FFD9A8 125%);
+  }
+
+  .cel-soft-button[data-variant="outline"],
+  .cel-soft-button[data-variant="ghost"] {
+    background:
+      radial-gradient(circle at 50% 12%, rgba(255,255,255,0.56), transparent 35%),
+      linear-gradient(135deg, rgba(157,208,255,0.18), rgba(196,181,253,0.15) 50%, rgba(255,217,168,0.22));
+  }
+
+  .cel-soft-button[data-variant="destructive"] {
+    background:
+      radial-gradient(circle at 50% 12%, rgba(255,255,255,0.35), transparent 34%),
+      linear-gradient(135deg, #ff8f8f, #ff7fa8 52%, #ffb36d);
+    border-color: rgba(255,255,255,0.34);
+  }
+
+  .cel-soft-button:hover {
+    filter: saturate(1.05) brightness(1.03);
+    box-shadow:
+      0 1px 2px rgba(20,24,40,0.10),
+      0 14px 30px -18px rgba(111,182,255,0.74),
+      0 20px 40px -26px rgba(196,181,253,0.66),
+      0 22px 44px -32px rgba(255,170,96,0.60),
+      inset 0 1px 0 rgba(255,255,255,0.78);
+  }
+
+  .dark .cel-soft-button,
+  .dark .btn-sky,
+  .dark .btn-ghost {
+    border-color: rgba(255,255,255,0.18);
+    box-shadow:
+      0 1px 2px rgba(0,0,0,0.28),
+      0 12px 26px -18px rgba(111,182,255,0.56),
+      0 18px 38px -26px rgba(196,181,253,0.50),
+      0 22px 44px -34px rgba(255,170,96,0.44),
+      inset 0 1px 0 rgba(255,255,255,0.18),
+      inset 0 -1px 0 rgba(0,0,0,0.24);
+  }
+
+  .dark .cel-soft-button[data-variant="default"],
+  .dark .btn-sky {
+    color: #eef7ff;
+    background:
+      radial-gradient(circle at 50% 10%, rgba(255,255,255,0.22), transparent 36%),
+      linear-gradient(135deg, rgba(111,182,255,0.46), rgba(196,181,253,0.36) 56%, rgba(255,217,168,0.30));
+  }
+
+  .dark .cel-soft-button[data-variant="secondary"] {
+    color: #f5f0ff;
+    background:
+      radial-gradient(circle at 50% 10%, rgba(255,255,255,0.18), transparent 36%),
+      linear-gradient(135deg, rgba(196,181,253,0.42), rgba(157,208,255,0.28) 54%, rgba(255,217,168,0.26));
+  }
+
+  .dark .cel-soft-button[data-variant="outline"],
+  .dark .cel-soft-button[data-variant="ghost"],
+  .dark .btn-ghost {
+    background:
+      radial-gradient(circle at 50% 10%, rgba(255,255,255,0.16), transparent 36%),
+      linear-gradient(135deg, rgba(157,208,255,0.14), rgba(196,181,253,0.12) 52%, rgba(255,217,168,0.14));
   }
 
   /* Sidebar nav items — soft hover ring */
@@ -383,6 +513,32 @@
 }
 
 .dark .blob { opacity: 0.18; }
+
+.liquid-gl-ambient {
+  position: fixed;
+  inset: 6rem 9vw 4rem 18vw;
+  z-index: 0;
+  pointer-events: none;
+  border-radius: 32px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  opacity: 0.5;
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+}
+
+.dark .liquid-gl-ambient {
+  background: rgba(255, 255, 255, 0.045);
+  border-color: rgba(255, 255, 255, 0.08);
+  opacity: 0.42;
+}
+
+@media (max-width: 768px) {
+  .liquid-gl-ambient {
+    inset: 5rem 1rem 3rem 1rem;
+    border-radius: 24px;
+  }
+}
 
 .dot-grid {
   position: fixed;

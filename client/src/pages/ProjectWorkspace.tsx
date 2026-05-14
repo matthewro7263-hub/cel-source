@@ -25,9 +25,6 @@ import {
 Download,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import DOMPurify from "dompurify";
-import { Document, Page, pdfjs } from "react-pdf";
-pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 import ReactMarkdown from "react-markdown";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import {
@@ -43,6 +40,7 @@ import { GlassButton } from "@/components/ui/glass-button";
 import { StoryboardReviewer } from "@/components/storyboard-reviewer";
 import { AssetsTab } from "@/pages/AssetsTab";
 import { BakSettingsExports } from "@/components/bak-settings-panel";
+import { ScriptUploadDialog } from "@/components/script-upload-dialog";
 
 // === AGENT_1 ADDITIONS START ===
 import { CliBrandSettings } from "@/components/cli-brand-settings";
@@ -319,6 +317,7 @@ function ScriptTab({ projectId }: { projectId: number }) {
   const { data: scripts } = useQuery<Script[]>({ queryKey: ["/api/projects", projectId, "scripts"] });
   const [active, setActive] = useState<number | null>(null);
   const [draft, setDraft] = useState<{ title: string; content: string }>({ title: "", content: "" });
+  const [uploadOpen, setUploadOpen] = useState(false);
   const { toast } = useToast();
   const wsRef = useRef<WebSocket | null>(null);
   const [otherCursors, setOtherCursors] = useState<Record<number, number>>({});
@@ -374,19 +373,40 @@ function ScriptTab({ projectId }: { projectId: number }) {
 
   if (!scripts || scripts.length === 0) {
     return (
-      <EmptyTabState
-        icon={<FileText size={20} />}
-        title="No scripts yet"
-        body="Drafts, dialog, scene notes — write in markdown with a live preview."
-        ctaLabel="New script"
-        onCta={() => create.mutate()}
-      />
+      <>
+        <div className="rounded-xl border border-dashed border-card-border bg-card p-8 text-center">
+          <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
+            <FileText size={20} />
+          </div>
+          <h3 className="font-display font-semibold mb-1">No scripts yet</h3>
+          <p className="text-sm text-muted-foreground max-w-md mx-auto mb-4">
+            Start from a blank markdown draft, or import a PDF, Word document, text file, or markdown script.
+          </p>
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <Button onClick={() => setUploadOpen(true)} data-testid="button-upload-script-empty">
+              <Upload size={14} className="mr-1.5" /> Upload script
+            </Button>
+            <Button variant="outline" onClick={() => create.mutate()} data-testid="button-new-script-empty">
+              <Plus size={14} className="mr-1.5" /> New script
+            </Button>
+          </div>
+        </div>
+        <ScriptUploadDialog
+          open={uploadOpen}
+          onOpenChange={setUploadOpen}
+          projectId={projectId}
+          onUploaded={setActive}
+        />
+      </>
     );
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[200px_1fr] gap-5">
+    <div className="grid grid-cols-1 lg:grid-cols-[220px_1fr] gap-5">
       <div className="rounded-xl border border-card-border bg-card p-3 h-fit">
+        <Button size="sm" className="w-full justify-start mb-2" onClick={() => setUploadOpen(true)} data-testid="button-upload-script">
+          <Upload size={14} className="mr-1.5" />Upload script
+        </Button>
         <Button variant="ghost" size="sm" className="w-full justify-start mb-2" onClick={() => create.mutate()} data-testid="button-new-script">
           <Plus size={14} className="mr-1.5" />New script
         </Button>
@@ -424,21 +444,19 @@ function ScriptTab({ projectId }: { projectId: number }) {
           {current.sourceType === "upload" ? (
             <div className="rounded-md border border-border bg-background p-4 min-h-[32rem] max-h-[70vh] overflow-auto prose-cel">
               {current.sourceFormat === "pdf" ? (
-                <div className="flex flex-col items-center min-w-full">
-                  <Document
-                    file={draft.content}
-                    error={<div className="p-4 text-sm whitespace-pre-wrap font-mono">{draft.content}</div>}
-                    loading={<Loader2 className="animate-spin text-muted-foreground my-8" />}
-                  >
-                    <Page pageNumber={1} renderTextLayer={false} renderAnnotationLayer={false} className="shadow-sm border" width={Math.min(window.innerWidth - 300, 800)} />
-                  </Document>
-                  <p className="text-xs text-muted-foreground mt-4 italic text-center">First page preview. Original text available below.</p>
-                  <div className="mt-8 pt-8 border-t border-border w-full text-sm whitespace-pre-wrap font-mono opacity-80">
-                    {draft.content}
+                <div>
+                  <div className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    <FileText size={14} /> Extracted PDF text
                   </div>
+                  <pre className="whitespace-pre-wrap font-sans text-sm leading-7 text-foreground">{draft.content || "No readable text was found in this PDF."}</pre>
                 </div>
               ) : current.sourceFormat === "docx" ? (
-                <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(draft.content, { FORBID_TAGS: ['script', 'iframe'], FORBID_ATTR: ['onerror', 'onload', 'onclick'] }) }} />
+                <div>
+                  <div className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    <FileText size={14} /> Extracted Word document text
+                  </div>
+                  <pre className="whitespace-pre-wrap font-sans text-sm leading-7 text-foreground">{draft.content || "No readable text was found in this Word document."}</pre>
+                </div>
               ) : (
                 <ReactMarkdown>{draft.content}</ReactMarkdown>
               )}
@@ -528,6 +546,12 @@ function ScriptTab({ projectId }: { projectId: number }) {
           </div>
         </div>
       )}
+      <ScriptUploadDialog
+        open={uploadOpen}
+        onOpenChange={setUploadOpen}
+        projectId={projectId}
+        onUploaded={setActive}
+      />
     </div>
   );
 }

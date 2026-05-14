@@ -26,18 +26,19 @@ export interface MetalGlassButtonProps extends GlassButtonProps {
   metalVariant?: "button" | "circle";
   alwaysMetal?: boolean;
   noMetal?: boolean;
+  strength?: number;
   /** Extra invisible padding around the wrapper so the metal glow has room
    *  to extend without being clipped by adjacent layout. Default 6px. */
   bleed?: number;
 }
 
 export const MetalGlassButton = forwardRef<HTMLButtonElement, MetalGlassButtonProps>(
-  ({ preset = "silver", metalVariant = "button", alwaysMetal = false, noMetal = false, bleed = 6, className, ...props }, ref) => {
+  ({ preset = "silver", metalVariant = "button", alwaysMetal = false, noMetal = false, strength = 0.88, bleed = 6, className, variant, ...props }, ref) => {
     const { theme } = useTheme();
     const showMetal = !noMetal && (alwaysMetal || theme === "dark");
 
     if (!showMetal) {
-      return <GlassButton ref={ref} className={className} {...props} />;
+      return <GlassButton ref={ref} className={className} variant={variant} {...props} />;
     }
 
     // Detect if caller wants full-width — promote wrapper accordingly so the
@@ -53,11 +54,23 @@ export const MetalGlassButton = forwardRef<HTMLButtonElement, MetalGlassButtonPr
       <MetalFx
         variant={metalVariant}
         preset={preset}
-        theme="dark"
+        theme={theme}
+        strength={strength}
+        borderRadius={9999}
+        normalizeHostStyles={false}
         className={wrapperClassName}
         style={{ padding: bleed, borderRadius: 9999 }}
       >
-        <GlassButton ref={ref} className={cn(innerClassName, isFullWidth && "w-full")} {...props} />
+        <GlassButton
+          ref={ref}
+          variant={variant}
+          className={cn(
+            innerClassName,
+            isFullWidth && "w-full",
+            "dark:border-white/25 dark:bg-white/10 dark:text-white dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.24),0_8px_24px_rgba(0,0,0,0.32)]",
+          )}
+          {...props}
+        />
       </MetalFx>
     );
   }

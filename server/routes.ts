@@ -254,8 +254,7 @@ const upload = multer({
   // ===== SCRIPT UPLOADS =====
   app.post("/api/projects/:projectId/scripts/upload", requireAuth, upload.single("file"), async (req, res) => {
     const projectId = parseInt(String(req.params.projectId), 10);
-    // Inline check
-    if (!storage.getProject(projectId)) return res.status(403).json({ message: "No access" });
+    if (!canAccessProject(projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
     
     if (!req.file) {
       return res.status(400).json({ message: "No file uploaded" });
@@ -297,10 +296,16 @@ const upload = multer({
         const data = await pdfParse(buffer);
         extractedText = data.text;
       } else if (sourceFormat === "docx") {
-        const result = await mammoth.convertToHtml({ buffer });
-        extractedText = result.value; // The generated HTML
+        const result = await mammoth.extractRawText({ buffer });
+        extractedText = result.value;
       } else {
         extractedText = buffer.toString("utf8");
+      }
+
+      if (!extractedText.trim()) {
+        return res.status(400).json({
+          message: "No readable text found in this file. Try exporting the script as a text-based PDF, DOCX, TXT, or Markdown file.",
+        });
       }
 
       const r2Module = await import("./r2.js");
@@ -347,7 +352,7 @@ const upload = multer({
     const projectId = parseInt(String(req.params.projectId), 10);
     const scriptId = parseInt(String(req.params.scriptId), 10);
     
-    if (!storage.getProject(projectId)) return res.status(403).json({ message: "No access" });
+    if (!canAccessProject(projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
 
     const script = (storage as any).getScript(scriptId);
     if (!script) return res.status(404).json({ message: "Script not found" });

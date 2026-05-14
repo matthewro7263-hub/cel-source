@@ -81,23 +81,58 @@ declare global {
   }
 }
 
-// liquidGL is DISABLED.
-//
-// The library snapshots the page and renders a WebGL refraction canvas over
-// each target element. In practice it occluded sidebar nav items and hero
-// content (children of .liquidGL-bg elements get hidden behind the WebGL
-// canvas), so the user reported "UI looks missing" on both the project page
-// (sidebar gone) and the landing page (hero gone).
-//
-// The CSS-based .glass / .landing-panel frosted backdrop already delivers a
-// polished glassmorphism look that works everywhere (no WebGL required, no
-// crash surface, no Firefox/sandbox issues). The liquidGL.js + html2canvas.min.js
-// scripts are still loaded for now — they do nothing without targets — and
-// can be removed from index.html in a follow-up cleanup.
-
 function useLiquidGL() {
-  // no-op — retained as a named hook so AppRouter doesn't change shape, but
-  // the WebGL effect is no longer initialized.
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.liquidGL !== "function") return;
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+
+    let frame = 0;
+    const initPending = () => {
+      const targets = Array.from(
+        document.querySelectorAll<HTMLElement>("[data-liquid-gl='true']:not([data-liquid-ready='true'])"),
+      );
+      if (targets.length === 0) return;
+
+      targets.forEach((target) => {
+        target.classList.add("liquidGL-pending");
+        target.setAttribute("data-liquid-ready", "true");
+      });
+
+      try {
+        window.liquidGL?.({
+          target: ".liquidGL-pending",
+          snapshot: "#root",
+          resolution: 1.2,
+          refraction: 0.006,
+          bevelDepth: 0.045,
+          bevelWidth: 0.1,
+          frost: 0.02,
+          shadow: false,
+          specular: true,
+          reveal: "fade",
+          tilt: false,
+        });
+      } catch (error) {
+        console.warn("liquidGL initialization failed; using CSS glass fallback.", error);
+      } finally {
+        targets.forEach((target) => target.classList.remove("liquidGL-pending"));
+      }
+    };
+
+    const schedule = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(initPending);
+    };
+
+    schedule();
+    const observer = new MutationObserver(schedule);
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, []);
 }
 // ────────────────────────────────────────────────────────────────────────────
 
