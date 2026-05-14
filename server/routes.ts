@@ -19,13 +19,11 @@ import {
   dltCommissionHours, sceneTimeEntries, scenes, commissions, projects
 } from "@shared/schema";
 import { eq } from "drizzle-orm";
-import type { User } from "@shared/schema";
+import type { User as AppUser } from "@shared/schema";
 
 declare global {
   namespace Express {
-    interface Request {
-      user?: User;
-    }
+    interface User extends AppUser {}
   }
 }
 

@@ -11,14 +11,6 @@ import { z } from "zod";
  * project. Never trust client-supplied user IDs.
  */
 
-declare global {
-  namespace Express {
-    interface Request {
-      user?: { id: number; email: string };
-    }
-  }
-}
-
 function extractToken(req: Request): string | undefined {
   const auth = req.headers.authorization;
   if (!auth) return undefined;
@@ -33,7 +25,7 @@ function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!userId) return res.status(401).json({ error: "Unauthorized", code: "UNAUTHORIZED" });
   const user = storage.getUser(userId);
   if (!user) return res.status(401).json({ error: "Unauthorized", code: "UNAUTHORIZED" });
-  req.user = { id: user.id, email: user.email };
+  req.user = user;
   next();
 }
 

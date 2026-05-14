@@ -5,8 +5,6 @@ import { getAuthToken, setAuthToken } from "@/lib/queryClient";
 // Hotfix: expose auth helpers globally so any bare reference resolves.
 (globalThis as any).getAuthToken = getAuthToken;
 (globalThis as any).setAuthToken = setAuthToken;
-// Stub: AssetsTab references a `syncDrive` mutation that was never wired up.
-(globalThis as any).syncDrive = { mutate: () => {}, mutateAsync: async () => {}, isPending: false };
 
 if (!window.location.hash) {
   window.location.hash = "#/";

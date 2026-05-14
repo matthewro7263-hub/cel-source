@@ -251,13 +251,13 @@ export function AssetsTab({ projectId }: AssetsTabProps) {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => syncDrive.mutate()}
-            disabled={syncDrive.isPending}
+            onClick={() => driveSync.mutate()}
+            disabled={driveSync.isPending}
             data-testid="button-sync-drive"
             className="text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/10 h-8"
           >
             <CloudRain size={13} className="mr-1" />
-            {syncDrive.isPending ? "Polling..." : "Drive Watcher"}
+            {driveSync.isPending ? "Polling..." : "Drive Watcher"}
           </Button>
           <Button
             variant="outline"
@@ -378,6 +378,7 @@ function AssetModal({
 }) {
   const [notes, setNotes] = useState("");
   const [tags, setTags] = useState("");
+  const { toast } = useToast();
 
   if (!asset) return null;
 

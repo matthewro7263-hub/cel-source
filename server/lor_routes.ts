@@ -3,6 +3,35 @@ import { getSessionUser, storage } from "./storage";
 import { LOR_EPISODE_BIBLE_SEED } from "./templates/lor_episode_bible";
 import { z } from "zod";
 import { notifyDiscord } from "./discord";
+import type {
+  InsertLorAssetVersion,
+  InsertLorContinuityFact,
+  InsertLorPalette,
+  LorAssetVersion,
+  LorCastingMatrix,
+  LorContinuityFact,
+  LorPalette,
+} from "@shared/lor_schema";
+
+type LorStorage = typeof storage & {
+  listLorFacts(projectId: number): LorContinuityFact[];
+  createLorFact(fact: InsertLorContinuityFact): LorContinuityFact;
+  updateLorFact(id: number, patch: Partial<InsertLorContinuityFact>): LorContinuityFact | undefined;
+  deleteLorFact(id: number): unknown;
+  getLorFact(id: number): LorContinuityFact | undefined;
+  listLorPalettes(projectId: number): LorPalette[];
+  createLorPalette(palette: InsertLorPalette): LorPalette;
+  deleteLorPalette(id: number): unknown;
+  getLorPalette(id: number): LorPalette | undefined;
+  listLorAssetVersions(assetId: number): LorAssetVersion[];
+  createLorAssetVersion(version: InsertLorAssetVersion): LorAssetVersion;
+  updateLorAssetVersionsForAsset(assetId: number, patch: Partial<LorAssetVersion>): unknown;
+  updateLorAssetVersion(id: number, patch: Partial<LorAssetVersion>): LorAssetVersion | undefined;
+  listLorCasting(projectId: number): LorCastingMatrix[];
+  upsertLorCasting(projectId: number, sceneId: number, entityId: number, present: boolean): unknown;
+};
+
+const lorStorage = storage as LorStorage;
 
 function canAccessProject(projectId: number, userId: number): boolean {
   const p = storage.getProject(projectId);
@@ -42,14 +71,14 @@ export function registerLorRoutes(app: Express) {
   app.get("/api/projects/:id/lor_facts", requireAuth, (req, res) => {
     const projectId = parseInt(String(req.params.id), 10);
     if (!canAccessProject(projectId, (req as any).user.id)) return res.status(403).json({ message: "No access" });
-    const facts = storage.listLorFacts(projectId);
+    const facts = lorStorage.listLorFacts(projectId);
     res.json(facts);
   });
 
   app.post("/api/projects/:id/lor_facts", requireAuth, (req, res) => {
     const projectId = parseInt(String(req.params.id), 10);
     if (!canAccessProject(projectId, (req as any).user.id)) return res.status(403).json({ message: "No access" });
-    const fact = storage.createLorFact({
+    const fact = lorStorage.createLorFact({
       projectId,
       category: req.body.category || 'character',
       title: req.body.title,
@@ -61,21 +90,21 @@ export function registerLorRoutes(app: Express) {
 
   app.put("/api/lor_facts/:id", requireAuth, (req, res) => {
     const factId = parseInt(String(req.params.id), 10);
-    const row = storage.getLorFact(factId);
+    const row = lorStorage.getLorFact(factId);
     if (!row) return res.status(404).json({ message: "Not found" });
     if (!canAccessProject(row.projectId, (req as any).user.id)) return res.status(403).json({ message: "No access" });
     let patch: any;
     try { patch = lorFactPutSchema.parse(req.body); } catch (e: any) { return res.status(400).json({ message: e.message }); }
-    const fact = storage.updateLorFact(factId, patch);
+    const fact = lorStorage.updateLorFact(factId, patch);
     res.json(fact);
   });
 
   app.delete("/api/lor_facts/:id", requireAuth, (req, res) => {
     const factId = parseInt(String(req.params.id), 10);
-    const row = storage.getLorFact(factId);
+    const row = lorStorage.getLorFact(factId);
     if (!row) return res.status(404).json({ message: "Not found" });
     if (!canAccessProject(row.projectId, (req as any).user.id)) return res.status(403).json({ message: "No access" });
-    storage.deleteLorFact(factId);
+    lorStorage.deleteLorFact(factId);
     res.json({ success: true });
   });
 
@@ -84,7 +113,7 @@ export function registerLorRoutes(app: Express) {
     const projectId = parseInt(String(req.params.id), 10);
     if (!canAccessProject(projectId, (req as any).user.id)) return res.status(403).json({ message: "No access" });
     for (const item of LOR_EPISODE_BIBLE_SEED) {
-      storage.createLorFact({
+      lorStorage.createLorFact({
         projectId,
         ...item as any,
       });
@@ -96,14 +125,14 @@ export function registerLorRoutes(app: Express) {
   app.get("/api/projects/:id/lor_palettes", requireAuth, (req, res) => {
     const projectId = parseInt(String(req.params.id), 10);
     if (!canAccessProject(projectId, (req as any).user.id)) return res.status(403).json({ message: "No access" });
-    const palettes = storage.listLorPalettes(projectId);
+    const palettes = lorStorage.listLorPalettes(projectId);
     res.json(palettes);
   });
 
   app.post("/api/projects/:id/lor_palettes", requireAuth, (req, res) => {
     const projectId = parseInt(String(req.params.id), 10);
     if (!canAccessProject(projectId, (req as any).user.id)) return res.status(403).json({ message: "No access" });
-    const palette = storage.createLorPalette({
+    const palette = lorStorage.createLorPalette({
       projectId,
       name: req.body.name || 'Palette',
       colors: JSON.stringify(req.body.colors || []),
@@ -113,10 +142,10 @@ export function registerLorRoutes(app: Express) {
 
   app.delete("/api/lor_palettes/:id", requireAuth, (req, res) => {
     const paletteId = parseInt(String(req.params.id), 10);
-    const row = storage.getLorPalette(paletteId);
+    const row = lorStorage.getLorPalette(paletteId);
     if (!row) return res.status(404).json({ message: "Not found" });
     if (!canAccessProject(row.projectId, (req as any).user.id)) return res.status(403).json({ message: "No access" });
-    storage.deleteLorPalette(paletteId);
+    lorStorage.deleteLorPalette(paletteId);
     res.json({ success: true });
   });
 
@@ -126,7 +155,7 @@ export function registerLorRoutes(app: Express) {
     const asset = storage.getAsset(assetId);
     if (!asset) return res.status(404).json({ message: "Not found" });
     if (!canAccessProject(asset.projectId, (req as any).user.id)) return res.status(403).json({ message: "No access" });
-    const versions = storage.listLorAssetVersions(assetId);
+    const versions = lorStorage.listLorAssetVersions(assetId);
     res.json(versions);
   });
 
@@ -136,15 +165,15 @@ export function registerLorRoutes(app: Express) {
     if (!asset) return res.status(404).json({ message: "Not found" });
     if (!canAccessProject(asset.projectId, (req as any).user.id)) return res.status(403).json({ message: "No access" });
     // find max version
-    const existing = storage.listLorAssetVersions(assetId);
+    const existing = lorStorage.listLorAssetVersions(assetId);
     const nextVer = existing.length > 0 ? Math.max(...existing.map(v => v.versionNum)) + 1 : 1;
     
     // auto-approve the newest version by un-approving others
     if (existing.length > 0) {
-      storage.updateLorAssetVersionsForAsset(assetId, { approved: false });
+      lorStorage.updateLorAssetVersionsForAsset(assetId, { approved: false });
     }
 
-    const newVersion = storage.createLorAssetVersion({
+    const newVersion = lorStorage.createLorAssetVersion({
       assetId,
       versionNum: nextVer,
       fileData: req.body.fileData,
@@ -166,8 +195,8 @@ export function registerLorRoutes(app: Express) {
     if (!asset) return res.status(404).json({ message: "Not found" });
     if (!canAccessProject(asset.projectId, (req as any).user.id)) return res.status(403).json({ message: "No access" });
     
-    storage.updateLorAssetVersionsForAsset(assetId, { approved: false });
-    const approvedVer = storage.updateLorAssetVersion(versionId, { approved: true });
+    lorStorage.updateLorAssetVersionsForAsset(assetId, { approved: false });
+    const approvedVer = lorStorage.updateLorAssetVersion(versionId, { approved: true });
     
     // update base asset
     if (approvedVer) {
@@ -182,7 +211,7 @@ export function registerLorRoutes(app: Express) {
   app.get("/api/projects/:id/lor_casting", requireAuth, (req, res) => {
     const projectId = parseInt(String(req.params.id), 10);
     if (!canAccessProject(projectId, (req as any).user.id)) return res.status(403).json({ message: "No access" });
-    const matrix = storage.listLorCasting(projectId);
+    const matrix = lorStorage.listLorCasting(projectId);
     res.json(matrix);
   });
 
@@ -191,7 +220,7 @@ export function registerLorRoutes(app: Express) {
     const projectId = parseInt(String(req.params.id), 10);
     if (!canAccessProject(projectId, (req as any).user.id)) return res.status(403).json({ message: "No access" });
     
-    storage.upsertLorCasting(projectId, sceneId, entityId, present);
+    lorStorage.upsertLorCasting(projectId, sceneId, entityId, present);
     
     res.json({ success: true });
   });
@@ -202,7 +231,7 @@ export function registerLorRoutes(app: Express) {
     if (!canAccessProject(projectId, (req as any).user.id)) return res.status(403).json({ message: "No access" });
     const { scriptContent } = req.body;
     if (typeof scriptContent !== 'string') return res.status(400).json({ message: "scriptContent must be a string" });
-    const facts = storage.listLorFacts(projectId);
+    const facts = lorStorage.listLorFacts(projectId);
     
     // Very basic NLP extraction of capitalized words not at start of sentences
     const words = scriptContent.match(/\b[A-Z][a-z]+\b/g) || [];

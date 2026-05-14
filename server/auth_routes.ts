@@ -9,18 +9,17 @@
 //   POST /api/auth/logout
 //   GET  /api/auth/me
 //
-// NOTE: argon2 must be installed: pnpm add argon2
-//       (express-session and passport are already in package.json)
+// NOTE: express-session and passport need to be wired by the caller before
+// mounting this router.
 
 import { Router, type Request, type Response, type NextFunction } from "express";
 import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
-import argon2 from "argon2";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
 
 // db is exported from storage.ts — do NOT import from a non-existent ./db
-import { db } from "./storage";
+import { db, hashPassword, verifyPassword } from "./storage";
 import { users, type User } from "../shared/schema";
 
 export const authRouter = Router();
@@ -43,9 +42,9 @@ export function configurePassport() {
         const found = await db.select().from(users).where(eq(users.email, email.toLowerCase())).limit(1);
         const user = found[0];
         if (!user) return done(null, false, { message: "invalid_credentials" });
-        const ok = await argon2.verify(user.passwordHash, password);
+        const ok = verifyPassword(password, user.passwordHash);
         if (!ok) return done(null, false, { message: "invalid_credentials" });
-        return done(null, { id: user.id, email: user.email, displayName: user.name });
+        return done(null, user);
       } catch (err) {
         return done(err as Error);
       }
@@ -58,7 +57,7 @@ export function configurePassport() {
       const found = await db.select().from(users).where(eq(users.id, id)).limit(1);
       const u = found[0];
       if (!u) return done(null, false);
-      done(null, { id: u.id, email: u.email, displayName: u.name });
+      done(null, u);
     } catch (err) {
       done(err as Error);
     }
@@ -78,14 +77,14 @@ authRouter.post("/register", async (req, res) => {
   try {
     const existing = await db.select().from(users).where(eq(users.email, normEmail)).limit(1);
     if (existing[0]) return res.status(409).json({ error: "email_taken" });
-    const passwordHash = await argon2.hash(password, { type: argon2.argon2id });
+    const passwordHash = hashPassword(password);
     const name = displayName ?? normEmail.split("@")[0];
     const inserted = await db.insert(users).values({ email: normEmail, passwordHash, name }).returning();
     const u = inserted[0] as User;
     // Auto-login after register:
-    (req as any).login({ id: u.id, email: u.email, displayName: u.name }, (err: any) => {
+    (req as any).login(u, (err: any) => {
       if (err) return res.status(500).json({ error: "login_failed" });
-      res.status(201).json({ id: u.id, email: u.email, displayName: u.name });
+      res.status(201).json({ id: u.id, email: u.email, name: u.name });
     });
   } catch (err: any) {
     res.status(500).json({ error: err?.message ?? "register_failed" });
@@ -100,7 +99,7 @@ authRouter.post("/login", (req, res, next) => {
     if (!user) return res.status(401).json({ error: info?.message ?? "invalid_credentials" });
     (req as any).login(user, (e: any) => {
       if (e) return next(e);
-      res.json({ id: user.id, email: user.email, displayName: user.displayName });
+      res.json({ id: user.id, email: user.email, name: user.name });
     });
   })(req, res, next);
 });
