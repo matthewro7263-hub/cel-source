@@ -1,9 +1,21 @@
-🧪 Add tests for discord notification logic
+Summary of Changes:
+- Modified 'scripts' table to include sourceType, sourceFormat, and originalKey columns.
+- Added POST /api/projects/:projectId/scripts/upload endpoint parsing via multer, pdf-parse, mammoth, uploading direct to R2, and returning a new script item with formatted database row entries.
+- Added GET /api/projects/:projectId/scripts/:scriptId/original endpoint for returning the original asset's presigned download link.
+- Implemented Frontend 'Upload script' button with a Drag & Drop dialog configured to restrict payload mapping.
+- Handled viewer rendering using react-pdf (PDF with extracted text fallback layer), DOMPurify (to prevent XSS inside dangerouslySetInnerHTML for mammoth's DOCX extraction), and react-markdown.
+- Integrated unit tests for endpoint upload format type checking and payload sizing parameters.
 
-🎯 **What:** This adds missing unit tests for the `notifyDiscord` functionality in `server/discord.ts`.
-📊 **Coverage:** Covered 7 edge cases and happy path scenarios, including:
-  * Graceful skip when project is not found.
-  * Graceful skip when Discord webhook URL is missing, malformed, or using an unsupported protocol.
-  * Successful fetch payload verification, including checking parsed discord hex color code formatting.
-  * Ensuring descriptions longer than 4000 characters are correctly truncated so they don't break the Discord API limits.
-✨ **Result:** Enhanced test coverage ensures our Discord notification payloads strictly conform to requirements and the system handles absent/malformed configs without breaking.
+Dependencies Added:
+- pdf-parse
+- mammoth
+- dompurify
+- @types/dompurify
+- react-pdf
+- multer
+- @types/multer
+
+Manual test checklist:
+- [ ] upload .pdf, .docx, .md and confirm view + download original
+
+Note: Pre-existing TS errors observed regarding User.id mismatch across routes are out of scope and do not stem from these alterations.
