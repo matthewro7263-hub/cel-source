@@ -104,6 +104,9 @@ CREATE TABLE IF NOT EXISTS scripts (
   project_id INTEGER NOT NULL,
   title TEXT NOT NULL DEFAULT 'Untitled Script',
   content TEXT NOT NULL DEFAULT '',
+  source_type TEXT NOT NULL DEFAULT 'editor',
+  source_format TEXT DEFAULT '',
+  original_key TEXT DEFAULT '',
   updated_at TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS storyboards (
@@ -631,6 +634,9 @@ try { sqlite.exec(`ALTER TABLE approval_signoffs ADD COLUMN signature_hash TEXT`
 
 // ===== v5 bak modifications =====
 try { sqlite.exec(`ALTER TABLE scripts ADD COLUMN deleted_at TEXT`); } catch {}
+try { sqlite.exec(`ALTER TABLE scripts ADD COLUMN source_type TEXT NOT NULL DEFAULT 'editor'`); } catch {}
+try { sqlite.exec(`ALTER TABLE scripts ADD COLUMN source_format TEXT DEFAULT ''`); } catch {}
+try { sqlite.exec(`ALTER TABLE scripts ADD COLUMN original_key TEXT DEFAULT ''`); } catch {}
 try { sqlite.exec(`ALTER TABLE storyboard_panels ADD COLUMN deleted_at TEXT`); } catch {}
 try { sqlite.exec(`ALTER TABLE scenes ADD COLUMN deleted_at TEXT`); } catch {}
 try { sqlite.exec(`ALTER TABLE assets ADD COLUMN deleted_at TEXT`); } catch {}
