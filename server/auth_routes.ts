@@ -9,7 +9,7 @@
 //   POST /api/auth/logout
 //   GET  /api/auth/me
 //
-// NOTE: install runtime deps before using:  npm i argon2 zod
+// NOTE: argon2 must be installed: pnpm add argon2
 //       (express-session and passport are already in package.json)
 
 import { Router, type Request, type Response, type NextFunction } from "express";
@@ -19,9 +19,8 @@ import argon2 from "argon2";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
 
-// Adjust this import to wherever your Drizzle db instance lives.
-// e.g. import { db } from "./db";
-import { db } from "./db";
+// db is exported from storage.ts — do NOT import from a non-existent ./db
+import { db } from "./storage";
 import { users, type User } from "../shared/r2_schema";
 
 export const authRouter = Router();
