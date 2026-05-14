@@ -11,7 +11,7 @@ export async function notifyDiscord(projectId: number, title: string, descriptio
     const url = new URL(webhookUrl);
     if (url.protocol !== "https:" && url.protocol !== "http:") return;
   } catch {
-    return; // silently skip malformed URLs
+    console.error("Malformed Discord webhook URL"); return;
   }
 
   let colorInt = 0x9DD0FF;
