@@ -75,16 +75,17 @@ export function checkAchievements(ctx: AchievementContext): string[] {
       break;
     }
     case "create_scene": {
-      // first_scene
-      const sceneCount = storage._db
-        .select()
-        .from((storage as any)._db.$client ? (null as any) : (null as any))
-        .all?.()?.length ?? 0;
-      tryUnlock("first_scene");
+      // Unlock first_scene on the event itself — the event firing is the trigger.
+      // Count all scenes across user’s projects to verify at least 1 exists.
+      const userProjects = storage.listProjectsForUser(userId);
+      let totalScenes = 0;
+      for (const p of userProjects) {
+        totalScenes += storage.listScenes(p.id).length;
+      }
+      if (totalScenes >= 1) tryUnlock("first_scene");
       break;
     }
     case "create_panel": {
-      // Count all panels for this user's projects
       tryUnlock("first_storyboard");
       // Count total user panels across all projects
       const userProjects = storage.listProjectsForUser(userId);
@@ -121,7 +122,6 @@ export function checkAchievements(ctx: AchievementContext): string[] {
       break;
     }
     case "create_comment": {
-      // Count all user comments
       const userProjects = storage.listProjectsForUser(userId);
       let totalComments = 0;
       for (const p of userProjects) {
@@ -131,8 +131,15 @@ export function checkAchievements(ctx: AchievementContext): string[] {
       break;
     }
     case "login": {
-      // Week streak check — simplified: just check if used 7 different days
-      // For now just try to unlock based on count of unique days in achievements (simplified impl)
+      // week_streak: unlock if user has logged activity on 7 distinct calendar days.
+      // We approximate by checking unique dates in their unlocked achievements log.
+      // A more robust impl would track a dedicated login_days table.
+      const activityDays: Set<string> = new Set(
+        ((storage as any).getAchievementUnlockDates?.(userId) ?? []).map(
+          (d: string) => new Date(d).toDateString()
+        )
+      );
+      if (activityDays.size >= 7) tryUnlock("week_streak");
       break;
     }
   }
