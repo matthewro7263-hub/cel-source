@@ -22,8 +22,12 @@ import {
   Plus, Trash2, Upload, Calendar, Share2, Copy, MessageSquare, Eye, X,
   Package, ChevronDown, ChevronRight as ChevronRightIcon, ExternalLink, Presentation,
   Monitor, Loader2, Mic, Box, GitBranch, Scroll, Columns2, Radio, Wand2,
+Download,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import DOMPurify from "dompurify";
+import { Document, Page, pdfjs } from "react-pdf";
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 import ReactMarkdown from "react-markdown";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import {
@@ -65,6 +69,15 @@ interface ProjectDetail {
   members: { id: number; userId: number; role: string; user: { id: number; name: string; email: string; avatarColor: string } | null }[];
 }
 
+
+function getAuthToken() {
+    try {
+      const match = document.cookie.match(/(?:^|; )token=([^;]*)/);
+      if (match) return decodeURIComponent(match[1]);
+      return localStorage.getItem("cel_token") || "";
+    } catch (e) {}
+    return "";
+  }
 export default function ProjectWorkspace() {
   const params = useParams() as { id: string };
   const projectId = parseInt(params.id, 10);
@@ -316,7 +329,7 @@ function ScriptTab({ projectId }: { projectId: number }) {
     }
   }, [scripts, active]);
 
-  const current = scripts?.find((s) => s.id === active);
+  const current = scripts?.find((s) => s.id === active) as Script & { sourceType?: string, sourceFormat?: string, originalKey?: string };
   useEffect(() => {
     if (current) setDraft({ title: current.title, content: current.content });
   }, [active, current?.id]);
@@ -393,38 +406,74 @@ function ScriptTab({ projectId }: { projectId: number }) {
 
       {current && (
         <div className="space-y-3">
-          <Input
-            value={draft.title}
-            onChange={(e) => setDraft({ ...draft, title: e.target.value })}
-            className="font-display text-base font-semibold"
-            data-testid="input-script-title"
-          />
-            <div className="relative">
-              <Textarea
-                value={draft.content}
-                onChange={(e) => {
-                  setDraft({ ...draft, content: e.target.value });
-                  if (wsRef.current?.readyState === WebSocket.OPEN) {
-                    wsRef.current.send(JSON.stringify({ type: "script-cursor", pos: e.target.selectionStart }));
-                  }
-                }}
-                rows={22}
-                className="font-mono text-sm leading-relaxed"
-                placeholder="Write your script in markdown…"
-                data-testid="input-script-content"
-              />
-              <div className="absolute top-0 right-0 p-2 pointer-events-none">
-                {Object.entries(otherCursors).map(([uid, pos]) => (
-                  <div key={uid} className="text-[10px] bg-primary text-primary-foreground px-1 rounded animate-pulse">
-                    User {uid} is editing...
+          <div className="flex items-center gap-3">
+            <Input
+              value={draft.title}
+              onChange={(e) => setDraft({ ...draft, title: e.target.value })}
+              className="font-display text-base font-semibold"
+              data-testid="input-script-title"
+              disabled={current.sourceType === "upload"}
+            />
+            {current.sourceType === "upload" && (
+              <span className="text-[10px] px-2 py-1 rounded bg-muted/50 text-muted-foreground font-medium uppercase tracking-wider shrink-0 flex items-center gap-1">
+                <Upload size={10} /> Uploaded
+              </span>
+            )}
+          </div>
+          
+          {current.sourceType === "upload" ? (
+            <div className="rounded-md border border-border bg-background p-4 min-h-[32rem] max-h-[70vh] overflow-auto prose-cel">
+              {current.sourceFormat === "pdf" ? (
+                <div className="flex flex-col items-center min-w-full">
+                  <Document
+                    file={draft.content}
+                    error={<div className="p-4 text-sm whitespace-pre-wrap font-mono">{draft.content}</div>}
+                    loading={<Loader2 className="animate-spin text-muted-foreground my-8" />}
+                  >
+                    <Page pageNumber={1} renderTextLayer={false} renderAnnotationLayer={false} className="shadow-sm border" width={Math.min(window.innerWidth - 300, 800)} />
+                  </Document>
+                  <p className="text-xs text-muted-foreground mt-4 italic text-center">First page preview. Original text available below.</p>
+                  <div className="mt-8 pt-8 border-t border-border w-full text-sm whitespace-pre-wrap font-mono opacity-80">
+                    {draft.content}
                   </div>
-                ))}
+                </div>
+              ) : current.sourceFormat === "docx" ? (
+                <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(draft.content, { FORBID_TAGS: ['script', 'iframe'], FORBID_ATTR: ['onerror', 'onload', 'onclick'] }) }} />
+              ) : (
+                <ReactMarkdown>{draft.content}</ReactMarkdown>
+              )}
+            </div>
+          ) : (
+            <>
+              <div className="relative">
+                <Textarea
+                  value={draft.content}
+                  onChange={(e) => {
+                    setDraft({ ...draft, content: e.target.value });
+                    if (wsRef.current?.readyState === WebSocket.OPEN) {
+                      wsRef.current.send(JSON.stringify({ type: "script-cursor", pos: e.target.selectionStart }));
+                    }
+                  }}
+                  rows={22}
+                  className="font-mono text-sm leading-relaxed"
+                  placeholder="Write your script in markdown…"
+                  data-testid="input-script-content"
+                />
+                <div className="absolute top-0 right-0 p-2 pointer-events-none">
+                  {Object.entries(otherCursors).map(([uid, pos]) => (
+                    <div key={uid} className="text-[10px] bg-primary text-primary-foreground px-1 rounded animate-pulse">
+                      User {uid} is editing...
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-            <div className="rounded-md border border-border bg-background px-4 py-3 prose-cel text-sm overflow-auto" style={{ maxHeight: "32rem" }}>
-              <ReactMarkdown>{draft.content || "*Preview will appear here.*"}</ReactMarkdown>
-            </div>
-          <div className="flex justify-between">
+              <div className="rounded-md border border-border bg-background px-4 py-3 prose-cel text-sm overflow-auto" style={{ maxHeight: "32rem" }}>
+                <ReactMarkdown>{draft.content || "*Preview will appear here.*"}</ReactMarkdown>
+              </div>
+            </>
+          )}
+
+          <div className="flex justify-between items-center mt-4">
             <div className="flex items-center gap-2">
               <AlertDialog>
                 <AlertDialogTrigger asChild>
@@ -432,26 +481,50 @@ function ScriptTab({ projectId }: { projectId: number }) {
                     <Trash2 size={14} className="mr-1.5" />Delete
                   </Button>
                 </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Delete this script?</AlertDialogTitle>
-                  <AlertDialogDescription>This can't be undone.</AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={() => del.mutate(active!)}>Delete</AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-            {/* v4: AI shot suggest */}
-            <V4ScriptAiButton projectId={projectId} scriptContent={draft.content} />
-            {/* === AGENT_3 ADDITIONS START === */}
-            <LoreSafeChecklist projectId={projectId} scriptContent={draft.content} />
-            {/* === AGENT_3 ADDITIONS END === */}
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Delete this script?</AlertDialogTitle>
+                    <AlertDialogDescription>This can't be undone.</AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => del.mutate(active!)}>Delete</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+              
+              {current.sourceType === "upload" && current.originalKey && (
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={async () => {
+                    try {
+                      const res = await fetch(`/api/projects/${projectId}/scripts/${current.id}/original`, {
+                        headers: { "Authorization": `Bearer ${getAuthToken()}` }
+                      });
+                      const data = await res.json();
+                      if (data.url) window.open(data.url, '_blank');
+                    } catch (e) {
+                      toast({ title: "Failed to download", variant: "destructive" });
+                    }
+                  }}
+                >
+                  <Download size={14} className="mr-1.5" /> Download original
+                </Button>
+              )}
+
+              {/* v4: AI shot suggest */}
+              {current.sourceType !== "upload" && <V4ScriptAiButton projectId={projectId} scriptContent={draft.content} />}
+              {/* === AGENT_3 ADDITIONS START === */}
+              {current.sourceType !== "upload" && <LoreSafeChecklist projectId={projectId} scriptContent={draft.content} />}
+              {/* === AGENT_3 ADDITIONS END === */}
             </div>
-            <Button onClick={() => save.mutate()} disabled={save.isPending} data-testid="button-save-script">
-              {save.isPending ? "Saving…" : "Save script"}
-            </Button>
+            
+            {current.sourceType !== "upload" && (
+              <Button onClick={() => save.mutate()} disabled={save.isPending} data-testid="button-save-script">
+                {save.isPending ? "Saving…" : "Save script"}
+              </Button>
+            )}
           </div>
         </div>
       )}
@@ -982,6 +1055,7 @@ function AddAnimaticDialog(props: AddAnimaticDialogProps) {
 // ===== SCENES =====
 function ScenesTab({ projectId }: { projectId: number }) {
   const { data: scenes } = useQuery<Scene[]>({ queryKey: ["/api/projects", projectId, "scenes"] });
+  const { toast } = useToast();
   const [view, setView] = useState<"table" | "kanban" | "gantt">("table");
   const [open, setOpen] = useState(false);
 
@@ -2022,6 +2096,7 @@ export function V4ScriptAiButton({ projectId, scriptContent }: { projectId: numb
 // ===== v4 Storyboard Sketch Button =====
 export function V4SketchButton({ storyboardId, projectId }: { storyboardId: number; projectId: number }) {
   const [open, setOpen] = useState(false);
+  const { toast } = useToast();
   return (
     <>
       <Button size="sm" variant="outline" onClick={() => setOpen(true)} data-testid="button-sketch-panel">

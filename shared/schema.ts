@@ -56,6 +56,9 @@ export const scripts = sqliteTable("scripts", {
   projectId: integer("project_id").notNull(),
   title: text("title").notNull().default("Untitled Script"),
   content: text("content").notNull().default(""),
+  sourceType: text("source_type").notNull().default("editor"),
+  sourceFormat: text("source_format").default(""),
+  originalKey: text("original_key").default(""),
   updatedAt: text("updated_at").notNull().default(""),
   deletedAt: text("deleted_at"),
 });

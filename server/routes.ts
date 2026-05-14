@@ -1,3 +1,10 @@
+import multer from "multer";
+import * as pdfParseModule from "pdf-parse";
+const pdfParse = (pdfParseModule as any).default || pdfParseModule;
+import mammoth from "mammoth";
+import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { randomUUID } from "node:crypto";
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer } from "node:http";
 import type { Server } from "node:http";
@@ -59,6 +66,12 @@ import { registerReviewRoom } from "./review_room";
 import { registerMcpRoutes } from "./mcp_routes";
 
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+});
+
   registerReviewRoom(httpServer);
   registerMcpRoutes(app);
 
@@ -240,6 +253,120 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ===== SCRIPTS =====
+  // ===== SCRIPT UPLOADS =====
+  app.post("/api/projects/:projectId/scripts/upload", requireAuth, upload.single("file"), async (req, res) => {
+    const projectId = parseInt(String(req.params.projectId), 10);
+    // Inline check
+    if (!storage.getProject(projectId)) return res.status(403).json({ message: "No access" });
+    
+    if (!req.file) {
+      return res.status(400).json({ message: "No file uploaded" });
+    }
+
+    const mimetype = req.file.mimetype;
+    const originalname = req.file.originalname;
+    const buffer = req.file.buffer;
+
+    // Validate MIME type
+    const allowedMimeTypes = [
+      "application/pdf",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "text/markdown",
+      "text/plain"
+    ];
+
+    const extension = originalname.split('.').pop()?.toLowerCase();
+    
+    const isMarkdown = mimetype === "text/markdown" || extension === "md";
+    const isTxt = mimetype === "text/plain" || extension === "txt";
+    const isPdf = mimetype === "application/pdf" || extension === "pdf";
+    const isDocx = mimetype === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" || extension === "docx";
+
+    if (!isMarkdown && !isTxt && !isPdf && !isDocx && !allowedMimeTypes.includes(mimetype)) {
+      return res.status(400).json({ message: "Invalid file type. Only PDF, DOCX, MD, and TXT are allowed." });
+    }
+
+    let sourceFormat = "";
+    if (isPdf) sourceFormat = "pdf";
+    else if (isDocx) sourceFormat = "docx";
+    else if (isMarkdown) sourceFormat = "md";
+    else if (isTxt) sourceFormat = "txt";
+
+    try {
+      let extractedText = "";
+
+      if (sourceFormat === "pdf") {
+        const data = await pdfParse(buffer);
+        extractedText = data.text;
+      } else if (sourceFormat === "docx") {
+        const result = await mammoth.convertToHtml({ buffer });
+        extractedText = result.value; // The generated HTML
+      } else {
+        extractedText = buffer.toString("utf8");
+      }
+
+      const r2Module = await import("./r2.js");
+      const r2 = r2Module.r2;
+      const R2_BUCKET = r2Module.R2_BUCKET;
+
+      const safeName = originalname.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 120);
+      const originalKey = `uploads/${req.user!.id}/scripts/${randomUUID()}-${safeName}`;
+
+      await r2.send(new PutObjectCommand({
+        Bucket: R2_BUCKET,
+        Key: originalKey,
+        ContentType: mimetype,
+        Body: buffer
+      }));
+
+      const title = originalname.replace(/\.[^/.]+$/, "");
+
+      const newScript = (storage as any).createScript({
+        projectId,
+        title,
+        content: extractedText,
+      });
+
+      const { scripts } = await import("@shared/schema.js");
+      const { eq } = await import("drizzle-orm");
+
+      db.update(scripts).set({
+        sourceType: "upload",
+        sourceFormat,
+        originalKey
+      }).where(eq(scripts.id, newScript.id)).run();
+      
+      const updatedScript = (storage as any).getScript(newScript.id);
+
+      res.json(updatedScript);
+    } catch (e: any) {
+      console.error("Upload error:", e);
+      res.status(500).json({ message: `Failed to process script: ${e.message}` });
+    }
+  });
+
+  app.get("/api/projects/:projectId/scripts/:scriptId/original", requireAuth, async (req, res) => {
+    const projectId = parseInt(String(req.params.projectId), 10);
+    const scriptId = parseInt(String(req.params.scriptId), 10);
+    
+    if (!storage.getProject(projectId)) return res.status(403).json({ message: "No access" });
+
+    const script = (storage as any).getScript(scriptId);
+    if (!script) return res.status(404).json({ message: "Script not found" });
+    if (script.projectId !== projectId) return res.status(403).json({ message: "Script belongs to another project" });
+    if (script.sourceType !== "upload" || !script.originalKey) {
+      return res.status(400).json({ message: "No original file available for this script" });
+    }
+
+    try {
+      const r2Module = await import("./r2.js");
+      const url = await r2Module.presignDownload(script.originalKey, 300);
+      res.json({ url });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   app.get("/api/projects/:id/scripts", requireAuth, (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });

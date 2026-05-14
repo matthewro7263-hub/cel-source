@@ -92,8 +92,10 @@ async function runTests() {
 runTests().catch((err) => {
   console.error("Tests failed:", err);
   process.exit(1);
-  import { test, expect, mock, spyOn } from "bun:test";
+});
 
+import { test, expect, mock, spyOn } from "bun:test";
+import { test, expect, mock, spyOn } from "bun:test";
 // Scope the mocking strictly to this file to prevent test pollution
 mock.module("better-sqlite3", () => {
   return {
