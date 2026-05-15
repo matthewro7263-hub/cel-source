@@ -98,10 +98,21 @@ export interface GlassButtonProps
     VariantProps<typeof glassButtonVariants> {}
 
 export const GlassButton = forwardRef<HTMLButtonElement, GlassButtonProps>(
-  ({ className, variant, size, children, ...props }, ref) => {
+  ({ className, variant, size, children, style, ...props }, ref) => {
     const resolvedVariant = variant ?? "primary";
     const resolvedSize = size ?? "md";
     const showOptics = resolvedVariant !== "toolbar";
+    const materialStyle = showOptics
+      ? {
+          background:
+            resolvedVariant === "primary"
+              ? "var(--neu-glass-material), var(--neu-glass-bg)"
+              : resolvedVariant === "ghost"
+                ? "transparent"
+                : "var(--neu-glass-bg)",
+          boxShadow: resolvedVariant === "ghost" ? undefined : "var(--neu-shadow-caustic-raised)",
+        }
+      : undefined;
 
     return (
       <button
@@ -110,6 +121,7 @@ export const GlassButton = forwardRef<HTMLButtonElement, GlassButtonProps>(
         data-variant={variant ?? "default"}
         data-caustic-glass={showOptics ? "" : undefined}
         data-glass-size={size ?? "md"}
+        style={{ ...materialStyle, ...style }}
         {...props}
       >
         {showOptics && (
@@ -133,7 +145,9 @@ export const GlassButton = forwardRef<HTMLButtonElement, GlassButtonProps>(
               aria-hidden="true"
               className="pointer-events-none absolute inset-0 z-0 rounded-[inherit] border border-transparent opacity-75 transition-opacity duration-200"
               style={{
-                background: "linear-gradient(var(--neu-glass-rim), var(--neu-glass-rim)) padding-box, var(--neu-glass-refraction) border-box",
+                backgroundImage: "linear-gradient(var(--neu-glass-rim), var(--neu-glass-rim)), var(--neu-glass-refraction)",
+                backgroundOrigin: "border-box",
+                backgroundClip: "padding-box, border-box",
                 boxShadow: "inset 0 1px 0 rgba(255,255,255,0.86), inset 0 -1px 1px rgba(84,94,118,0.08)",
               }}
             />
