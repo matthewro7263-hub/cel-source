@@ -185,26 +185,32 @@ export default function ProjectWorkspace() {
       {/* v5 quick-action toolbar — premium layout */}
       <div className="mt-8 pt-6 border-t border-border/30 flex flex-wrap items-center gap-3">
         <div className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground mr-2">Quick Actions</div>
-        <GlassButton
-          className="bg-primary/10 text-primary hover:bg-primary/20 text-xs h-9 px-4"
-          onClick={() => { window.location.hash = `/projects/${projectId}/audio2`; }}
-        >
-          <Mic size={14} className="mr-2" /> Audio Tools
-        </GlassButton>
-        <GlassButton
-          className="bg-card text-foreground hover:bg-muted text-xs h-9 px-4 border border-border/50"
-          onClick={() => setLocation(`/projects/${projectId}/couch`)}
-        >
-          <Presentation size={14} className="mr-2" /> Couch Mode
-        </GlassButton>
-        <GlassButton
-          className="bg-[#9DD0FF] text-black hover:bg-[#AED9FF] text-xs h-9 px-4"
-          onClick={() => setLocation(`/projects/${projectId}/voicebooth`)}
-        >
-          <Mic size={14} className="mr-2" /> Voice Booth
-        </GlassButton>
-        <div className="ml-auto">
+        <div className="flex flex-wrap gap-2">
+          <GlassButton
+            className="bg-primary/10 text-primary hover:bg-primary/20 text-xs h-9 px-4"
+            onClick={() => { window.location.hash = `/projects/${projectId}/audio2`; }}
+          >
+            <Mic size={14} className="mr-2" /> Audio Tools
+          </GlassButton>
+          <GlassButton
+            className="bg-card text-foreground hover:bg-muted text-xs h-9 px-4 border border-border/50"
+            onClick={() => setLocation(`/projects/${projectId}/couch`)}
+          >
+            <Presentation size={14} className="mr-2" /> Couch Mode
+          </GlassButton>
+          <GlassButton
+            className="bg-[#9DD0FF] text-black hover:bg-[#AED9FF] text-xs h-9 px-4"
+            onClick={() => setLocation(`/projects/${projectId}/voicebooth`)}
+          >
+            <Mic size={14} className="mr-2" /> Voice Booth
+          </GlassButton>
+        </div>
+        <div className="ml-auto flex items-center gap-4">
            <AiAgentStatus projectId={projectId} />
+           <V4ScriptAiButton 
+             projectId={projectId} 
+             scriptContent={""} // Will be handled by the component
+           />
         </div>
       </div>
     </div>
@@ -1878,10 +1884,7 @@ function EmptyTabState({ icon, title, body, ctaLabel, onCta }: { icon: React.Rea
 // This is appended here as an augmentation. To inject into StoryboardView we edit inline below.
 
 // v4: SortablePanel with pin mode (replaces original above via re-export is not possible,
-// so we do direct edits in the functions below via the "v4 pin" inline integration approach).
-
-// ===== v4 AI Agent Chat (Replaces Shot Suggest) =====
-function AiAgentPanel({ projectId, scriptContent, open, onOpenChange, onApplyScriptEdit }: {
+// so we do direct efunction AiAgentPanel({ projectId, scriptContent, open, onOpenChange, onApplyScriptEdit }: {
   projectId: number;
   scriptContent: string;
   open: boolean;
@@ -1893,8 +1896,7 @@ function AiAgentPanel({ projectId, scriptContent, open, onOpenChange, onApplyScr
   const [resolvedEdits, setResolvedEdits] = useState<Record<string, 'approved' | 'declined'>>({});
   const { toast } = useToast();
 
-  // Load latest session or create one when opened
-  const { data: sessions, refetch: refetchSessions } = useQuery<any[]>({
+  const { data: sessions } = useQuery<any[]>({
     queryKey: ["/api/projects", projectId, "ai", "sessions"],
     enabled: open,
   });
@@ -1903,7 +1905,6 @@ function AiAgentPanel({ projectId, scriptContent, open, onOpenChange, onApplyScr
     if (open && sessions && sessions.length > 0 && !sessionId) {
       setSessionId(sessions[0].id);
     } else if (open && sessions?.length === 0 && !sessionId) {
-      // Create initial session
       apiRequest("POST", `/api/projects/${projectId}/ai/sessions`, { title: "Script Assistant" })
         .then(r => r.json())
         .then(s => setSessionId(s.id));
@@ -1938,7 +1939,6 @@ function AiAgentPanel({ projectId, scriptContent, open, onOpenChange, onApplyScr
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
 
-      // Optimistically refetch to show user message
       refetchMessages();
 
       while (true) {
@@ -1949,15 +1949,17 @@ function AiAgentPanel({ projectId, scriptContent, open, onOpenChange, onApplyScr
         const lines = chunk.split("\n").filter(l => l.trim().startsWith("data: "));
         
         for (const line of lines) {
-          const data = JSON.parse(line.substring(6));
-          if (data.content) {
-            setStreamingContent(prev => prev + data.content);
-          }
-          if (data.done) {
-            setIsGenerating(false);
-            setStreamingContent("");
-            refetchMessages();
-          }
+          try {
+            const data = JSON.parse(line.substring(6));
+            if (data.content) {
+              setStreamingContent(prev => prev + data.content);
+            }
+            if (data.done) {
+              setIsGenerating(false);
+              setStreamingContent("");
+              refetchMessages();
+            }
+          } catch (e) {}
         }
       }
     } catch (e: any) {
@@ -1972,136 +1974,134 @@ function AiAgentPanel({ projectId, scriptContent, open, onOpenChange, onApplyScr
       if (args.original_text && args.replacement_text) {
         const newScript = scriptContent.replace(args.original_text, args.replacement_text);
         if (newScript === scriptContent) {
-           toast({ title: "Text not found", description: "The original text couldn't be located in the script.", variant: "destructive" });
+           toast({ title: "Text not found", variant: "destructive" });
         } else {
            onApplyScriptEdit(newScript);
-           toast({ title: "Edit Applied", description: "The script was updated successfully." });
+           toast({ title: "Edit Applied" });
            setResolvedEdits(prev => ({ ...prev, [tcId]: 'approved' }));
         }
       }
-    } catch (e) {
-      toast({ title: "Error parsing tool call", variant: "destructive" });
-    }
-  };
-
-  const handleDeclineEdit = (tcId: string) => {
-    setResolvedEdits(prev => ({ ...prev, [tcId]: 'declined' }));
+    } catch (e) {}
   };
 
   return (
-    <div className={`fixed bottom-6 right-6 w-[350px] h-[550px] bg-card border border-border/50 rounded-3xl rounded-br-md shadow-2xl flex flex-col z-50 overflow-hidden ${open ? 'chat-panel-enter' : 'chat-panel-exit pointer-events-none'}`}>
-      <div className="p-3 border-b border-border/30 shrink-0 flex justify-between items-center bg-muted/20">
-        <div className="flex items-center gap-2 font-display text-sm font-medium">
-          <Sparkles size={14} className="text-primary" /> Cel Assistant
+    <div className={`fixed top-0 right-0 w-[380px] h-full bg-card border-l border-border shadow-2xl flex flex-col z-[100] transform transition-transform duration-500 ease-in-out ${open ? 'translate-x-0' : 'translate-x-full'}`}>
+      <div className="p-4 border-b border-border flex justify-between items-center bg-muted/10">
+        <div className="flex items-center gap-2.5 font-display font-bold">
+          <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+            <Sparkles size={16} className="text-primary" />
+          </div>
+          Cel Assistant
         </div>
-        <Button variant="ghost" size="icon" className="h-6 w-6 rounded-full" onClick={() => onOpenChange(false)}>
-          <X size={14} />
+        <Button variant="ghost" size="icon" className="rounded-full" onClick={() => onOpenChange(false)}>
+          <X size={18} />
         </Button>
       </div>
         
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {messages?.length === 0 && (
-            <div className="text-sm text-muted-foreground text-center mt-10">
-              Ask me to rewrite a sentence, suggest shots, or leave a comment!
+      <div className="flex-1 overflow-y-auto p-5 space-y-6 scrollbar-hide">
+        {messages?.length === 0 && !streamingContent && (
+          <div className="flex flex-col items-center justify-center h-full text-center p-8">
+            <div className="w-12 h-12 rounded-2xl bg-muted flex items-center justify-center mb-4">
+              <MessageSquare size={24} className="text-muted-foreground/50" />
             </div>
-          )}
-          {messages?.map((m: any) => (
-            <div key={m.id} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
-              <div className={`px-3 py-2 rounded-lg text-sm max-w-[85%] ${m.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted border border-border'}`}>
-                {m.content && (
-                  <div className="prose-cel prose-sm max-w-none">
-                    <ReactMarkdown>{m.content}</ReactMarkdown>
-                  </div>
-                )}
-                
-                {/* Render Tool Calls (Approvals) */}
-                {m.toolCalls && (() => {
-                  try {
-                    return JSON.parse(m.toolCalls).map((tc: any, idx: number) => {
-                      if (tc.function.name === 'edit_script_passage') {
-                        let args;
-                        try { args = JSON.parse(tc.function.arguments); } catch { return null; }
-                        const tcId = tc.id || `${m.id}-${idx}`;
-                        const status = resolvedEdits[tcId];
-                        return (
-                          <div key={idx} className="mt-2 border border-primary/20 bg-background/50 rounded p-2 text-xs">
-                            <div className="font-semibold text-primary mb-1 flex items-center justify-between">
-                              Proposed Edit
-                              {status === 'approved' && <span className="text-[10px] bg-green-500/20 text-green-500 px-1.5 py-0.5 rounded">Approved</span>}
-                              {status === 'declined' && <span className="text-[10px] bg-destructive/20 text-destructive px-1.5 py-0.5 rounded">Declined</span>}
-                            </div>
-                            <div className="line-through text-muted-foreground mb-1">{args.original_text}</div>
-                            <div className="text-green-500 mb-2">{args.replacement_text}</div>
-                            {!status && (
-                              <div className="flex gap-2">
-                                <Button size="sm" onClick={() => handleApproveEdit(tc, tcId)}>Approve</Button>
-                                <Button size="sm" variant="ghost" className="text-destructive hover:bg-destructive/10" onClick={() => handleDeclineEdit(tcId)}>Decline</Button>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      }
-                      if (tc.function.name === 'suggest_shots') {
-                        let args;
-                        try { args = JSON.parse(tc.function.arguments); } catch { return null; }
-                        return (
-                          <div key={idx} className="mt-2 border border-primary/20 bg-background/50 rounded p-2 text-xs">
-                            <div className="font-semibold text-primary mb-1">Suggested Shots</div>
-                            {args.shots?.map((s: any, i: number) => (
-                               <div key={i} className="mb-1">
-                                 <span className="font-medium">{s.shotNumber}. {s.shotType}</span>: {s.actionDescription}
-                               </div>
-                            ))}
-                          </div>
-                        );
-                      }
-                      return null;
-                    });
-                  } catch { return null; }
-                })()}
-              </div>
-            </div>
-          ))}
-          {streamingContent && (
-            <div className="flex flex-col items-start">
-              <div className="px-3 py-2 rounded-lg text-sm max-w-[85%] bg-muted border border-border">
-                <div className="prose-cel prose-sm max-w-none">
-                  <ReactMarkdown>{streamingContent}</ReactMarkdown>
-                </div>
-              </div>
-            </div>
-          )}
-          {isGenerating && !streamingContent && (
-             <div className="flex items-center gap-2 text-xs font-medium shimmer-text">
-               <Sparkles size={12} className="animate-pulse" /> Generating...
-             </div>
-          )}
-        </div>
-
-        <div className="p-3 border-t border-border shrink-0 bg-card">
-          <form onSubmit={handleSend} className="flex gap-2">
-            <Input 
-              placeholder="Ask the assistant..." 
-              value={input} 
-              onChange={e => setInput(e.target.value)}
-              disabled={isGenerating}
-              className="rounded-full bg-muted/50 border-none focus-visible:ring-1 focus-visible:ring-primary/30"
-            />
-            <Button type="submit" size="icon" disabled={!input.trim() || isGenerating} className="rounded-full shrink-0">
-              <Send size={14} />
-            </Button>
-          </form>
-          <div className="flex justify-between items-center mt-2 px-1">
-            <Button variant="ghost" size="sm" className="h-6 text-[10px]" onClick={() => {
-              apiRequest("POST", `/api/projects/${projectId}/ai/sessions`, { title: "New Chat" })
-                .then(r => r.json())
-                .then(s => setSessionId(s.id));
-            }}>New Chat</Button>
+            <h4 className="font-semibold mb-2">How can I help?</h4>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Ask me to rewrite a sentence, suggest shots, or analyze your current script draft.
+            </p>
           </div>
+        )}
+
+        {messages?.map((m: any) => (
+          <div key={m.id} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
+            <div className={`px-4 py-3 text-sm max-w-[90%] chat-bubble-v5 shadow-sm ${m.role === 'user' ? 'bg-primary text-primary-foreground rounded-br-none' : 'bg-muted/50 border border-border/50 rounded-bl-none'}`}>
+              {m.content && (
+                <div className="prose-cel prose-sm">
+                  <ReactMarkdown>{m.content}</ReactMarkdown>
+                </div>
+              )}
+              
+              {m.toolCalls && (() => {
+                try {
+                  return JSON.parse(m.toolCalls).map((tc: any, idx: number) => {
+                    const tcId = tc.id || `${m.id}-${idx}`;
+                    const status = resolvedEdits[tcId];
+                    if (tc.function.name === 'edit_script_passage') {
+                      const args = JSON.parse(tc.function.arguments);
+                      return (
+                        <div key={idx} className="mt-3 border border-primary/20 bg-background/50 rounded-xl p-3 text-xs">
+                          <div className="font-bold text-primary mb-2 flex items-center justify-between">
+                            Proposed Change
+                            {status && <span className={`text-[10px] px-2 py-0.5 rounded-full capitalize ${status === 'approved' ? 'bg-green-500/20 text-green-500' : 'bg-destructive/20 text-destructive'}`}>{status}</span>}
+                          </div>
+                          <div className="line-through text-muted-foreground/60 mb-1">{args.original_text}</div>
+                          <div className="text-foreground font-medium mb-3 p-2 bg-primary/5 rounded-md border border-primary/10">{args.replacement_text}</div>
+                          {!status && (
+                            <div className="flex gap-2">
+                              <Button size="sm" className="h-7 px-3 text-[10px]" onClick={() => handleApproveEdit(tc, tcId)}>Apply Edit</Button>
+                              <Button size="sm" variant="ghost" className="h-7 px-3 text-[10px] text-destructive" onClick={() => setResolvedEdits(p => ({...p, [tcId]: 'declined'}))}>Dismiss</Button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    }
+                    return null;
+                  });
+                } catch { return null; }
+              })()}
+            </div>
+          </div>
+        ))}
+
+        {streamingContent && (
+          <div className="flex flex-col items-start animate-in fade-in slide-in-from-left-2">
+            <div className="px-4 py-3 rounded-2xl rounded-bl-none text-sm max-w-[90%] bg-muted/50 border border-border/50 shadow-sm">
+              <div className="prose-cel prose-sm">
+                <ReactMarkdown>{streamingContent}</ReactMarkdown>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {isGenerating && (
+           <div className="flex items-center gap-2 text-xs font-bold shimmer-text px-1">
+             <Sparkles size={12} /> Assistant is thinking...
+           </div>
+        )}
+      </div>
+
+      <div className="p-4 border-t border-border bg-card/50 backdrop-blur-md">
+        <form onSubmit={handleSend} className="flex gap-2 relative">
+          <Input 
+            placeholder="Ask anything..." 
+            value={input} 
+            onChange={e => setInput(e.target.value)}
+            disabled={isGenerating}
+            className="rounded-2xl bg-muted/50 border-none h-11 pr-12 focus-visible:ring-1 focus-visible:ring-primary/20"
+          />
+          <Button 
+            type="submit" 
+            size="icon" 
+            disabled={!input.trim() || isGenerating} 
+            className="absolute right-1.5 top-1.5 h-8 w-8 rounded-xl shadow-lg"
+          >
+            <Send size={14} />
+          </Button>
+        </form>
+        <div className="mt-3 flex justify-center">
+          <Button variant="ghost" className="h-7 text-[10px] text-muted-foreground hover:text-foreground" onClick={() => {
+            apiRequest("POST", `/api/projects/${projectId}/ai/sessions`, { title: "New Chat" })
+              .then(r => r.json())
+              .then(s => setSessionId(s.id));
+          }}>
+            <Plus size={10} className="mr-1" /> New Discussion
+          </Button>
         </div>
+      </div>
     </div>
   );
 }
+
+
 
 function AiAgentStatus({ projectId }: { projectId: number }) {
   const { data: status } = useQuery<{ hasKey: boolean; model: string | null } | null>({

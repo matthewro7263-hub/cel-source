@@ -24,8 +24,8 @@ function svgPanel(bg: string, text: string, sub: string) {
 }
 
 export async function seedIfEmpty() {
-  const count = await storage._db.select().from(users).all().length;
-  if (count > 0) return;
+  const allUsers = await storage._db.select().from(users);
+  if (allUsers.length > 0) return;
 
   console.log("[seed] creating demo data...");
 
@@ -100,7 +100,7 @@ Right. New game. *Detectives.*
     { bg: "#D6C7F4", text: "Panel 3", sub: "Bluey appears in doorway" },
     { bg: "#C7F4D9", text: "Panel 4", sub: "Two-shot — 'New game. Detectives.'" },
   ];
-  panels.forEach((p, i) => {
+  for (const [i, p] of panels.entries()) {
     await storage.createPanel({
       storyboardId: sb.id,
       orderIdx: i,
@@ -108,7 +108,7 @@ Right. New game. *Detectives.*
       caption: p.sub,
       dialogue: i === 1 ? "I can't find Floppy!" : i === 3 ? "New game. Detectives." : "",
     });
-  });
+  }
 
   // Animatic — YouTube short
   await storage.createAnimatic({
@@ -126,7 +126,7 @@ Right. New game. *Detectives.*
     { number: "2B", title: "Floppy reveal", status: "storyboard", days: 10 },
     { number: "3A", title: "Hug + button gag", status: "script", days: 13 },
   ];
-  scenesData.forEach((s) => {
+  for (const s of scenesData) {
     const d = new Date();
     d.setDate(d.getDate() + s.days);
     await storage.createScene({
@@ -138,7 +138,7 @@ Right. New game. *Detectives.*
       deadline: d.toISOString().slice(0, 10),
       assigneeId: matthew.id,
     });
-  });
+  }
 
   // a comment
   await storage.createComment({
@@ -154,7 +154,7 @@ Right. New game. *Detectives.*
   // Seed weekly challenge prompts (idempotent)
   try {
     const { challenge_prompts } = require("../shared/challenge_schema");
-    const existing = await storage._db.select().from(challenge_prompts).all();
+    const existing = await storage._db.select().from(challenge_prompts);
     if (!existing || existing.length === 0) {
       const now = new Date().toISOString();
       await storage._db.insert(challenge_prompts).values([
@@ -234,7 +234,7 @@ Right. New game. *Detectives.*
 
   // ===== SAMPLE RENDER =====
   // Get first scene (1A)
-  const allScenes = await storage._db.select().from(scenesTable).all();
+  const allScenes = await storage._db.select().from(scenesTable);
   if (allScenes.length > 0) {
     await storage.createRender({
       sceneId: allScenes[0].id,
@@ -249,7 +249,7 @@ Right. New game. *Detectives.*
 
   // ===== ANIMATIC PROJECT v2 (seed) =====
   // Use the storyboard panels we just created
-  const allPanels = await storage._db.select().from(panelsTable).all();
+  const allPanels = await storage._db.select().from(panelsTable);
   const sampleAnimatic = await storage.createAnimaticProject({
     projectId: project.id,
     title: "Lost Toy — Opening Sequence Cut",
@@ -317,13 +317,13 @@ Right. New game. *Detectives.*
   }
 
   // v4 tag assignment — tag scene 1 as urgent
-  const allScenesSeed = await storage._db.select().from(scenesTable).all();
+  const allScenesSeed = await storage._db.select().from(scenesTable);
   if (urgentTagId && allScenesSeed.length > 0 && typeof await storage.createTagAssignment === "function") {
     await storage.createTagAssignment({ tagId: urgentTagId, entityKind: "scene", entityId: allScenesSeed[0].id });
   }
 
   // v4 panel pin (1) — pin on panel 1 (use current schema: body + authorId)
-  const allPanelsSeed = await storage._db.select().from(panelsTable).all();
+  const allPanelsSeed = await storage._db.select().from(panelsTable);
   if (allPanelsSeed.length > 0 && typeof await storage.createPanelPin === "function") {
     try {
       await storage.createPanelPin({

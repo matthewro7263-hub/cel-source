@@ -110,16 +110,16 @@ export function registerSpriteSheetRoutes(app: Express) {
 
     try {
       // Verify panels belong to storyboards in this project
-      const projectSbs = db.select().from(storyboards).where(eq(storyboards.projectId, projectId)).all();
+      const projectSbs = await db.select().from(storyboards).where(eq(storyboards.projectId, projectId));
       const sbIds = projectSbs.map(s => s.id);
       if (sbIds.length === 0) {
         return res.status(400).json({ message: "No storyboards in this project" });
       }
 
-      const panels = db.select()
+      const panels = await db.select()
         .from(storyboardPanels)
         .where(inArray(storyboardPanels.id, body.panelIds))
-        .all()
+        
         .filter(p => sbIds.includes(p.storyboardId)); // Only panels belonging to this project
 
       const images = [];

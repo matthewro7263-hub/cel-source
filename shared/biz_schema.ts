@@ -1,4 +1,4 @@
-import { pgTable, integer, text, real , serial} from "drizzle-orm/pg-core";
+import { pgTable, integer, text, real, serial, timestamp, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -14,7 +14,9 @@ export const biz_festivals = pgTable("biz_festivals", {
   projectId: integer("project_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
-export const insertBizFestivalSchema = createInsertSchema(biz_festivals).omit({ id: true, createdAt: true });
+export const insertBizFestivalSchema = createInsertSchema(biz_festivals, {
+  id: () => z.number().optional(),
+}).omit({ id: true, createdAt: true });
 export type InsertBizFestival = z.infer<typeof insertBizFestivalSchema>;
 export type BizFestival = typeof biz_festivals.$inferSelect;
 
@@ -27,7 +29,9 @@ export const biz_contracts = pgTable("biz_contracts", {
   body: text("body").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
-export const insertBizContractSchema = createInsertSchema(biz_contracts).omit({ id: true, createdAt: true });
+export const insertBizContractSchema = createInsertSchema(biz_contracts, {
+  id: () => z.number().optional(),
+}).omit({ id: true, createdAt: true });
 export type InsertBizContract = z.infer<typeof insertBizContractSchema>;
 export type BizContract = typeof biz_contracts.$inferSelect;
 
@@ -43,6 +47,8 @@ export const biz_expenses = pgTable("biz_expenses", {
   receiptUrl: text("receipt_url"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
-export const insertBizExpenseSchema = createInsertSchema(biz_expenses).omit({ id: true, createdAt: true });
+export const insertBizExpenseSchema = createInsertSchema(biz_expenses, {
+  id: () => z.number().optional(),
+}).omit({ id: true, createdAt: true });
 export type InsertBizExpense = z.infer<typeof insertBizExpenseSchema>;
 export type BizExpense = typeof biz_expenses.$inferSelect;

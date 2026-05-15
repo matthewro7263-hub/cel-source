@@ -1,4 +1,4 @@
-import { pgTable, integer, text , serial} from "drizzle-orm/pg-core";
+import { pgTable, integer, text, serial, timestamp, boolean, real } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -9,9 +9,10 @@ export const audio2_lipsync = pgTable("audio2_lipsync", {
   timelineJson: text("timeline_json").notNull(), // JSON array of {viseme, startMs, endMs}
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
-export const insertAudio2LipsyncSchema = createInsertSchema(audio2_lipsync).omit({
+export const insertAudio2LipsyncSchema = createInsertSchema(audio2_lipsync, {
+  id: () => z.number().optional(),
+}).omit({
   id: true,
-  projectId: true,
   createdAt: true,
 });
 export type InsertAudio2Lipsync = z.infer<typeof insertAudio2LipsyncSchema>;
@@ -26,9 +27,10 @@ export const audio2_cues = pgTable("audio2_cues", {
   color: text("color").notNull().default("#9DD0FF"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
-export const insertAudio2CueSchema = createInsertSchema(audio2_cues).omit({
+export const insertAudio2CueSchema = createInsertSchema(audio2_cues, {
+  id: () => z.number().optional(),
+}).omit({
   id: true,
-  projectId: true,
   createdAt: true,
 });
 export type InsertAudio2Cue = z.infer<typeof insertAudio2CueSchema>;

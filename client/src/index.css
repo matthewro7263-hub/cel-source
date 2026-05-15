@@ -935,3 +935,85 @@
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
+
+/* ============================================================ */
+/*  AI CHAT ENHANCEMENTS — v5 premium                          */
+/* ============================================================ */
+
+@keyframes silver-shine {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+.shimmer-text {
+  background: linear-gradient(
+    90deg,
+    #999 0%,
+    #999 40%,
+    #fff 50%,
+    #999 60%,
+    #999 100%
+  );
+  background-size: 200% auto;
+  color: transparent;
+  background-clip: text;
+  -webkit-background-clip: text;
+  animation: silver-shine 1.5s linear infinite;
+}
+
+.chat-panel-slide-in {
+  animation: slide-in-right 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.chat-panel-slide-out {
+  animation: slide-out-right 0.3s cubic-bezier(0.7, 0, 0.84, 0) forwards;
+}
+
+@keyframes slide-in-right {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes slide-out-right {
+  from { transform: translateX(0); opacity: 1; }
+  to { transform: translateX(100%); opacity: 0; }
+}
+
+/* Rounded vertical triangle / Chat Bubble shape */
+.chat-bubble-v5 {
+  position: relative;
+  border-radius: 24px;
+  border-bottom-right-radius: 4px;
+}
+
+.chat-bubble-v5::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  right: -8px;
+  width: 16px;
+  height: 16px;
+  background: inherit;
+  clip-path: polygon(0 0, 0% 100%, 100% 100%);
+  z-index: -1;
+}
+
+.prose-cel {
+  @apply leading-relaxed;
+}
+
+.prose-cel p {
+  @apply mb-3 last:mb-0;
+}
+
+.prose-cel strong {
+  @apply font-bold text-foreground;
+}
+
+.prose-cel ul, .prose-cel ol {
+  @apply my-2 pl-4;
+}
+
+.prose-cel li {
+  @apply mb-1;
+}

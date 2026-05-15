@@ -1,4 +1,4 @@
-import { pgTable, integer, text , serial} from "drizzle-orm/pg-core";
+import { pgTable, integer, text, serial, timestamp, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -15,7 +15,9 @@ export const approval_signoffs = pgTable("approval_signoffs", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
-export const insertApprovalSignoffSchema = createInsertSchema(approval_signoffs).omit({
+export const insertApprovalSignoffSchema = createInsertSchema(approval_signoffs, {
+  id: () => z.number().optional(),
+}).omit({
   id: true,
 });
 export type InsertApprovalSignoff = z.infer<typeof insertApprovalSignoffSchema>;

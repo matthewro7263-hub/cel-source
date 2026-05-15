@@ -1,4 +1,4 @@
-import { pgTable, integer, text, real , serial} from "drizzle-orm/pg-core";
+import { pgTable, integer, text, real, serial, timestamp, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -12,7 +12,9 @@ export const studio_render_events = pgTable("studio_render_events", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
-export const insertStudioRenderEventSchema = createInsertSchema(studio_render_events).omit({
+export const insertStudioRenderEventSchema = createInsertSchema(studio_render_events, {
+  id: () => z.number().optional(),
+}).omit({
   id: true,
   createdAt: true,
 });
@@ -39,7 +41,9 @@ export const studio_snapshots = pgTable("studio_snapshots", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
-export const insertStudioSnapshotSchema = createInsertSchema(studio_snapshots).omit({
+export const insertStudioSnapshotSchema = createInsertSchema(studio_snapshots, {
+  id: () => z.number().optional(),
+}).omit({
   id: true,
   createdAt: true,
 });
@@ -57,7 +61,9 @@ export const studio_credit_entries = pgTable("studio_credit_entries", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
-export const insertStudioCreditEntrySchema = createInsertSchema(studio_credit_entries).omit({
+export const insertStudioCreditEntrySchema = createInsertSchema(studio_credit_entries, {
+  id: () => z.number().optional(),
+}).omit({
   id: true,
   createdAt: true,
 });

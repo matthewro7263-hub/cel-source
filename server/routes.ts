@@ -133,7 +133,7 @@ const upload = multer({
     res.json(safe);
   });
 
-  app.patch("/api/auth/me", requireAuth, (req, res) => {
+  app.patch("/api/auth/me", requireAuth, async (req, res) => {
     const schema = z.object({ name: z.string().min(1).optional(), avatarColor: z.string().optional() });
     const patch = schema.parse(req.body);
     const updated = await storage.updateUser(req.user!.id, patch);
@@ -142,7 +142,7 @@ const upload = multer({
   });
 
   // ===== PROJECTS =====
-  app.get("/api/projects", requireAuth, async (req, res) => {
+  app.get ("/api/projects", requireAuth, async (req, res) => {
     const list = await storage.listProjectsForUser(req.user!.id);
     res.json(list);
   });
@@ -180,7 +180,7 @@ const upload = multer({
     res.json({ project: p, members });
   });
 
-  app.patch("/api/projects/:id", requireAuth, (req, res) => {
+  app.patch("/api/projects/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
     const schema = z.object({
@@ -200,7 +200,7 @@ const upload = multer({
     res.json(updated);
   });
 
-  app.delete("/api/projects/:id", requireAuth, async (req, res) => {
+  app.delete ("/api/projects/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const p = await storage.getProject(id);
     if (!p) return res.status(404).json({ message: "Not found" });
@@ -401,7 +401,7 @@ const upload = multer({
     const body = schema.parse(req.body);
     res.json(await storage.createScript({ projectId: id, title: body.title || "Untitled Script", content: body.content || "" }));
   });
-  app.patch("/api/projects/:id/scripts/:scriptId", requireAuth, (req, res) => {
+  app.patch("/api/projects/:id/scripts/:scriptId", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const sid = parseInt(String(req.params.scriptId), 10);
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
@@ -422,7 +422,7 @@ const upload = multer({
     const id = parseInt(String(req.params.id), 10);
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
     const sbs = await storage.listStoryboards(id);
-    const out = sbs.map((sb) => ({ ...sb, panels: await storage.listPanels(sb.id) }));
+    const out = sbs.map(async (sb) => ({ ...sb, panels: await storage.listPanels(sb.id) }));
     res.json(out);
   });
   app.post("/api/projects/:id/storyboards", requireAuth, async (req, res) => {
@@ -441,7 +441,7 @@ const upload = multer({
   });
 
   // ===== PANELS =====
-  app.post("/api/storyboards/:sbId/panels", requireAuth, async (req, res) => {
+  app.post ("/api/storyboards/:sbId/panels", requireAuth, async (req, res) => {
     const sbId = parseInt(String(req.params.sbId), 10);
     const sb = await storage.getStoryboard(sbId);
     if (!sb) return res.status(404).json({ message: "Storyboard not found" });
@@ -466,7 +466,7 @@ const upload = multer({
     });
     res.json(panel);
   });
-  app.patch("/api/panels/:id", requireAuth, (req, res) => {
+  app.patch ("/api/panels/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const panel = await storage.getPanel(id);
     if (!panel) return res.status(404).json({ message: "Not found" });
@@ -480,7 +480,7 @@ const upload = multer({
     const patch = schema.parse(req.body);
     res.json(await storage.updatePanel(id, patch));
   });
-  app.delete("/api/panels/:id", requireAuth, async (req, res) => {
+  app.delete ("/api/panels/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const panel = await storage.getPanel(id);
     if (!panel) return res.status(404).json({ message: "Not found" });
@@ -550,7 +550,7 @@ const upload = multer({
       assigneeId: body.assigneeId ?? null,
     }));
   });
-  app.patch("/api/projects/:id/scenes/:sceneId", requireAuth, (req, res) => {
+  app.patch("/api/projects/:id/scenes/:sceneId", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const sceneId = parseInt(String(req.params.sceneId), 10);
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
@@ -584,7 +584,7 @@ const upload = multer({
     const id = parseInt(String(req.params.id), 10);
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
     const list = await storage.listComments(id);
-    const enriched = list.map((c) => ({ ...c, author: await storage.getUser(c.authorId) || null }));
+    const enriched = list.map(async (c) => ({ ...c, author: await storage.getUser(c.authorId) || null }));
     res.json(enriched.map((c) => ({
       ...c,
       author: c.author ? { id: c.author.id, name: c.author.name, avatarColor: c.author.avatarColor } : null,
@@ -648,7 +648,7 @@ const upload = multer({
     res.json(safe);
   });
 
-  app.patch("/api/assets/:id", requireAuth, (req, res) => {
+  app.patch ("/api/assets/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const asset = await storage.getAsset(id);
     if (!asset) return res.status(404).json({ message: "Not found" });
@@ -665,7 +665,7 @@ const upload = multer({
     res.json(safe);
   });
 
-  app.delete("/api/assets/:id", requireAuth, async (req, res) => {
+  app.delete ("/api/assets/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const asset = await storage.getAsset(id);
     if (!asset) return res.status(404).json({ message: "Not found" });
@@ -674,7 +674,7 @@ const upload = multer({
     res.json({ ok: true });
   });
 
-  app.get("/api/assets/:id/download", requireAuth, async (req, res) => {
+  app.get ("/api/assets/:id/download", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const asset = await storage.getAsset(id);
     if (!asset) return res.status(404).json({ message: "Not found" });
@@ -734,14 +734,14 @@ const upload = multer({
     res.json(commission);
   });
 
-  app.get("/api/commissions", requireAuth, async (req, res) => {
+  app.get ("/api/commissions", requireAuth, async (req, res) => {
     const list = await storage.listCommissions(req.user!.id);
     // Omit large reference images from list view
     const safe = list.map(({ referenceImage, ...rest }) => ({ ...rest, hasReferenceImage: !!referenceImage }));
     res.json(safe);
   });
 
-  app.get("/api/commissions/:id", requireAuth, async (req, res) => {
+  app.get ("/api/commissions/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const commission = await storage.getCommission(id);
     if (!commission) return res.status(404).json({ message: "Not found" });
@@ -749,7 +749,7 @@ const upload = multer({
     res.json(commission);
   });
 
-  app.patch("/api/commissions/:id", requireAuth, (req, res) => {
+  app.patch ("/api/commissions/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const commission = await storage.getCommission(id);
     if (!commission) return res.status(404).json({ message: "Not found" });
@@ -769,7 +769,7 @@ const upload = multer({
     res.json(updated);
   });
 
-  app.post("/api/commissions/:id/convert", requireAuth, async (req, res) => {
+  app.post ("/api/commissions/:id/convert", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const commission = await storage.getCommission(id);
     if (!commission) return res.status(404).json({ message: "Not found" });
@@ -790,7 +790,7 @@ const upload = multer({
   });
 
   // ===== RENDERS =====
-  app.get("/api/scenes/:sceneId/renders", requireAuth, async (req, res) => {
+  app.get ("/api/scenes/:sceneId/renders", requireAuth, async (req, res) => {
     const sceneId = parseInt(String(req.params.sceneId), 10);
     const scene = await storage.getScene(sceneId);
     if (!scene) return res.status(404).json({ message: "Scene not found" });
@@ -798,7 +798,7 @@ const upload = multer({
     res.json(await storage.listRenders(sceneId));
   });
 
-  app.post("/api/scenes/:sceneId/renders", requireAuth, async (req, res) => {
+  app.post ("/api/scenes/:sceneId/renders", requireAuth, async (req, res) => {
     const sceneId = parseInt(String(req.params.sceneId), 10);
     const scene = await storage.getScene(sceneId);
     if (!scene) return res.status(404).json({ message: "Scene not found" });
@@ -824,7 +824,7 @@ const upload = multer({
     res.json(render);
   });
 
-  app.patch("/api/renders/:id", requireAuth, (req, res) => {
+  app.patch ("/api/renders/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const render = await storage.getRender(id);
     if (!render) return res.status(404).json({ message: "Not found" });
@@ -848,7 +848,7 @@ const upload = multer({
     res.json(updated);
   });
 
-  app.delete("/api/renders/:id", requireAuth, async (req, res) => {
+  app.delete ("/api/renders/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const render = await storage.getRender(id);
     if (!render) return res.status(404).json({ message: "Not found" });
@@ -878,7 +878,7 @@ const upload = multer({
     res.json(ap);
   });
 
-  app.get("/api/animatics-v2/:id", requireAuth, async (req, res) => {
+  app.get ("/api/animatics-v2/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const ap = await storage.getAnimaticProject(id);
     if (!ap) return res.status(404).json({ message: "Not found" });
@@ -886,7 +886,7 @@ const upload = multer({
     res.json(ap);
   });
 
-  app.patch("/api/animatics-v2/:id", requireAuth, (req, res) => {
+  app.patch ("/api/animatics-v2/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const ap = await storage.getAnimaticProject(id);
     if (!ap) return res.status(404).json({ message: "Not found" });
@@ -901,7 +901,7 @@ const upload = multer({
     res.json(updated);
   });
 
-  app.delete("/api/animatics-v2/:id", requireAuth, async (req, res) => {
+  app.delete ("/api/animatics-v2/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const ap = await storage.getAnimaticProject(id);
     if (!ap) return res.status(404).json({ message: "Not found" });
@@ -911,7 +911,7 @@ const upload = multer({
   });
 
   // ===== ANIMATIC TRACKS =====
-  app.post("/api/animatics-v2/:id/tracks", requireAuth, async (req, res) => {
+  app.post ("/api/animatics-v2/:id/tracks", requireAuth, async (req, res) => {
     const animaticId = parseInt(String(req.params.id), 10);
     const ap = await storage.getAnimaticProject(animaticId);
     if (!ap) return res.status(404).json({ message: "Not found" });
@@ -928,7 +928,7 @@ const upload = multer({
     res.json(track);
   });
 
-  app.patch("/api/tracks/:id", requireAuth, (req, res) => {
+  app.patch ("/api/tracks/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const track = await storage.getTrack(id);
     if (!track) return res.status(404).json({ message: "Not found" });
@@ -946,7 +946,7 @@ const upload = multer({
     res.json(updated);
   });
 
-  app.delete("/api/tracks/:id", requireAuth, async (req, res) => {
+  app.delete ("/api/tracks/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const track = await storage.getTrack(id);
     if (!track) return res.status(404).json({ message: "Not found" });
@@ -957,7 +957,7 @@ const upload = multer({
   });
 
   // ===== ANIMATIC CLIPS =====
-  app.post("/api/tracks/:id/clips", requireAuth, async (req, res) => {
+  app.post ("/api/tracks/:id/clips", requireAuth, async (req, res) => {
     const trackId = parseInt(String(req.params.id), 10);
     const track = await storage.getTrack(trackId);
     if (!track) return res.status(404).json({ message: "Not found" });
@@ -993,7 +993,7 @@ const upload = multer({
     res.json(clip);
   });
 
-  app.patch("/api/clips/:id", requireAuth, (req, res) => {
+  app.patch ("/api/clips/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const clip = await storage.getClip(id);
     if (!clip) return res.status(404).json({ message: "Not found" });
@@ -1017,7 +1017,7 @@ const upload = multer({
     res.json(updated);
   });
 
-  app.delete("/api/clips/:id", requireAuth, async (req, res) => {
+  app.delete ("/api/clips/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const clip = await storage.getClip(id);
     if (!clip) return res.status(404).json({ message: "Not found" });
@@ -1077,13 +1077,13 @@ const upload = multer({
   });
 
   // ===== PUBLIC SHARE =====
-  app.get("/api/share/:token", async (req, res) => {
+  app.get ("/api/share/:token", async (req, res) => {
     const token = req.params.token;
     const p = await storage.getProjectByToken(token);
     if (!p || !p.shareEnabled) return res.status(404).json({ message: "Share link not found or disabled" });
     const owner = await storage.getUser(p.ownerId);
     const scripts = await storage.listScripts(p.id);
-    const storyboards = await storage.listStoryboards(p.id).map((sb) => ({
+    const storyboards = await storage.listStoryboards(p.id).map(async (sb) => ({
       ...sb, panels: await storage.listPanels(sb.id),
     }));
     const animatics = await storage.listAnimatics(p.id);
@@ -1096,7 +1096,7 @@ const upload = multer({
   });
 
   // Public share meta endpoint (for watermark)
-  app.get("/api/share/:token/meta", async (req, res) => {
+  app.get ("/api/share/:token/meta", async (req, res) => {
     const token = req.params.token;
     const p = await storage.getProjectByToken(token);
     if (!p || !p.shareEnabled) return res.status(404).json({ message: "Not found" });
@@ -1104,7 +1104,7 @@ const upload = multer({
   });
 
   // Public share cli_approvals endpoint
-  app.get("/api/share/:token/cli_approvals", async (req, res) => {
+  app.get ("/api/share/:token/cli_approvals", async (req, res) => {
     const token = req.params.token;
     const p = await storage.getProjectByToken(token);
     if (!p || !p.shareEnabled) return res.status(404).json({ message: "Not found" });
@@ -1433,21 +1433,21 @@ ${body.scriptContent}
   });
 
   // ===== v4 PANEL PINS =====
-  app.get("/api/panels/:id/pins", requireAuth, async (req, res) => {
+  app.get ("/api/panels/:id/pins", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const panel = await storage.getPanel(id);
     if (!panel) return res.status(404).json({ message: "Panel not found" });
     const sb = await storage.getStoryboard(panel.storyboardId);
     if (!sb || !canAccessProject(sb.projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
     const pins = await (storage as any).listPanelPins(id);
-    const enriched = pins.map((p: any) => ({
+    const enriched = pins.map(async (p: any) => async ({
       ...p,
-      author: (() => { const u = await storage.getUser(p.authorId); return u ? { id: u.id, name: u.name, avatarColor: u.avatarColor } : null; })(),
+      author: (async () => { const u = await storage.getUser(p.authorId); return u ? { id: u.id, name: u.name, avatarColor: u.avatarColor } : null; })(),
     }));
     res.json(enriched);
   });
 
-  app.post("/api/panels/:id/pins", requireAuth, async (req, res) => {
+  app.post ("/api/panels/:id/pins", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const panel = await storage.getPanel(id);
     if (!panel) return res.status(404).json({ message: "Panel not found" });
@@ -1464,7 +1464,7 @@ ${body.scriptContent}
     res.json(pin);
   });
 
-  app.delete("/api/pins/:id", requireAuth, async (req, res) => {
+  app.delete ("/api/pins/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const pin = await (storage as any).getPanelPin(id);
     if (!pin) return res.status(404).json({ message: "Not found" });
@@ -1477,7 +1477,7 @@ ${body.scriptContent}
   });
 
   // Public share pins
-  app.get("/api/share/:token/panels/:panelId/pins", async (req, res) => {
+  app.get ("/api/share/:token/panels/:panelId/pins", async (req, res) => {
     const token = req.params.token;
     const panelId = parseInt(String(req.params.panelId), 10);
     const p = await storage.getProjectByToken(token);
@@ -1488,7 +1488,7 @@ ${body.scriptContent}
   });
 
   // ===== v4 COMMISSION LINE ITEMS =====
-  app.get("/api/commissions/:id/line-items", requireAuth, async (req, res) => {
+  app.get ("/api/commissions/:id/line-items", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const c = await storage.getCommission(id);
     if (!c) return res.status(404).json({ message: "Not found" });
@@ -1496,7 +1496,7 @@ ${body.scriptContent}
     res.json(await (storage as any).listCommissionLineItems(id));
   });
 
-  app.post("/api/commissions/:id/line-items", requireAuth, async (req, res) => {
+  app.post ("/api/commissions/:id/line-items", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const c = await storage.getCommission(id);
     if (!c) return res.status(404).json({ message: "Not found" });
@@ -1511,7 +1511,7 @@ ${body.scriptContent}
     res.json(await (storage as any).createCommissionLineItem({ commissionId: id, ...body }));
   });
 
-  app.patch("/api/commission-line-items/:id", requireAuth, (req, res) => {
+  app.patch ("/api/commission-line-items/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const lineItem = await (storage as any).getCommissionLineItem(id);
     if (!lineItem) return res.status(404).json({ message: "Not found" });
@@ -1527,7 +1527,7 @@ ${body.scriptContent}
     res.json(await (storage as any).updateCommissionLineItem(id, patch));
   });
 
-  app.delete("/api/commission-line-items/:id", requireAuth, async (req, res) => {
+  app.delete ("/api/commission-line-items/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const lineItem = await (storage as any).getCommissionLineItem(id);
     if (!lineItem) return res.status(404).json({ message: "Not found" });
@@ -1537,7 +1537,7 @@ ${body.scriptContent}
     res.json({ ok: true });
   });
 
-  app.patch("/api/commissions/:id/quote", requireAuth, (req, res) => {
+  app.patch ("/api/commissions/:id/quote", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const c = await storage.getCommission(id);
     if (!c) return res.status(404).json({ message: "Not found" });
@@ -1573,7 +1573,7 @@ ${body.scriptContent}
     res.json(await (storage as any).createCommissionPricingPreset({ projectId: id, ...body }));
   });
 
-  app.delete("/api/pricing-presets/:id", requireAuth, async (req, res) => {
+  app.delete ("/api/pricing-presets/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const preset = await (storage as any).getCommissionPricingPreset(id);
     if (!preset) return res.status(404).json({ message: "Not found" });
@@ -1583,7 +1583,7 @@ ${body.scriptContent}
   });
 
   // ===== v4 INBOX =====
-  app.get("/api/inbox", requireAuth, async (req, res) => {
+  app.get ("/api/inbox", requireAuth, async (req, res) => {
     res.json(await (storage as any).listInboxItems(req.user!.id));
   });
 
@@ -1598,7 +1598,7 @@ ${body.scriptContent}
     res.json(await (storage as any).createInboxItem({ userId: req.user!.id, ...item }));
   });
 
-  app.patch("/api/inbox/:id", requireAuth, (req, res) => {
+  app.patch ("/api/inbox/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const item = await (storage as any).getInboxItem(id);
     if (!item || item.userId !== req.user!.id) return res.status(403).json({ message: "No access" });
@@ -1612,7 +1612,7 @@ ${body.scriptContent}
     res.json(await (storage as any).updateInboxItem(id, patch));
   });
 
-  app.delete("/api/inbox/:id", requireAuth, async (req, res) => {
+  app.delete ("/api/inbox/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const item = await (storage as any).getInboxItem(id);
     if (!item || item.userId !== req.user!.id) return res.status(403).json({ message: "No access" });
@@ -1621,7 +1621,7 @@ ${body.scriptContent}
   });
 
   // ===== v4 TAGS =====
-  app.get("/api/tags", requireAuth, async (req, res) => {
+  app.get ("/api/tags", requireAuth, async (req, res) => {
     res.json(await (storage as any).listTags(req.user!.id));
   });
 
@@ -1632,7 +1632,7 @@ ${body.scriptContent}
     res.json(await (storage as any).createTag({ userId: req.user!.id, ...body }));
   });
 
-  app.patch("/api/tags/:id", requireAuth, (req, res) => {
+  app.patch ("/api/tags/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const tag = await (storage as any).getTag(id);
     if (!tag) return res.status(404).json({ message: "Not found" });
@@ -1643,7 +1643,7 @@ ${body.scriptContent}
     res.json(await (storage as any).updateTag(id, patch));
   });
 
-  app.delete("/api/tags/:id", requireAuth, async (req, res) => {
+  app.delete ("/api/tags/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const tag = await (storage as any).getTag(id);
     if (!tag) return res.status(404).json({ message: "Not found" });
@@ -1671,7 +1671,7 @@ ${body.scriptContent}
     res.json(await (storage as any).createTagAssignment(body));
   });
 
-  app.delete("/api/tag-assignments/:id", requireAuth, async (req, res) => {
+  app.delete ("/api/tag-assignments/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const assignment = await (storage as any).getTagAssignment(id);
     if (!assignment) return res.status(404).json({ message: "Not found" });
@@ -1682,7 +1682,7 @@ ${body.scriptContent}
   });
 
   // ===== v4 SCENE TIMER =====
-  app.get("/api/scenes/:id/time", requireAuth, async (req, res) => {
+  app.get ("/api/scenes/:id/time", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const scene = await storage.getScene(id);
     if (!scene) return res.status(404).json({ message: "Scene not found" });
@@ -1693,7 +1693,7 @@ ${body.scriptContent}
     res.json({ entries, totalMs, active: active || null });
   });
 
-  app.post("/api/scenes/:id/timer/start", requireAuth, async (req, res) => {
+  app.post ("/api/scenes/:id/timer/start", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const scene = await storage.getScene(id);
     if (!scene) return res.status(404).json({ message: "Scene not found" });
@@ -1707,7 +1707,7 @@ ${body.scriptContent}
     res.json(entry);
   });
 
-  app.post("/api/scenes/:id/timer/stop", requireAuth, async (req, res) => {
+  app.post ("/api/scenes/:id/timer/stop", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const scene = await storage.getScene(id);
     if (!scene) return res.status(404).json({ message: "Scene not found" });
@@ -1757,7 +1757,7 @@ ${body.scriptContent}
     }
   });
 
-  app.post("/api/animatics/:id/aud/captions", requireAuth, async (req, res) => {
+  app.post ("/api/animatics/:id/aud/captions", requireAuth, async (req, res) => {
     try {
       const animaticProjectId = parseInt(String(req.params.id));
       const ap = await storage.getAnimaticProject(animaticProjectId);
@@ -1772,7 +1772,7 @@ ${body.scriptContent}
     }
   });
 
-  app.get("/api/animatics/:id/aud/captions", requireAuth, async (req, res) => {
+  app.get ("/api/animatics/:id/aud/captions", requireAuth, async (req, res) => {
     try {
       const animaticProjectId = parseInt(String(req.params.id));
       const ap = await storage.getAnimaticProject(animaticProjectId);
@@ -1786,7 +1786,7 @@ ${body.scriptContent}
     }
   });
   
-  app.delete("/api/aud/captions/:id", requireAuth, async (req, res) => {
+  app.delete ("/api/aud/captions/:id", requireAuth, async (req, res) => {
     try {
        const id = parseInt(String(req.params.id));
        const caption = await (storage as any).getAudCaption(id);
@@ -1827,7 +1827,7 @@ ${body.scriptContent}
     }
   });
 
-  app.post("/api/commissions/:id/hours", requireAuth, async (req, res) => {
+  app.post ("/api/commissions/:id/hours", requireAuth, async (req, res) => {
     try {
       const commissionId = parseInt(String(req.params.id), 10);
       const c = await storage.getCommission(commissionId);
@@ -1948,7 +1948,7 @@ ${body.scriptContent}
     }
   });
 
-  app.post("/api/projects/:id/discord/test", requireAuth, async (req, res) => {
+  app.post ("/api/projects/:id/discord/test", requireAuth, async (req, res) => {
     try {
       const projectId = parseInt(String(req.params.id), 10);
       const project = await storage.getProject(projectId);
@@ -1984,7 +1984,7 @@ ${body.scriptContent}
   });
 
   // ===== CLI APPROVALS / FEEDBACK (token or auth) =====
-  app.get("/api/projects/:id/cli_approvals", async (req, res) => {
+  app.get ("/api/projects/:id/cli_approvals", async (req, res) => {
     try {
       const projectId = parseInt(req.params.id, 10);
       const token = req.query.token as string | undefined;
@@ -2006,7 +2006,7 @@ ${body.scriptContent}
     }
   });
 
-  app.post("/api/projects/:id/cli_approvals", async (req, res) => {
+  app.post ("/api/projects/:id/cli_approvals", async (req, res) => {
     try {
       const projectId = parseInt(req.params.id, 10);
       const token = req.query.token as string | undefined;
@@ -2029,7 +2029,7 @@ ${body.scriptContent}
     }
   });
 
-  app.get("/api/projects/:id/cli_feedback", async (req, res) => {
+  app.get ("/api/projects/:id/cli_feedback", async (req, res) => {
     try {
       const projectId = parseInt(req.params.id, 10);
       const token = req.query.token as string | undefined;
@@ -2051,7 +2051,7 @@ ${body.scriptContent}
     }
   });
 
-  app.post("/api/projects/:id/cli_feedback", async (req, res) => {
+  app.post ("/api/projects/:id/cli_feedback", async (req, res) => {
     try {
       const projectId = parseInt(req.params.id, 10);
       const token = req.query.token as string | undefined;
