@@ -2,7 +2,6 @@ import { useState, useRef, useEffect } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient, getAuthToken } from "@/lib/queryClient";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -56,8 +55,9 @@ import { SketchModal } from "@/components/storyboard-sketch";
 import { PanelPinsOverlay, PinModeToggle } from "@/components/panel-pins";
 import { TagsSettingsPanel, InlineTagSelector } from "@/components/tags-manager";
 import { SceneTimerButton, SceneTimeBreakdown } from "@/components/scene-timer";
-import { Pencil, MapPin, Sparkles, Tag, KeyRound, BookOpen, ClipboardCheck, Send } from "lucide-react";
+import { Pencil, MapPin, Sparkles, Tag, KeyRound, BookOpen, ClipboardCheck, Send, SunMedium } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { ProjectFrame, ProjectQuickActions, type ProjectSection } from "@/components/layout/project-frame";
 
 interface ProjectDetail {
   project: Project;
@@ -66,10 +66,16 @@ interface ProjectDetail {
 
 
 export default function ProjectWorkspace() {
+  return <ProjectWorkspaceScaffold activeSection="overview" />;
+}
+
+export function ProjectSectionPage({ section }: { section: ProjectSection }) {
+  return <ProjectWorkspaceScaffold activeSection={section} />;
+}
+
+function ProjectWorkspaceScaffold({ activeSection }: { activeSection: ProjectSection }) {
   const params = useParams() as { id: string };
   const projectId = parseInt(params.id, 10);
-  const [tab, setTab] = useState("overview");
-  const [, setLocation] = useLocation();
 
   const { data, isLoading } = useQuery<ProjectDetail>({
     queryKey: ["/api/projects", projectId],
@@ -87,138 +93,61 @@ export default function ProjectWorkspace() {
   if (!data) return <div className="p-10 text-muted-foreground">Project not found.</div>;
 
   const { project, members } = data;
-  const d = formatDeadline(project.deadline);
 
   return (
-    <div className="px-5 sm:px-6 lg:px-10 py-7 lg:py-10 max-w-6xl mx-auto">
-      <div className="mb-7 flex items-start justify-between gap-4 flex-wrap">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: project.coverColor }} />
-            <span className="text-xs uppercase tracking-wider font-medium text-muted-foreground">Project</span>
-          </div>
-          <h1 className="font-display text-xl font-bold tracking-tight mb-2" data-testid={`text-project-title`}>{project.title}</h1>
-          <p className="text-sm text-muted-foreground max-w-2xl">{project.description || "No description yet."}</p>
-        </div>
-        <div className="flex items-center gap-3 flex-wrap">
-          <span className="text-xs flex items-center gap-1.5 text-muted-foreground">
-            <Calendar size={12} />{d.text}
-          </span>
-          <Button variant="outline" size="sm" onClick={() => { window.location.hash = `/projects/${projectId}/video-editor`; }} className="text-xs" data-testid="link-video-editor">
-            <Film size={14} className="mr-1.5" /> Video Editor
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => { window.location.hash = `/projects/${projectId}/compare`; }} className="text-xs" data-testid="link-compare">
-            <Columns2 size={14} className="mr-1.5" /> Compare
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => { window.location.hash = `/projects/${projectId}/review-room`; }} className="text-xs" data-testid="link-review-room">
-            <Radio size={14} className="mr-1.5" /> Review Room
-          </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="text-xs">
-                <Box size={14} className="mr-1.5" /> Tools <ChevronDown size={14} className="ml-1 opacity-50" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuItem onClick={() => { window.location.hash = `/projects/${projectId}/palette`; }}>
-                <ImageIcon size={14} className="mr-2" /> Palette Matcher
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => { window.location.hash = `/projects/${projectId}/inbetween`; }}>
-                <Wand2 size={14} className="mr-2" /> Inbetween Lab
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => { window.location.hash = `/projects/${projectId}/bible`; }}>
-                <BookOpen size={14} className="mr-2" /> Episode Bible
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => { window.location.hash = `/projects/${projectId}/render-budget`; }}>
-                <Film size={14} className="mr-2" /> Render Budget
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => { window.location.hash = `/projects/${projectId}/snapshots`; }}>
-                <GitBranch size={14} className="mr-2" /> Snapshots
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => { window.location.hash = `/projects/${projectId}/credits`; }}>
-                <Scroll size={14} className="mr-2" /> Credits
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <div className="flex -space-x-1.5">
-            {members.slice(0, 4).map((m) => m.user && (
-              <Avatar key={m.id} className="h-7 w-7 ring-2 ring-background">
-                <AvatarFallback style={{ backgroundColor: m.user.avatarColor, color: "white" }} className="text-[10px] font-semibold">
-                  {initials(m.user.name)}
-                </AvatarFallback>
-              </Avatar>
-
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <Tabs value={tab} onValueChange={setTab}>
-        <TabsList className="mb-6 flex h-auto overflow-x-auto scrollbar-hide gap-0.5">
-          <TabsTrigger value="overview" data-testid="tab-overview"><FileText size={14} className="mr-1.5" />Overview</TabsTrigger>
-          <TabsTrigger value="script" data-testid="tab-script"><FileText size={14} className="mr-1.5" />Script</TabsTrigger>
-          <TabsTrigger value="storyboards" data-testid="tab-storyboards"><ImageIcon size={14} className="mr-1.5" />Storyboards</TabsTrigger>
-          <TabsTrigger value="assets" data-testid="tab-assets"><Package size={14} className="mr-1.5" />Assets</TabsTrigger>
-          <TabsTrigger value="animatics" data-testid="tab-animatics"><Film size={14} className="mr-1.5" />Animatics</TabsTrigger>
-          <TabsTrigger value="scenes" data-testid="tab-scenes"><ListChecks size={14} className="mr-1.5" />Scenes</TabsTrigger>
-          <TabsTrigger value="comments" data-testid="tab-comments"><MessageSquare size={14} className="mr-1.5" />Comments</TabsTrigger>
-          <TabsTrigger value="continuity" data-testid="tab-continuity"><BookOpen size={14} className="mr-1.5" />Continuity</TabsTrigger>
-          <TabsTrigger value="casting" data-testid="tab-casting"><Users size={14} className="mr-1.5" />Casting</TabsTrigger>
-          <TabsTrigger value="signoff" data-testid="tab-signoff"><ClipboardCheck size={14} className="mr-1.5" />Sign-off</TabsTrigger>
-          <TabsTrigger value="settings" data-testid="tab-settings"><SettingsIcon size={14} className="mr-1.5" />Settings</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="overview"><OverviewTab project={project} members={members} setTab={setTab} /></TabsContent>
-        <TabsContent value="script"><ScriptTab projectId={projectId} /></TabsContent>
-        <TabsContent value="storyboards"><StoryboardsTab projectId={projectId} /></TabsContent>
-        <TabsContent value="assets"><AssetsTab projectId={projectId} /></TabsContent>
-        <TabsContent value="animatics"><AnimaticsTab projectId={projectId} /></TabsContent>
-        <TabsContent value="scenes"><ScenesTab projectId={projectId} /></TabsContent>
-        <TabsContent value="comments"><CommentsTab projectId={projectId} /></TabsContent>
-        <TabsContent value="settings"><SettingsTab project={project} members={members} /></TabsContent>
-        <TabsContent value="continuity"><ContinuityTab projectId={projectId} /></TabsContent>
-        <TabsContent value="casting"><CastingTab projectId={projectId} /></TabsContent>
-        <TabsContent value="signoff"><SignOffPanel projectId={projectId} /></TabsContent>
-      </Tabs>
-
-      {/* v5 quick-action toolbar — premium layout */}
-      <div className="mt-8 pt-6 border-t border-border/30 flex flex-wrap items-center gap-3">
-        <div className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground mr-2">Quick Actions</div>
-        <div className="flex flex-wrap gap-2">
-          <GlassButton
-            className="bg-primary/10 text-primary hover:bg-primary/20 text-xs h-9 px-4"
-            onClick={() => { window.location.hash = `/projects/${projectId}/audio2`; }}
-          >
-            <Mic size={14} className="mr-2" /> Audio Tools
-          </GlassButton>
-          <GlassButton
-            className="bg-card text-foreground hover:bg-muted text-xs h-9 px-4 border border-border/50"
-            onClick={() => setLocation(`/projects/${projectId}/couch`)}
-          >
-            <Presentation size={14} className="mr-2" /> Couch Mode
-          </GlassButton>
-          <GlassButton
-            className="bg-[#9DD0FF] text-black hover:bg-[#AED9FF] text-xs h-9 px-4"
-            onClick={() => setLocation(`/projects/${projectId}/voicebooth`)}
-          >
-            <Mic size={14} className="mr-2" /> Voice Booth
-          </GlassButton>
-        </div>
-        <div className="ml-auto flex items-center gap-4">
-           <AiAgentStatus projectId={projectId} />
-           <V4ScriptAiButton 
-             projectId={projectId} 
-             scriptContent={""} // Will be handled by the component
-           />
-        </div>
-      </div>
-    </div>
+    <ProjectFrame project={project} members={members} activeSection={activeSection}>
+      {renderProjectSection(activeSection, projectId, project, members)}
+    </ProjectFrame>
   );
 }
 
+function renderProjectSection(
+  activeSection: ProjectSection,
+  projectId: number,
+  project: Project,
+  members: ProjectDetail["members"],
+) {
+  if (activeSection === "overview") {
+    return (
+      <div className="space-y-6">
+        <OverviewTab project={project} members={members} onOpenSection={(section) => { window.location.hash = `/projects/${projectId}/${section}`; }} />
+        <ProjectQuickActions projectId={projectId} />
+        <div className="rounded-2xl border border-border/70 bg-background/84 p-5 shadow-[0_18px_45px_rgba(15,23,42,0.05)] backdrop-blur-[12px]">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Project assistant</div>
+              <h2 className="mt-1 font-display text-base font-semibold">Script and production help</h2>
+            </div>
+            <AiAgentStatus projectId={projectId} />
+          </div>
+          <V4ScriptAiButton projectId={projectId} scriptContent="" />
+        </div>
+      </div>
+    );
+  }
+
+  if (activeSection === "script") return <ScriptTab projectId={projectId} />;
+  if (activeSection === "storyboards") return <StoryboardsTab projectId={projectId} />;
+  if (activeSection === "assets") return <AssetsTab projectId={projectId} />;
+  if (activeSection === "animatics") return <AnimaticsTab projectId={projectId} />;
+  if (activeSection === "scenes") return <ScenesTab projectId={projectId} />;
+  if (activeSection === "comments") return <CommentsTab projectId={projectId} />;
+  if (activeSection === "continuity") return <ContinuityTab projectId={projectId} />;
+  if (activeSection === "casting") return <CastingTab projectId={projectId} />;
+  if (activeSection === "signoff") return <SignOffPanel projectId={projectId} />;
+  return <SettingsTab project={project} members={members} />;
+}
+
 // ===== OVERVIEW =====
-function OverviewTab({ project, members, setTab }: { project: Project; members: ProjectDetail["members"]; setTab: (t: string) => void }) {
+function OverviewTab({
+  project,
+  members,
+  onOpenSection,
+}: {
+  project: Project;
+  members: ProjectDetail["members"];
+  onOpenSection: (section: Exclude<ProjectSection, "overview">) => void;
+}) {
   const { data: scenes } = useQuery<Scene[]>({ queryKey: ["/api/projects", project.id, "scenes"] });
   const d = formatDeadline(project.deadline);
   const total = scenes?.length || 0;
@@ -231,10 +160,25 @@ function OverviewTab({ project, members, setTab }: { project: Project; members: 
       <Stat title="Progress" value={`${pct}%`} sub={`${done} of ${total} scenes done`} />
       <Stat title="Team" value={String(members.length)} sub="collaborators" />
 
+      <div className="md:col-span-3 rounded-2xl border border-border/70 bg-background/84 p-5 shadow-[0_18px_45px_rgba(15,23,42,0.05)] backdrop-blur-[12px]">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Workspace areas</div>
+            <h2 className="mt-1 font-display text-base font-semibold">Move into focused production and review surfaces.</h2>
+          </div>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <OverviewLinkCard title="Script" description="Draft, import, and revise the project script." onClick={() => onOpenSection("script")} />
+          <OverviewLinkCard title="Storyboards" description="Arrange boards, captions, pins, and sketch notes." onClick={() => onOpenSection("storyboards")} />
+          <OverviewLinkCard title="Scenes" description="Track status, schedule, and render follow-through." onClick={() => onOpenSection("scenes")} />
+          <OverviewLinkCard title="Review" description="Jump into comments, continuity, casting, and sign-off." onClick={() => onOpenSection("comments")} />
+        </div>
+      </div>
+
       <div className="md:col-span-3 rounded-xl border border-card-border bg-card p-5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-display font-semibold">Pipeline</h3>
-          <Button variant="ghost" size="sm" onClick={() => setTab("scenes")} data-testid="button-view-scenes">View all scenes</Button>
+          <Button variant="ghost" size="sm" onClick={() => onOpenSection("scenes")} data-testid="button-view-scenes">View all scenes</Button>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
           {STATUS_ORDER.map((s) => {
@@ -295,6 +239,19 @@ function OverviewTab({ project, members, setTab }: { project: Project; members: 
         </div>
       </div>
     </div>
+  );
+}
+
+function OverviewLinkCard({ title, description, onClick }: { title: string; description: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="rounded-xl border border-border/70 bg-background/82 p-4 text-left transition hover:border-primary/40 hover:bg-background"
+    >
+      <div className="font-display text-base font-semibold">{title}</div>
+      <div className="mt-1 text-sm text-muted-foreground">{description}</div>
+    </button>
   );
 }
 

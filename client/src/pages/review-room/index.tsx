@@ -6,6 +6,7 @@ import { ArrowLeft, Brush, Eraser, Radio, FileDown, CheckCircle2 } from "lucide-
 import { getAuthToken, apiRequest, queryClient } from "@/lib/queryClient";
 import jsPDF from "jspdf";
 import { useToast } from "@/hooks/use-toast";
+import { ToolSurface, ToolWorkspace } from "@/components/layout/tool-workspace";
 import type { Panel, Storyboard } from "@shared/schema";
 
 interface StoryboardWithPanels extends Storyboard {
@@ -197,30 +198,33 @@ export default function ReviewRoomPage() {
   const panel = panels[currentPanel];
 
   return (
-    <div className="px-5 py-7 sm:px-6 lg:px-10 lg:py-10">
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="sm" onClick={() => setLocation(`/projects/${projectId}`)}>
-            <ArrowLeft size={16} className="mr-1" /> Back
-          </Button>
-          <div className="flex items-center gap-2">
-            <Radio className={connected ? "h-5 w-5 text-emerald-500" : "h-5 w-5 text-muted-foreground"} />
-            <h1 className="font-display text-xl font-bold">Review Room</h1>
-          </div>
-        </div>
-        <div className="text-sm text-muted-foreground">{connected ? `${presence} reviewer${presence === 1 ? "" : "s"} connected` : "Connecting..."}</div>
-        <div className="flex gap-2">
+    <ToolWorkspace
+      backAction={
+        <Button variant="ghost" size="sm" onClick={() => setLocation(`/projects/${projectId}`)}>
+          <ArrowLeft size={16} className="mr-1" /> Back to project
+        </Button>
+      }
+      title="Review Room"
+      icon={<Radio className={connected ? "h-5 w-5 text-emerald-500" : "h-5 w-5 text-muted-foreground"} />}
+      meta={
+        <>
+          <span>{connected ? `${presence} reviewer${presence === 1 ? "" : "s"} connected` : "Connecting..."}</span>
+          <span>•</span>
+          <span>{panels.length} panel{panels.length === 1 ? "" : "s"} available</span>
+        </>
+      }
+      actions={
+        <>
           <Button variant="outline" size="sm" onClick={exportPDF}>
             <FileDown size={16} className="mr-1.5" /> Export PDF
           </Button>
           <Button variant="default" size="sm" onClick={flipStatus} disabled={!panel} className="bg-emerald-600 hover:bg-emerald-700 text-white">
             <CheckCircle2 size={16} className="mr-1.5" /> Approve Panel
           </Button>
-        </div>
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
-        <div className="relative aspect-video overflow-hidden rounded-xl border bg-black">
+        </>
+      }
+      main={
+        <ToolSurface className="relative aspect-video bg-black">
           {panel ? (
             <img src={panel.imageData} alt={panel.label} className="absolute inset-0 h-full w-full object-contain" />
           ) : (
@@ -247,10 +251,11 @@ export default function ReviewRoomPage() {
             <div className="text-xs uppercase tracking-wider text-white/50">Dailies panel</div>
             <div className="font-medium">{panel?.label || "Waiting for boards"}</div>
           </div>
-        </div>
-
-        <aside className="space-y-4">
-          <div className="rounded-xl border bg-card p-4">
+        </ToolSurface>
+      }
+      aside={
+        <>
+          <ToolSurface className="p-4">
             <div className="mb-3 flex items-center gap-2 text-sm font-semibold">
               <Brush size={14} /> Telestrator
             </div>
@@ -268,9 +273,9 @@ export default function ReviewRoomPage() {
             <Button variant="outline" className="w-full" onClick={clearCanvas}>
               <Eraser size={14} className="mr-1.5" /> Clear shared drawing
             </Button>
-          </div>
+          </ToolSurface>
 
-          <div className="rounded-xl border bg-card p-4">
+          <ToolSurface className="p-4">
             <div className="mb-2 text-sm font-semibold">Shared playhead</div>
             <input
               type="range"
@@ -283,9 +288,9 @@ export default function ReviewRoomPage() {
               data-testid="range-review-playhead"
             />
             <div className="mt-1 text-xs text-muted-foreground">{Math.round(playhead)}%</div>
-          </div>
+          </ToolSurface>
 
-          <div className="rounded-xl border bg-card p-4">
+          <ToolSurface className="p-4">
             <div className="mb-2 text-sm font-semibold">Panel queue</div>
             <select
               value={currentPanel}
@@ -295,16 +300,16 @@ export default function ReviewRoomPage() {
             >
               {panels.map((item, index) => <option key={item.id} value={index}>{item.label}</option>)}
             </select>
-          </div>
+          </ToolSurface>
 
-          <div className="rounded-xl border bg-card p-4">
+          <ToolSurface className="p-4">
             <div className="mb-2 text-sm font-semibold">Room log</div>
             <div className="space-y-2 text-xs text-muted-foreground">
               {events.length === 0 ? <div>No room events yet.</div> : events.map((event, index) => <div key={index}>{event}</div>)}
             </div>
-          </div>
-        </aside>
-      </div>
-    </div>
+          </ToolSurface>
+        </>
+      }
+    />
   );
 }

@@ -24,6 +24,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { DataWorkspace } from "@/components/layout/data-workspace";
 import {
   Pencil, Trash2, Plus, Download, FileText, Briefcase, Trophy, Receipt,
 } from "lucide-react";
@@ -1011,47 +1012,82 @@ function ExpensesTab() {
 // ===== MAIN PAGE =====
 export default function BizPage() {
   const { user } = useAuth();
+  const { data: festivals = [] } = useQuery<BizFestival[]>({
+    queryKey: ["/api/biz/festivals"],
+    enabled: !!user,
+  });
+  const { data: contracts = [] } = useQuery<BizContract[]>({
+    queryKey: ["/api/biz/contracts"],
+    enabled: !!user,
+  });
+  const { data: expenses = [] } = useQuery<BizExpense[]>({
+    queryKey: ["/api/biz/expenses"],
+    enabled: !!user,
+  });
+  const { data: commissions = [] } = useQuery<Commission[]>({
+    queryKey: ["/api/commissions"],
+    enabled: !!user,
+  });
+
   if (!user) return null;
 
+  const pendingFestivals = festivals.filter((festival) => festival.status === "planned" || festival.status === "submitted").length;
+  const expenseTotal = expenses.reduce((sum, expense) => sum + expense.amount, 0);
+
   return (
-    <div className="p-6 max-w-5xl mx-auto">
-      <div className="mb-6">
-        <div className="flex items-center gap-2.5 mb-1">
-          <Briefcase size={20} className="text-primary" />
-          <h1 className="text-xl font-semibold">Business</h1>
-        </div>
-        <p className="text-sm text-muted-foreground">Manage your animation business — festivals, contracts, taxes, and expenses.</p>
-      </div>
-
-      <Tabs defaultValue="festivals" className="w-full">
-        <TabsList className="mb-4">
-          <TabsTrigger value="festivals" data-testid="tab-festivals">
-            <Trophy size={13} className="mr-1.5" /> Festivals
-          </TabsTrigger>
-          <TabsTrigger value="contracts" data-testid="tab-contracts">
-            <FileText size={13} className="mr-1.5" /> Contracts
-          </TabsTrigger>
-          <TabsTrigger value="tax" data-testid="tab-tax">
-            <Download size={13} className="mr-1.5" /> Tax CSV
-          </TabsTrigger>
-          <TabsTrigger value="expenses" data-testid="tab-expenses">
-            <Receipt size={13} className="mr-1.5" /> Expenses
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="festivals">
+    <Tabs defaultValue="festivals" className="w-full">
+      <DataWorkspace
+        title="Business"
+        icon={<Briefcase size={20} className="text-primary" />}
+        description="Manage festivals, contracts, tax exports, and expense tracking without leaving the authenticated workspace."
+        summary={
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <SummaryStat label="Active submissions" value={String(pendingFestivals)} detail="Planned or submitted festivals" />
+            <SummaryStat label="Contracts" value={String(contracts.length)} detail="Reusable legal templates" />
+            <SummaryStat label="Expenses" value={`$${expenseTotal.toFixed(2)}`} detail={`${expenses.length} logged items`} />
+            <SummaryStat label="Commission pipeline" value={String(commissions.length)} detail="Shared with queue and analytics" />
+          </div>
+        }
+        filters={
+          <TabsList className="flex h-auto flex-wrap gap-2 bg-transparent p-0">
+            <TabsTrigger value="festivals" data-testid="tab-festivals">
+              <Trophy size={13} className="mr-1.5" /> Festivals
+            </TabsTrigger>
+            <TabsTrigger value="contracts" data-testid="tab-contracts">
+              <FileText size={13} className="mr-1.5" /> Contracts
+            </TabsTrigger>
+            <TabsTrigger value="tax" data-testid="tab-tax">
+              <Download size={13} className="mr-1.5" /> Tax CSV
+            </TabsTrigger>
+            <TabsTrigger value="expenses" data-testid="tab-expenses">
+              <Receipt size={13} className="mr-1.5" /> Expenses
+            </TabsTrigger>
+          </TabsList>
+        }
+      >
+        <TabsContent value="festivals" className="mt-0">
           <FestivalsTab />
         </TabsContent>
-        <TabsContent value="contracts">
+        <TabsContent value="contracts" className="mt-0">
           <ContractsTab />
         </TabsContent>
-        <TabsContent value="tax">
+        <TabsContent value="tax" className="mt-0">
           <TaxCsvTab />
         </TabsContent>
-        <TabsContent value="expenses">
+        <TabsContent value="expenses" className="mt-0">
           <ExpensesTab />
         </TabsContent>
-      </Tabs>
+      </DataWorkspace>
+    </Tabs>
+  );
+}
+
+function SummaryStat({ label, value, detail }: { label: string; value: string; detail: string }) {
+  return (
+    <div className="rounded-xl border border-border/70 bg-background/84 p-4">
+      <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className="mt-2 font-display text-2xl font-semibold">{value}</div>
+      <div className="mt-1 text-xs text-muted-foreground">{detail}</div>
     </div>
   );
 }

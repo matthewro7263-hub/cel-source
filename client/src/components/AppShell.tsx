@@ -14,6 +14,7 @@ import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { initials } from "@/lib/utils-cel";
+import { cn } from "@/lib/utils";
 import type { Project } from "@shared/schema";
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -33,6 +34,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   };
 
   const projectId = location.match(/^\/projects\/(\d+)/)?.[1];
+  const isDenseWorkspace =
+    /^\/(business|commissions|analytics)(\/|$)/.test(location) ||
+    /^\/projects\/\d+(\/|$)/.test(location);
 
   useEffect(() => {
     setMobileOpen(false);
@@ -41,17 +45,17 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-screen w-full bg-background text-foreground relative overflow-hidden">
       {/* Atmosphere blobs — fixed, behind everything */}
-      <div className="blob blob-lavender" style={{ zIndex: 0 }} />
-      <div className="blob blob-peach" style={{ zIndex: 0 }} />
-      <div className="blob blob-sky" style={{ zIndex: 0 }} />
+      <div className={cn("blob blob-lavender transition-opacity", isDenseWorkspace ? "opacity-30" : "opacity-100")} style={{ zIndex: 0 }} />
+      <div className={cn("blob blob-peach transition-opacity", isDenseWorkspace ? "opacity-20" : "opacity-100")} style={{ zIndex: 0 }} />
+      <div className={cn("blob blob-sky transition-opacity", isDenseWorkspace ? "opacity-25" : "opacity-100")} style={{ zIndex: 0 }} />
       <div
         aria-hidden="true"
         data-liquid-gl="true"
-        className="liquid-gl-ambient"
+        className={cn("liquid-gl-ambient transition-opacity", isDenseWorkspace ? "opacity-40" : "opacity-100")}
       />
 
       {/* Mobile top bar */}
-      <div className="lg:hidden fixed top-0 left-0 right-0 z-40 h-14 glass flex items-center justify-between px-4">
+      <div className="md:hidden fixed top-0 left-0 right-0 z-40 h-14 glass flex items-center justify-between px-4">
         <div className="flex items-center gap-2 text-primary">
           <CelLogo size={22} />
           <span className="font-display text-lg font-bold tracking-tight text-foreground">Cel</span>
@@ -70,7 +74,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <button
           type="button"
           aria-label="Close navigation"
-          className="lg:hidden fixed left-0 right-0 top-14 bottom-0 z-20 bg-black/20 backdrop-blur-sm"
+          className="md:hidden fixed left-0 right-0 top-14 bottom-0 z-20 bg-black/20 backdrop-blur-sm"
           onClick={() => setMobileOpen(false)}
         />
       )}
@@ -79,45 +83,47 @@ export function AppShell({ children }: { children: ReactNode }) {
       <aside
         className={`${
           mobileOpen ? "block" : "hidden"
-        } lg:block fixed lg:relative left-0 top-14 bottom-0 lg:inset-auto z-30 h-[calc(100vh-3.5rem)] lg:h-screen w-[min(22rem,calc(100vw-2rem))] lg:w-[240px] flex-shrink-0 glass border-r border-sidebar-border`}
+        } md:block fixed md:relative left-0 top-14 md:top-0 bottom-0 md:inset-auto z-30 h-[calc(100vh-3.5rem)] md:h-screen w-[min(22rem,calc(100vw-2rem))] md:w-[82px] xl:w-[240px] flex-shrink-0 glass border-r border-sidebar-border`}
         data-testid="sidebar-main"
         style={{ borderRadius: 0 }}
       >
         <div className="flex h-full min-h-0 flex-col">
-          <div className="hidden lg:flex items-center gap-2.5 px-5 h-14 border-b border-sidebar-border/60">
+          <div className="hidden md:flex items-center gap-2.5 px-4 xl:px-5 h-14 border-b border-sidebar-border/60 md:justify-center xl:justify-start">
             <span className="text-primary"><CelLogo size={22} /></span>
-            <span className="font-display text-lg font-bold tracking-tight">Cel</span>
+            <span className="hidden xl:block font-display text-lg font-bold tracking-tight">Cel</span>
           </div>
 
           <nav className="min-h-0 flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
             <Link href="/dashboard">
               <div
-                className={`sidebar-nav-item flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer transition-all duration-150 hover:bg-white/40 dark:hover:bg-white/5 ${
+                className={`sidebar-nav-item flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer transition-all duration-150 hover:bg-white/40 dark:hover:bg-white/5 md:justify-center xl:justify-start ${
                   location === "/dashboard" || location === "/"
                     ? "bg-white/50 dark:bg-white/8 shadow-sm font-medium active"
                     : ""
                 }`}
                 onClick={() => setMobileOpen(false)}
                 data-testid="link-dashboard"
+                title="Dashboard"
               >
                 <LayoutDashboard size={15} className="text-muted-foreground" />
-                Dashboard
+                <span className="hidden xl:block">Dashboard</span>
               </div>
             </Link>
 
             {user && (
               <Link href="/commissions">
                 <div
-                className={`sidebar-nav-item flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer transition-all duration-150 hover:bg-white/40 dark:hover:bg-white/5 ${
+                className={`sidebar-nav-item flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer transition-all duration-150 hover:bg-white/40 dark:hover:bg-white/5 md:justify-center xl:justify-start ${
                   location === "/commissions"
                     ? "bg-white/50 dark:bg-white/8 shadow-sm font-medium active"
                     : ""
                 }`}
                 onClick={() => setMobileOpen(false)}
                   data-testid="link-commissions"
+                  title="Commissions"
                 >
                   <DollarSign size={15} className="text-muted-foreground" />
-                  Commissions
+                  <span className="hidden xl:block">Commissions</span>
                 </div>
               </Link>
             )}
@@ -125,63 +131,66 @@ export function AppShell({ children }: { children: ReactNode }) {
             {user && (
               <Link href="/business">
                 <div
-                  className={`sidebar-nav-item flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer transition-all duration-150 hover:bg-white/40 dark:hover:bg-white/5 ${
+                  className={`sidebar-nav-item flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer transition-all duration-150 hover:bg-white/40 dark:hover:bg-white/5 md:justify-center xl:justify-start ${
                     location === "/business"
                       ? "bg-white/50 dark:bg-white/8 shadow-sm font-medium active"
                       : ""
                   }`}
                   onClick={() => setMobileOpen(false)}
                   data-testid="link-business"
+                  title="Business"
                 >
                   <Briefcase size={15} className="text-muted-foreground" />
-                  Business
+                  <span className="hidden xl:block">Business</span>
                 </div>
               </Link>
             )}
 
-            <div className="pt-5 pb-2 px-3 text-[11px] font-semibold tracking-wider uppercase text-muted-foreground">
+            <div className="hidden xl:block pt-5 pb-2 px-3 text-[11px] font-semibold tracking-wider uppercase text-muted-foreground">
               Community
             </div>
             
             <Link href="/challenges">
               <div
-                className={`sidebar-nav-item flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer transition-all duration-150 hover:bg-white/40 dark:hover:bg-white/5 ${
+                className={`sidebar-nav-item flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer transition-all duration-150 hover:bg-white/40 dark:hover:bg-white/5 md:justify-center xl:justify-start ${
                   location === "/challenges"
                     ? "bg-white/50 dark:bg-white/8 shadow-sm font-medium active"
                     : ""
                 }`}
                 onClick={() => setMobileOpen(false)}
                 data-testid="link-challenges"
+                title="Challenges"
               >
                 <Trophy size={15} className="text-muted-foreground" />
-                Challenges
+                <span className="hidden xl:block">Challenges</span>
               </div>
             </Link>
 
-            <div className="pt-5 pb-2 px-3 text-[11px] font-semibold tracking-wider uppercase text-muted-foreground">
+            <div className="hidden xl:block pt-5 pb-2 px-3 text-[11px] font-semibold tracking-wider uppercase text-muted-foreground">
               Projects
             </div>
 
             {projects && projects.length === 0 && (
-              <div className="px-3 py-2 text-xs text-muted-foreground">No projects yet.</div>
+              <div className="hidden xl:block px-3 py-2 text-xs text-muted-foreground">No projects yet.</div>
             )}
 
             {projects?.map((p) => (
               <Link key={p.id} href={`/projects/${p.id}`}>
                 <div
-                  className={`sidebar-nav-item flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer transition-all duration-150 hover:bg-white/40 dark:hover:bg-white/5 ${
+                  className={`sidebar-nav-item flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer transition-all duration-150 hover:bg-white/40 dark:hover:bg-white/5 md:justify-center xl:justify-start ${
                     projectId === String(p.id)
                       ? "bg-white/50 dark:bg-white/8 shadow-sm font-medium active"
                       : ""
                   }`}
                   onClick={() => setMobileOpen(false)}
                   data-testid={`link-project-${p.id}`}
+                  title={p.title}
                 >
                   <span
                     className="w-2.5 h-2.5 rounded-full flex-shrink-0 ring-2 ring-white/60"
                     style={{ backgroundColor: p.coverColor }}
                   />
-                  <span className="truncate">{p.title}</span>
+                  <span className="hidden xl:block truncate">{p.title}</span>
                 </div>
               </Link>
             ))}
@@ -193,7 +202,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button
-                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl glass-pill transition-all duration-150 hover:shadow-md text-left"
+                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl glass-pill transition-all duration-150 hover:shadow-md text-left md:justify-center xl:justify-start"
                     data-testid="button-user-menu"
                   >
                     <Avatar className="h-7 w-7 flex-shrink-0">
@@ -204,7 +213,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                         {initials(user.name)}
                       </AvatarFallback>
                     </Avatar>
-                    <div className="flex-1 min-w-0">
+                    <div className="hidden xl:block flex-1 min-w-0">
                       <div className="text-sm font-medium truncate">{user.name}</div>
                       <div className="text-xs text-muted-foreground truncate">{user.email}</div>
                     </div>

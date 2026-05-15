@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { DataSurface, DataWorkspace } from "@/components/layout/data-workspace";
 
 interface HeatmapScene {
   sceneId: number;
@@ -121,20 +122,24 @@ export default function AnalyticsPage() {
   const labelEvery = Math.max(1, Math.ceil(sortedDates.length / 14));
 
   return (
-    <div className="p-6 lg:p-8 max-w-6xl mx-auto space-y-10 pb-24">
-      <div>
-        <div className="flex items-center gap-2 text-xs font-mono uppercase tracking-widest text-muted-foreground mb-2">
-          <BarChart3 size={14} className="text-primary" />
-          Analytics
+    <DataWorkspace
+      title="Analytics"
+      icon={<BarChart3 size={20} className="text-primary" />}
+      description="Track commission ROI, scene effort, and hours-per-frame density with clearer framing for production decisions."
+      summary={
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <AnalyticsSummaryStat label="Average rate" value={`$${avgRate.toFixed(2)}/hr`} detail={`${paidCommissionStats.length} paid commissions tracked`} />
+          <AnalyticsSummaryStat label="Scenes tracked" value={String(taskRows.length)} detail="Rows in the task time table" />
+          <AnalyticsSummaryStat label="Heatmap days" value={String(sortedDates.length)} detail="Dates with logged scene time" />
+          <AnalyticsSummaryStat label="Commission records" value={String(commissionStats.length)} detail="Used for ROI comparison" />
         </div>
-        <h1 className="text-2xl font-display font-bold mb-2">Commission ROI & Scene Time</h1>
-        <p className="text-sm text-muted-foreground">Track true hourly rate, task effort, and hours-per-frame density.</p>
-      </div>
-
+      }
+      className="pb-24"
+    >
       <section className="space-y-5">
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <h2 className="text-lg font-semibold">Commission ROI</h2>
-          <div className="px-4 py-2 bg-white/50 dark:bg-white/5 rounded-xl border glass shadow-sm">
+          <div className="rounded-xl border border-border/70 bg-background/88 px-4 py-2 shadow-sm">
             <span className="text-sm text-muted-foreground mr-2">Average Rate</span>
             <span className="font-mono font-bold">${avgRate.toFixed(2)}/hr</span>
           </div>
@@ -143,32 +148,34 @@ export default function AnalyticsPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="space-y-3">
             {commissionStats.map((commission) => (
-              <div key={commission.id} className="glass p-4 rounded-xl border flex items-center justify-between gap-4">
-                <div className="min-w-0 flex-1">
-                  <div className="font-medium truncate">{commission.clientName} - {commission.type}</div>
-                  <div className="text-sm text-muted-foreground mt-1 font-mono">
-                    ${commission.price.toFixed(0)} / {commission.hours}h = <strong className="text-foreground">${commission.rate.toFixed(2)}/hr</strong>
+              <DataSurface key={commission.id} className="p-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="min-w-0 flex-1">
+                    <div className="font-medium truncate">{commission.clientName} - {commission.type}</div>
+                    <div className="mt-1 text-sm font-mono text-muted-foreground">
+                      ${commission.price.toFixed(0)} / {commission.hours}h = <strong className="text-foreground">${commission.rate.toFixed(2)}/hr</strong>
+                    </div>
                   </div>
+                  <form onSubmit={(event) => handleLogHours(commission.id, event)} className="flex items-center gap-2 flex-shrink-0">
+                    <Input
+                      name="hours"
+                      type="number"
+                      step="0.5"
+                      min="0.5"
+                      placeholder="Hrs"
+                      className="h-8 w-16 text-sm"
+                    />
+                    <Button type="submit" size="sm" className="h-8 bg-[#9DD0FF] hover:bg-[#AED9FF] text-black">
+                      Log
+                    </Button>
+                  </form>
                 </div>
-                <form onSubmit={(event) => handleLogHours(commission.id, event)} className="flex items-center gap-2 flex-shrink-0">
-                  <Input
-                    name="hours"
-                    type="number"
-                    step="0.5"
-                    min="0.5"
-                    placeholder="Hrs"
-                    className="w-16 h-8 text-sm"
-                  />
-                  <Button type="submit" size="sm" className="h-8 bg-[#9DD0FF] hover:bg-[#AED9FF] text-black">
-                    Log
-                  </Button>
-                </form>
-              </div>
+              </DataSurface>
             ))}
             {commissionStats.length === 0 && <div className="text-muted-foreground">No commissions found.</div>}
           </div>
 
-          <div className="glass p-6 rounded-xl border h-[360px] flex flex-col justify-end gap-2 relative">
+          <DataSurface className="relative flex h-[360px] flex-col justify-end gap-2 p-6">
             <div className="absolute top-4 left-6 text-sm text-muted-foreground">ROI Chart</div>
             <div className="flex items-end gap-2 h-full w-full mt-8 border-b border-sidebar-border pb-2 overflow-x-auto">
               {commissionStats.map((commission) => (
@@ -187,7 +194,7 @@ export default function AnalyticsPage() {
                 </div>
               ))}
             </div>
-          </div>
+          </DataSurface>
         </div>
       </section>
 
@@ -196,7 +203,7 @@ export default function AnalyticsPage() {
           <Clock3 size={17} className="text-primary" />
           <h2 className="text-lg font-semibold">Task Time Table</h2>
         </div>
-        <div className="glass rounded-xl border overflow-x-auto">
+        <DataSurface className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border text-left text-xs uppercase tracking-wider text-muted-foreground">
@@ -241,7 +248,7 @@ export default function AnalyticsPage() {
               )}
             </tbody>
           </table>
-        </div>
+        </DataSurface>
       </section>
 
       <section className="space-y-5">
@@ -249,7 +256,7 @@ export default function AnalyticsPage() {
           <Grid3X3 size={17} className="text-primary" />
           <h2 className="text-lg font-semibold">Hours-Per-Frame Heatmap</h2>
         </div>
-        <div className="glass p-5 rounded-xl border overflow-x-auto relative">
+        <DataSurface className="relative overflow-x-auto p-5">
           {hoverData && (
             <div className="absolute top-3 right-5 bg-black text-white text-xs py-1 px-3 rounded shadow-lg pointer-events-none z-10 font-mono">
               {hoverData.scene}: {Math.round(hoverData.mins)} mins on {hoverData.day}
@@ -314,8 +321,18 @@ export default function AnalyticsPage() {
               No scene time logged yet.
             </div>
           )}
-        </div>
+        </DataSurface>
       </section>
+    </DataWorkspace>
+  );
+}
+
+function AnalyticsSummaryStat({ label, value, detail }: { label: string; value: string; detail: string }) {
+  return (
+    <div className="rounded-xl border border-border/70 bg-background/84 p-4">
+      <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className="mt-2 font-display text-2xl font-semibold">{value}</div>
+      <div className="mt-1 text-xs text-muted-foreground">{detail}</div>
     </div>
   );
 }

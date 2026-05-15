@@ -14,7 +14,7 @@ import Login from "@/pages/Login";
 import Signup from "@/pages/Signup";
 import Landing from "@/pages/Landing";
 import Dashboard from "@/pages/Dashboard";
-import ProjectWorkspace from "@/pages/ProjectWorkspace";
+import ProjectWorkspace, { ProjectSectionPage } from "@/pages/ProjectWorkspace";
 import Share from "@/pages/Share";
 import ProfileSettings from "@/pages/ProfileSettings";
 import CommissionIntake from "@/pages/CommissionIntake";
@@ -53,6 +53,7 @@ import CouchModePage from "@/pages/couch-mode";
 import RenderBudget from "@/pages/studio/RenderBudget";
 import Snapshots from "@/pages/studio/Snapshots";
 import CreditRoll from "@/pages/studio/CreditRoll";
+import LightLab from "@/pages/studio/LightLab";
 
 import BizPage from "@/pages/biz/index";
 
@@ -154,6 +155,10 @@ function ReviewRoomRoute() {
   return <ProtectedShell><ReviewRoomPage /></ProtectedShell>;
 }
 
+function ProjectSectionRoute({ section }: { section: "script" | "storyboards" | "assets" | "animatics" | "scenes" | "comments" | "continuity" | "casting" | "signoff" | "settings" }) {
+  return <ProtectedShell><ProjectSectionPage section={section} /></ProtectedShell>;
+}
+
 // Landing page handles its own auth-redirect (logged-in users go to dashboard)
 // so unauthenticated visitors see the marketing page at "/".
 
@@ -187,6 +192,36 @@ function AppRouter() {
         </Route>
         <Route path="/projects/:id">
           <ProtectedShell><ProjectWorkspace /></ProtectedShell>
+        </Route>
+        <Route path="/projects/:id/script">
+          <ProjectSectionRoute section="script" />
+        </Route>
+        <Route path="/projects/:id/storyboards">
+          <ProjectSectionRoute section="storyboards" />
+        </Route>
+        <Route path="/projects/:id/assets">
+          <ProjectSectionRoute section="assets" />
+        </Route>
+        <Route path="/projects/:id/animatics">
+          <ProjectSectionRoute section="animatics" />
+        </Route>
+        <Route path="/projects/:id/scenes">
+          <ProjectSectionRoute section="scenes" />
+        </Route>
+        <Route path="/projects/:id/comments">
+          <ProjectSectionRoute section="comments" />
+        </Route>
+        <Route path="/projects/:id/continuity">
+          <ProjectSectionRoute section="continuity" />
+        </Route>
+        <Route path="/projects/:id/casting">
+          <ProjectSectionRoute section="casting" />
+        </Route>
+        <Route path="/projects/:id/signoff">
+          <ProjectSectionRoute section="signoff" />
+        </Route>
+        <Route path="/projects/:id/settings">
+          <ProjectSectionRoute section="settings" />
         </Route>
         <Route path="/settings">
           <ProtectedShell><ProfileSettings /></ProtectedShell>
@@ -271,6 +306,9 @@ function AppRouter() {
         </Route>
         <Route path="/projects/:id/inbetween">
           <ProtectedShell><InbetweenColorLab /></ProtectedShell>
+        </Route>
+        <Route path="/projects/:id/light-lab">
+          <ProtectedShell><LightLab /></ProtectedShell>
         </Route>
         <Route component={NotFound} />
       </Switch>

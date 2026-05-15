@@ -5,6 +5,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowLeft, Columns2, Eye, Pause, Play } from "lucide-react";
+import { ToolSurface, ToolWorkspace } from "@/components/layout/tool-workspace";
 import {
   flattenComparableMedia,
   isVideoSource,
@@ -106,25 +107,59 @@ export default function ComparePage() {
   };
 
   return (
-    <div className="px-5 py-7 sm:px-6 lg:px-10 lg:py-10">
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="sm" onClick={() => setLocation(`/projects/${projectId}`)}>
-            <ArrowLeft size={16} className="mr-1" /> Back
-          </Button>
-          <div className="flex items-center gap-2">
-            <Columns2 className="h-5 w-5 text-primary" />
-            <h1 className="font-display text-xl font-bold">Version Compare</h1>
-          </div>
-        </div>
+    <ToolWorkspace
+      backAction={
+        <Button variant="ghost" size="sm" onClick={() => setLocation(`/projects/${projectId}`)}>
+          <ArrowLeft size={16} className="mr-1" /> Back to project
+        </Button>
+      }
+      title="Version Compare"
+      icon={<Columns2 className="h-5 w-5 text-primary" />}
+      meta={
+        <>
+          <span>{media.length} source{media.length === 1 ? "" : "s"}</span>
+          <span>•</span>
+          <span>{diffEnabled && canDiffImages ? "Image diff mode" : "Synchronized playback"}</span>
+        </>
+      }
+      actions={
         <Button variant="outline" size="sm" onClick={togglePlayback} disabled={!leftItem && !rightItem} data-testid="button-compare-play">
           {playing ? <Pause size={14} className="mr-1.5" /> : <Play size={14} className="mr-1.5" />}
           {playing ? "Pause synced media" : "Play synced media"}
         </Button>
-      </div>
+      }
+      main={
+        <div className="space-y-4">
+          <ToolSurface className="p-4">
+            {diffEnabled && canDiffImages ? (
+              <div className="relative overflow-hidden rounded-xl border bg-black">
+                <img src={leftItem.src} alt={leftItem.label} className="aspect-video w-full object-contain" />
+                <img
+                  src={rightItem.src}
+                  alt={rightItem.label}
+                  className="absolute inset-0 h-full w-full object-contain mix-blend-difference"
+                  style={{ opacity: diffOpacity / 100 }}
+                />
+              </div>
+            ) : (
+              <div className="grid gap-4 xl:grid-cols-2">
+                <MediaPane item={leftItem} videoRef={leftVideoRef} />
+                <MediaPane item={rightItem} videoRef={rightVideoRef} />
+              </div>
+            )}
+          </ToolSurface>
 
-      <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
-        <Card>
+          {media.length === 0 && (
+            <ToolSurface>
+              <div className="py-12 text-center text-sm text-muted-foreground">
+                Add storyboard panels or animatics to compare revisions.
+              </div>
+            </ToolSurface>
+          )}
+        </div>
+      }
+      aside={
+        <Card className="border-border/70 bg-background/84 shadow-none">
           <CardHeader>
             <CardTitle className="text-sm">Compare setup</CardTitle>
           </CardHeader>
@@ -184,34 +219,7 @@ export default function ComparePage() {
             </div>
           </CardContent>
         </Card>
-
-        <div className="space-y-4">
-          {diffEnabled && canDiffImages ? (
-            <div className="relative overflow-hidden rounded-xl border bg-black">
-              <img src={leftItem.src} alt={leftItem.label} className="aspect-video w-full object-contain" />
-              <img
-                src={rightItem.src}
-                alt={rightItem.label}
-                className="absolute inset-0 h-full w-full object-contain mix-blend-difference"
-                style={{ opacity: diffOpacity / 100 }}
-              />
-            </div>
-          ) : (
-            <div className="grid gap-4 xl:grid-cols-2">
-              <MediaPane item={leftItem} videoRef={leftVideoRef} />
-              <MediaPane item={rightItem} videoRef={rightVideoRef} />
-            </div>
-          )}
-
-          {media.length === 0 && (
-            <Card>
-              <CardContent className="py-12 text-center text-sm text-muted-foreground">
-                Add storyboard panels or animatics to compare revisions.
-              </CardContent>
-            </Card>
-          )}
-        </div>
-      </div>
-    </div>
+      }
+    />
   );
 }
