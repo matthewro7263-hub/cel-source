@@ -171,9 +171,9 @@ const upload = multer({
 
   app.get("/api/projects/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
     const p = await storage.getProject(id);
-    const members = await storage.listMembers(id).map((m) => ({
+    const members = (await storage.listMembers(id)).map((m) => ({
       ...m,
       user: m.user ? { id: m.user.id, name: m.user.name, email: m.user.email, avatarColor: m.user.avatarColor } : null,
     }));
@@ -182,7 +182,7 @@ const upload = multer({
 
   app.patch("/api/projects/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
     const schema = z.object({
       title: z.string().min(1).optional(),
       description: z.string().optional(),
@@ -212,7 +212,7 @@ const upload = multer({
   // ===== MEMBERS =====
   app.post("/api/projects/:id/members", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
     const schema = z.object({ email: z.string().email(), role: z.string().optional() });
     const body = schema.parse(req.body);
     let user = await storage.getUserByEmail(body.email);
@@ -227,7 +227,7 @@ const upload = multer({
         avatarColor: colors[Math.floor(Math.random() * colors.length)],
       });
     }
-    if (!await storage.isMember(id, user.id)) {
+    if (!(await storage.isMember(id, user.id))) {
       await storage.addMember({ projectId: id, userId: user.id, role: body.role || "editor" });
     }
     res.json({ user: { id: user.id, email: user.email, name: user.name, avatarColor: user.avatarColor }, tempPassword });
@@ -236,7 +236,7 @@ const upload = multer({
   app.delete("/api/projects/:id/members/:userId", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const userId = parseInt(String(req.params.userId), 10);
-    if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
     await storage.removeMember(id, userId);
     res.json({ ok: true });
   });
@@ -245,7 +245,7 @@ const upload = multer({
   // ===== SCRIPT UPLOADS =====
   app.post("/api/projects/:projectId/scripts/upload", requireAuth, upload.single("file"), async (req, res) => {
     const projectId = parseInt(String(req.params.projectId), 10);
-    if (!canAccessProject(projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!(await canAccessProject(projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
     
     if (!req.file) {
       return res.status(400).json({ message: "No file uploaded" });
@@ -353,7 +353,7 @@ const upload = multer({
     const projectId = parseInt(String(req.params.projectId), 10);
     const scriptId = parseInt(String(req.params.scriptId), 10);
     
-    if (!canAccessProject(projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!(await canAccessProject(projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
 
     const script = await (storage as any).getScript(scriptId);
     if (!script) return res.status(404).json({ message: "Script not found" });
@@ -391,12 +391,12 @@ const upload = multer({
 
   app.get("/api/projects/:id/scripts", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
     res.json(await storage.listScripts(id));
   });
   app.post("/api/projects/:id/scripts", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
     const schema = z.object({ title: z.string().optional(), content: z.string().optional() });
     const body = schema.parse(req.body);
     res.json(await storage.createScript({ projectId: id, title: body.title || "Untitled Script", content: body.content || "" }));
@@ -404,7 +404,7 @@ const upload = multer({
   app.patch("/api/projects/:id/scripts/:scriptId", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const sid = parseInt(String(req.params.scriptId), 10);
-    if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
     const schema = z.object({ title: z.string().optional(), content: z.string().optional() });
     const patch = schema.parse(req.body);
     res.json(await storage.updateScript(sid, patch));
@@ -412,7 +412,7 @@ const upload = multer({
   app.delete("/api/projects/:id/scripts/:scriptId", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const sid = parseInt(String(req.params.scriptId), 10);
-    if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
     await storage.deleteScript(sid);
     res.json({ ok: true });
   });
@@ -420,14 +420,14 @@ const upload = multer({
   // ===== STORYBOARDS =====
   app.get("/api/projects/:id/storyboards", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
     const sbs = await storage.listStoryboards(id);
-    const out = sbs.map(async (sb) => ({ ...sb, panels: await storage.listPanels(sb.id) }));
+    const out = await Promise.all(sbs.map(async (sb) => ({ ...sb, panels: await storage.listPanels(sb.id) })));
     res.json(out);
   });
   app.post("/api/projects/:id/storyboards", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
     const schema = z.object({ title: z.string().optional() });
     const body = schema.parse(req.body);
     res.json(await storage.createStoryboard({ projectId: id, title: body.title || "Untitled Storyboard" }));
@@ -435,7 +435,7 @@ const upload = multer({
   app.delete("/api/projects/:id/storyboards/:sbId", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const sb = parseInt(String(req.params.sbId), 10);
-    if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
     await storage.deleteStoryboard(sb);
     res.json({ ok: true });
   });
@@ -445,7 +445,7 @@ const upload = multer({
     const sbId = parseInt(String(req.params.sbId), 10);
     const sb = await storage.getStoryboard(sbId);
     if (!sb) return res.status(404).json({ message: "Storyboard not found" });
-    if (!canAccessProject(sb.projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!(await canAccessProject(sb.projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
     const schema = z.object({
       imageData: z.string().min(1),
       caption: z.string().optional().default(""),
@@ -471,7 +471,7 @@ const upload = multer({
     const panel = await storage.getPanel(id);
     if (!panel) return res.status(404).json({ message: "Not found" });
     const sb = await storage.getStoryboard(panel.storyboardId);
-    if (!sb || !canAccessProject(sb.projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!sb || !(await canAccessProject(sb.projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
     const schema = z.object({
       orderIdx: z.number().int().optional(),
       caption: z.string().optional(),
@@ -485,7 +485,7 @@ const upload = multer({
     const panel = await storage.getPanel(id);
     if (!panel) return res.status(404).json({ message: "Not found" });
     const sb = await storage.getStoryboard(panel.storyboardId);
-    if (!sb || !canAccessProject(sb.projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!sb || !(await canAccessProject(sb.projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
     await storage.deletePanel(id);
     res.json({ ok: true });
   });
@@ -493,12 +493,12 @@ const upload = multer({
   // ===== ANIMATICS =====
   app.get("/api/projects/:id/animatics", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
     res.json(await storage.listAnimatics(id));
   });
   app.post("/api/projects/:id/animatics", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
     const schema = z.object({
       title: z.string().optional(),
       videoData: z.string().min(1),
@@ -517,7 +517,7 @@ const upload = multer({
   app.delete("/api/projects/:id/animatics/:aId", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const aId = parseInt(String(req.params.aId), 10);
-    if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
     await storage.deleteAnimatic(aId);
     res.json({ ok: true });
   });
@@ -525,12 +525,12 @@ const upload = multer({
   // ===== SCENES =====
   app.get("/api/projects/:id/scenes", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
     res.json(await storage.listScenes(id));
   });
   app.post("/api/projects/:id/scenes", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
     const schema = z.object({
       number: z.string().optional(),
       title: z.string().optional(),
@@ -553,7 +553,7 @@ const upload = multer({
   app.patch("/api/projects/:id/scenes/:sceneId", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const sceneId = parseInt(String(req.params.sceneId), 10);
-    if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
     const schema = z.object({
       number: z.string().optional(),
       title: z.string().optional(),
@@ -574,7 +574,7 @@ const upload = multer({
   app.delete("/api/projects/:id/scenes/:sceneId", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const sceneId = parseInt(String(req.params.sceneId), 10);
-    if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
     await storage.deleteScene(sceneId);
     res.json({ ok: true });
   });
@@ -582,9 +582,9 @@ const upload = multer({
   // ===== COMMENTS =====
   app.get("/api/projects/:id/comments", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
     const list = await storage.listComments(id);
-    const enriched = list.map(async (c) => ({ ...c, author: await storage.getUser(c.authorId) || null }));
+    const enriched = await Promise.all(list.map(async (c) => ({ ...c, author: await storage.getUser(c.authorId) || null })));
     res.json(enriched.map((c) => ({
       ...c,
       author: c.author ? { id: c.author.id, name: c.author.name, avatarColor: c.author.avatarColor } : null,
@@ -592,7 +592,7 @@ const upload = multer({
   });
   app.post("/api/projects/:id/comments", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
     const schema = z.object({ body: z.string().min(1), sceneId: z.number().nullable().optional() });
     const body = schema.parse(req.body);
     const comment = await storage.createComment({
@@ -606,7 +606,7 @@ const upload = multer({
   app.delete("/api/projects/:id/comments/:commentId", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const cid = parseInt(String(req.params.commentId), 10);
-    if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
     await storage.deleteComment(cid);
     res.json({ ok: true });
   });
@@ -614,7 +614,7 @@ const upload = multer({
   // ===== ASSETS =====
   app.get("/api/projects/:id/assets", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
     const category = req.query.category as string | undefined;
     // Exclude fileData from listing for performance; client fetches individual for download
     const list = await storage.listAssets(id, category);
@@ -624,7 +624,7 @@ const upload = multer({
 
   app.post("/api/projects/:id/assets", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
     const schema = z.object({
       category: z.string().optional().default("Other"),
       filename: z.string().min(1),
@@ -652,7 +652,7 @@ const upload = multer({
     const id = parseInt(String(req.params.id), 10);
     const asset = await storage.getAsset(id);
     if (!asset) return res.status(404).json({ message: "Not found" });
-    if (!canAccessProject(asset.projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!(await canAccessProject(asset.projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
     const schema = z.object({
       notes: z.string().optional(),
       tags: z.string().optional(),
@@ -669,7 +669,7 @@ const upload = multer({
     const id = parseInt(String(req.params.id), 10);
     const asset = await storage.getAsset(id);
     if (!asset) return res.status(404).json({ message: "Not found" });
-    if (!canAccessProject(asset.projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!(await canAccessProject(asset.projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
     await storage.deleteAsset(id);
     res.json({ ok: true });
   });
@@ -678,7 +678,7 @@ const upload = multer({
     const id = parseInt(String(req.params.id), 10);
     const asset = await storage.getAsset(id);
     if (!asset) return res.status(404).json({ message: "Not found" });
-    if (!canAccessProject(asset.projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!(await canAccessProject(asset.projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
     // fileData is a base64 data URL — send it as-is for client-side download
     res.json({ fileData: asset.fileData, filename: asset.filename, mimeType: asset.mimeType });
   });
@@ -716,7 +716,7 @@ const upload = multer({
       return res.status(413).json({ message: "Reference image too large (max 10MB)" });
     }
     // Validate that the ownerUserId refers to an existing user
-    if (!await storage.getUser(body.ownerUserId)) {
+    if (!(await storage.getUser(body.ownerUserId))) {
       return res.status(404).json({ message: "Unknown artist" });
     }
     const commission = await storage.createCommission({
@@ -794,7 +794,7 @@ const upload = multer({
     const sceneId = parseInt(String(req.params.sceneId), 10);
     const scene = await storage.getScene(sceneId);
     if (!scene) return res.status(404).json({ message: "Scene not found" });
-    if (!canAccessProject(scene.projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!(await canAccessProject(scene.projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
     res.json(await storage.listRenders(sceneId));
   });
 
@@ -802,7 +802,7 @@ const upload = multer({
     const sceneId = parseInt(String(req.params.sceneId), 10);
     const scene = await storage.getScene(sceneId);
     if (!scene) return res.status(404).json({ message: "Scene not found" });
-    if (!canAccessProject(scene.projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!(await canAccessProject(scene.projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
     const schema = z.object({
       label: z.string().optional().default("Render"),
       status: z.enum(["queued", "running", "done", "failed"]).optional().default("queued"),
@@ -829,7 +829,7 @@ const upload = multer({
     const render = await storage.getRender(id);
     if (!render) return res.status(404).json({ message: "Not found" });
     const scene = await storage.getScene(render.sceneId);
-    if (!scene || !canAccessProject(scene.projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!scene || !(await canAccessProject(scene.projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
     const schema = z.object({
       label: z.string().optional(),
       status: z.string().optional(),
@@ -853,7 +853,7 @@ const upload = multer({
     const render = await storage.getRender(id);
     if (!render) return res.status(404).json({ message: "Not found" });
     const scene = await storage.getScene(render.sceneId);
-    if (!scene || !canAccessProject(scene.projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!scene || !(await canAccessProject(scene.projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
     await storage.deleteRender(id);
     res.json({ ok: true });
   });
@@ -861,13 +861,13 @@ const upload = multer({
   // ===== ANIMATIC PROJECTS v2 =====
   app.get("/api/projects/:projectId/animatics-v2", requireAuth, async (req, res) => {
     const projectId = parseInt(String(req.params.projectId), 10);
-    if (!canAccessProject(projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!(await canAccessProject(projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
     res.json(await storage.getAnimaticProjectsByProject(projectId));
   });
 
   app.post("/api/projects/:projectId/animatics-v2", requireAuth, async (req, res) => {
     const projectId = parseInt(String(req.params.projectId), 10);
-    if (!canAccessProject(projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!(await canAccessProject(projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
     const schema = z.object({
       title: z.string().optional().default("Untitled Animatic"),
       fps: z.number().int().optional().default(24),
@@ -882,7 +882,7 @@ const upload = multer({
     const id = parseInt(String(req.params.id), 10);
     const ap = await storage.getAnimaticProject(id);
     if (!ap) return res.status(404).json({ message: "Not found" });
-    if (!canAccessProject(ap.projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!(await canAccessProject(ap.projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
     res.json(ap);
   });
 
@@ -890,7 +890,7 @@ const upload = multer({
     const id = parseInt(String(req.params.id), 10);
     const ap = await storage.getAnimaticProject(id);
     if (!ap) return res.status(404).json({ message: "Not found" });
-    if (!canAccessProject(ap.projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!(await canAccessProject(ap.projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
     const schema = z.object({
       title: z.string().optional(),
       fps: z.number().int().optional(),
@@ -905,7 +905,7 @@ const upload = multer({
     const id = parseInt(String(req.params.id), 10);
     const ap = await storage.getAnimaticProject(id);
     if (!ap) return res.status(404).json({ message: "Not found" });
-    if (!canAccessProject(ap.projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!(await canAccessProject(ap.projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
     await storage.deleteAnimaticProject(id);
     res.json({ ok: true });
   });
@@ -915,7 +915,7 @@ const upload = multer({
     const animaticId = parseInt(String(req.params.id), 10);
     const ap = await storage.getAnimaticProject(animaticId);
     if (!ap) return res.status(404).json({ message: "Not found" });
-    if (!canAccessProject(ap.projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!(await canAccessProject(ap.projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
     const schema = z.object({
       kind: z.string().optional().default("sfx"),
       name: z.string().optional().default("New Track"),
@@ -933,7 +933,7 @@ const upload = multer({
     const track = await storage.getTrack(id);
     if (!track) return res.status(404).json({ message: "Not found" });
     const ap = await storage.getAnimaticProject(track.animaticProjectId);
-    if (!ap || !canAccessProject(ap.projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!ap || !(await canAccessProject(ap.projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
     const schema = z.object({
       kind: z.string().optional(),
       name: z.string().optional(),
@@ -951,7 +951,7 @@ const upload = multer({
     const track = await storage.getTrack(id);
     if (!track) return res.status(404).json({ message: "Not found" });
     const ap = await storage.getAnimaticProject(track.animaticProjectId);
-    if (!ap || !canAccessProject(ap.projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!ap || !(await canAccessProject(ap.projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
     await storage.deleteTrack(id);
     res.json({ ok: true });
   });
@@ -962,7 +962,7 @@ const upload = multer({
     const track = await storage.getTrack(trackId);
     if (!track) return res.status(404).json({ message: "Not found" });
     const ap = await storage.getAnimaticProject(track.animaticProjectId);
-    if (!ap || !canAccessProject(ap.projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!ap || !(await canAccessProject(ap.projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
     const schema = z.object({
       startMs: z.number().int().optional().default(0),
       durationMs: z.number().int().optional().default(2000),
@@ -1000,7 +1000,7 @@ const upload = multer({
     const track = await storage.getTrack(clip.trackId);
     if (!track) return res.status(404).json({ message: "Track not found" });
     const ap = await storage.getAnimaticProject(track.animaticProjectId);
-    if (!ap || !canAccessProject(ap.projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!ap || !(await canAccessProject(ap.projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
     const schema = z.object({
       startMs: z.number().int().optional(),
       durationMs: z.number().int().optional(),
@@ -1024,7 +1024,7 @@ const upload = multer({
     const track = await storage.getTrack(clip.trackId);
     if (!track) return res.status(404).json({ message: "Track not found" });
     const ap = await storage.getAnimaticProject(track.animaticProjectId);
-    if (!ap || !canAccessProject(ap.projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!ap || !(await canAccessProject(ap.projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
     await storage.deleteClip(id);
     res.json({ ok: true });
   });
@@ -1083,9 +1083,9 @@ const upload = multer({
     if (!p || !p.shareEnabled) return res.status(404).json({ message: "Share link not found or disabled" });
     const owner = await storage.getUser(p.ownerId);
     const scripts = await storage.listScripts(p.id);
-    const storyboards = await storage.listStoryboards(p.id).map(async (sb) => ({
+    const storyboards = await Promise.all((await storage.listStoryboards(p.id)).map(async (sb) => ({
       ...sb, panels: await storage.listPanels(sb.id),
-    }));
+    })));
     const animatics = await storage.listAnimatics(p.id);
     const scenes = await storage.listScenes(p.id);
     res.json({
@@ -1116,14 +1116,14 @@ const upload = multer({
   // ===== v4 AI KEY MANAGEMENT =====
   app.get("/api/projects/:id/ai/key", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
     const row = await storage.getProjectAiKey(id);
     res.json({ hasKey: !!row, model: row?.model || null });
   });
 
   app.post("/api/projects/:id/ai/key", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
     const schema = z.object({ key: z.string().min(1), model: z.string().optional() });
     const body = schema.parse(req.body);
     await storage.setProjectAiKey(id, obfuscateKey(body.key), body.model);
@@ -1132,14 +1132,14 @@ const upload = multer({
 
   app.delete("/api/projects/:id/ai/key", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
     await storage.deleteProjectAiKey(id);
     res.json({ ok: true });
   });
 
   app.post("/api/projects/:id/ai/shot-suggest", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
     const schema = z.object({ scriptText: z.string().min(1) });
     let body: { scriptText: string };
     try { body = schema.parse(req.body); } catch (e: any) { return res.status(400).json({ message: e.message }); }
@@ -1188,14 +1188,14 @@ const upload = multer({
   // ===== v4 AI Agent Chat =====
   app.get("/api/projects/:id/ai/sessions", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
     const sessions = await storage.listAiChatSessions(id);
     res.json(sessions);
   });
 
   app.post("/api/projects/:id/ai/sessions", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
     const schema = z.object({ title: z.string().optional(), scriptId: z.number().optional() });
     const body = schema.parse(req.body);
     const session = await storage.createAiChatSession({ projectId: id, ...body });
@@ -1204,21 +1204,21 @@ const upload = multer({
 
   app.delete("/api/projects/:id/ai/sessions/:sessionId", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
     await storage.deleteAiChatSession(parseInt(req.params.sessionId));
     res.json({ ok: true });
   });
 
   app.get("/api/projects/:id/ai/sessions/:sessionId/messages", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
     const messages = await storage.listAiChatMessages(parseInt(req.params.sessionId));
     res.json(messages);
   });
 
   app.post("/api/projects/:id/ai/chat", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
     
     const schema = z.object({
       sessionId: z.number(),
@@ -1251,7 +1251,7 @@ ${body.scriptContent}
       content: body.content
     });
 
-    const messages = await storage.listAiChatMessages(body.sessionId).map((m: any) => {
+    const messages = (await storage.listAiChatMessages(body.sessionId)).map((m: any) => {
       const msg: any = { role: m.role, content: m.content };
       if (m.toolCalls) msg.tool_calls = JSON.parse(m.toolCalls);
       if (m.toolCallId) msg.tool_call_id = m.toolCallId;
@@ -1438,11 +1438,14 @@ ${body.scriptContent}
     const panel = await storage.getPanel(id);
     if (!panel) return res.status(404).json({ message: "Panel not found" });
     const sb = await storage.getStoryboard(panel.storyboardId);
-    if (!sb || !canAccessProject(sb.projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!sb || !(await canAccessProject(sb.projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
     const pins = await (storage as any).listPanelPins(id);
-    const enriched = pins.map(async (p: any) => async ({
-      ...p,
-      author: (async () => { const u = await storage.getUser(p.authorId); return u ? { id: u.id, name: u.name, avatarColor: u.avatarColor } : null; })(),
+    const enriched = await Promise.all(pins.map(async (p: any) => {
+      const author = await storage.getUser(p.authorId);
+      return {
+        ...p,
+        author: author ? { id: author.id, name: author.name, avatarColor: author.avatarColor } : null,
+      };
     }));
     res.json(enriched);
   });
@@ -1452,7 +1455,7 @@ ${body.scriptContent}
     const panel = await storage.getPanel(id);
     if (!panel) return res.status(404).json({ message: "Panel not found" });
     const sb = await storage.getStoryboard(panel.storyboardId);
-    if (!sb || !canAccessProject(sb.projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!sb || !(await canAccessProject(sb.projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
     const schema = z.object({
       xPercent: z.number().min(0).max(100),
       yPercent: z.number().min(0).max(100),
@@ -1471,7 +1474,7 @@ ${body.scriptContent}
     const panel = await storage.getPanel(pin.panelId);
     if (!panel) return res.status(404).json({ message: "Panel not found" });
     const sb = await storage.getStoryboard(panel.storyboardId);
-    if (!sb || !canAccessProject(sb.projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!sb || !(await canAccessProject(sb.projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
     await (storage as any).deletePanelPin(id);
     res.json({ ok: true });
   });
@@ -1555,13 +1558,13 @@ ${body.scriptContent}
   // ===== v4 COMMISSION PRICING PRESETS =====
   app.get("/api/projects/:id/pricing-presets", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
     res.json(await (storage as any).listCommissionPricingPresets(id));
   });
 
   app.post("/api/projects/:id/pricing-presets", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
     const schema = z.object({
       kind: z.enum(["package", "addon"]).optional().default("package"),
       name: z.string().min(1),
@@ -1577,7 +1580,7 @@ ${body.scriptContent}
     const id = parseInt(String(req.params.id), 10);
     const preset = await (storage as any).getCommissionPricingPreset(id);
     if (!preset) return res.status(404).json({ message: "Not found" });
-    if (!canAccessProject(preset.projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!(await canAccessProject(preset.projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
     await (storage as any).deleteCommissionPricingPreset(id);
     res.json({ ok: true });
   });
@@ -1686,7 +1689,7 @@ ${body.scriptContent}
     const id = parseInt(String(req.params.id), 10);
     const scene = await storage.getScene(id);
     if (!scene) return res.status(404).json({ message: "Scene not found" });
-    if (!canAccessProject(scene.projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!(await canAccessProject(scene.projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
     const entries = await (storage as any).listSceneTimeEntries(id);
     const totalMs = entries.filter((e: any) => e.durationMs).reduce((sum: number, e: any) => sum + e.durationMs, 0);
     const active = entries.find((e: any) => !e.endedAt);
@@ -1697,7 +1700,7 @@ ${body.scriptContent}
     const id = parseInt(String(req.params.id), 10);
     const scene = await storage.getScene(id);
     if (!scene) return res.status(404).json({ message: "Scene not found" });
-    if (!canAccessProject(scene.projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!(await canAccessProject(scene.projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
     // Stop any already-running timer first
     const existing = await (storage as any).getActiveTimeEntry(id, req.user!.id);
     if (existing) {
@@ -1711,7 +1714,7 @@ ${body.scriptContent}
     const id = parseInt(String(req.params.id), 10);
     const scene = await storage.getScene(id);
     if (!scene) return res.status(404).json({ message: "Scene not found" });
-    if (!canAccessProject(scene.projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
+    if (!(await canAccessProject(scene.projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
     const active = await (storage as any).getActiveTimeEntry(id, req.user!.id);
     if (!active) return res.status(404).json({ message: "No active timer" });
     const entry = await (storage as any).stopTimer(active.id);
@@ -1734,7 +1737,7 @@ ${body.scriptContent}
   app.post("/api/aud/voice_takes", requireAuth, async (req, res) => {
     try {
       const data = insertAudVoiceTakeSchema.parse(req.body);
-      if (data.projectId && !canAccessProject(data.projectId, req.user!.id)) {
+      if (data.projectId && !(await canAccessProject(data.projectId, req.user!.id))) {
         return res.status(403).json({ message: "Forbidden" });
       }
       const take = await (storage as any).createAudVoiceTake(data);
@@ -1747,7 +1750,7 @@ ${body.scriptContent}
   app.get("/api/projects/:id/aud/voice_takes", requireAuth, async (req, res) => {
     try {
       const projectId = parseInt(String(req.params.id));
-      if (!canAccessProject(projectId, req.user!.id)) {
+      if (!(await canAccessProject(projectId, req.user!.id))) {
         return res.status(403).json({ message: "Forbidden" });
       }
       const takes = await (storage as any).getAudVoiceTakesByProject(projectId);
@@ -1761,7 +1764,7 @@ ${body.scriptContent}
     try {
       const animaticProjectId = parseInt(String(req.params.id));
       const ap = await storage.getAnimaticProject(animaticProjectId);
-      if (!ap || !canAccessProject(ap.projectId, req.user!.id)) {
+      if (!ap || !(await canAccessProject(ap.projectId, req.user!.id))) {
         return res.status(403).json({ message: "Forbidden" });
       }
       const data = insertAudCaptionSchema.parse({ ...req.body, animaticProjectId });
@@ -1776,7 +1779,7 @@ ${body.scriptContent}
     try {
       const animaticProjectId = parseInt(String(req.params.id));
       const ap = await storage.getAnimaticProject(animaticProjectId);
-      if (!ap || !canAccessProject(ap.projectId, req.user!.id)) {
+      if (!ap || !(await canAccessProject(ap.projectId, req.user!.id))) {
         return res.status(403).json({ message: "Forbidden" });
       }
       const captions = await (storage as any).getAudCaptionsByAnimatic(animaticProjectId);
@@ -1792,7 +1795,7 @@ ${body.scriptContent}
        const caption = await (storage as any).getAudCaption(id);
        if (caption) {
          const ap = await storage.getAnimaticProject(caption.animaticProjectId);
-         if (!ap || !canAccessProject(ap.projectId, req.user!.id)) {
+         if (!ap || !(await canAccessProject(ap.projectId, req.user!.id))) {
            return res.status(403).json({ message: "Forbidden" });
          }
        }
@@ -1997,7 +2000,7 @@ ${body.scriptContent}
         const authToken = req.headers.authorization?.split(" ")[1];
         const userId = getSessionUser(authToken);
         if (!userId) return res.status(401).json({ message: "Not authenticated" });
-        if (!canAccessProject(projectId, userId)) return res.status(403).json({ message: "No access" });
+        if (!(await canAccessProject(projectId, userId))) return res.status(403).json({ message: "No access" });
       }
       const approvals = await (storage as any).getCliApprovals(projectId);
       res.json(approvals);
@@ -2019,7 +2022,7 @@ ${body.scriptContent}
         const authToken = req.headers.authorization?.split(" ")[1];
         const userId = getSessionUser(authToken);
         if (!userId) return res.status(401).json({ message: "Not authenticated" });
-        if (!canAccessProject(projectId, userId)) return res.status(403).json({ message: "No access" });
+        if (!(await canAccessProject(projectId, userId))) return res.status(403).json({ message: "No access" });
       }
       const { phase, signedName, signatureData, signedAt } = req.body;
       const approval = await (storage as any).createCliApproval({ projectId, phase, signedName, signatureData, signedAt });
@@ -2042,7 +2045,7 @@ ${body.scriptContent}
         const authToken = req.headers.authorization?.split(" ")[1];
         const userId = getSessionUser(authToken);
         if (!userId) return res.status(401).json({ message: "Not authenticated" });
-        if (!canAccessProject(projectId, userId)) return res.status(403).json({ message: "No access" });
+        if (!(await canAccessProject(projectId, userId))) return res.status(403).json({ message: "No access" });
       }
       const feedback = await (storage as any).getCliFeedback(projectId);
       res.json(feedback);
@@ -2064,7 +2067,7 @@ ${body.scriptContent}
         const authToken = req.headers.authorization?.split(" ")[1];
         const userId = getSessionUser(authToken);
         if (!userId) return res.status(401).json({ message: "Not authenticated" });
-        if (!canAccessProject(projectId, userId)) return res.status(403).json({ message: "No access" });
+        if (!(await canAccessProject(projectId, userId))) return res.status(403).json({ message: "No access" });
       }
       const { sceneId, fields } = req.body;
       const feedback = await (storage as any).createCliFeedback({ projectId, sceneId, fields });

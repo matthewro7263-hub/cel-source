@@ -26,21 +26,21 @@ function extractToken(req: Request): string | undefined {
   return undefined;
 }
 
-function requireAuth(req: Request, res: Response, next: NextFunction) {
+async function requireAuth(req: Request, res: Response, next: NextFunction) {
   const token = extractToken(req);
   const userId = getSessionUser(token);
   if (!userId) return res.status(401).json({ message: "Not authenticated" });
-  const user = storage.getUser(userId);
+  const user = await storage.getUser(userId);
   if (!user) return res.status(401).json({ message: "User not found" });
   req.user = user;
   next();
 }
 
-function canAccessProject(projectId: number, userId: number): boolean {
-  const p = storage.getProject(projectId);
+async function canAccessProject(projectId: number, userId: number): Promise<boolean> {
+  const p = await storage.getProject(projectId);
   if (!p) return false;
   if (p.ownerId === userId) return true;
-  return storage.isMember(projectId, userId);
+  return await storage.isMember(projectId, userId);
 }
 
 function safeArchiveName(value: string): string {
@@ -64,11 +64,11 @@ function checksumBuffer(buffer: Buffer): string {
 // 1. .cel-archive Portable Export
 bakRouter.get("/projects/:id/archive", requireAuth, async (req, res) => {
   const projectId = parseInt(String(req.params.id), 10);
-  if (!canAccessProject(projectId, req.user!.id)) {
+  if (!(await canAccessProject(projectId, req.user!.id))) {
     return res.status(403).json({ message: "Forbidden" });
   }
 
-  const project = storage.getProject(projectId);
+  const project = await storage.getProject(projectId);
   if (!project) return res.status(404).json({ message: "Project not found" });
   const projScripts = db.select().from(scripts).where(eq(scripts.projectId, projectId)).all();
   const projStoryboards = db.select().from(storyboards).where(eq(storyboards.projectId, projectId)).all();
@@ -177,14 +177,14 @@ bakRouter.get("/projects/:id/archive", requireAuth, async (req, res) => {
 // 3. Branching Snapshots
 bakRouter.post("/projects/:id/snapshot", requireAuth, async (req, res) => {
   const projectId = parseInt(String(req.params.id), 10);
-  if (!canAccessProject(projectId, req.user!.id)) {
+  if (!(await canAccessProject(projectId, req.user!.id))) {
     return res.status(403).json({ message: "Forbidden" });
   }
 
   const { label } = req.body;
 
   const snapshotData = {
-    project: storage.getProject(projectId),
+    project: await storage.getProject(projectId),
     scripts: db.select().from(scripts).where(eq(scripts.projectId, projectId)).all(),
     storyboards: db.select().from(storyboards).where(eq(storyboards.projectId, projectId)).all(),
     panels: db.select().from(storyboards).where(eq(storyboards.projectId, projectId)).all().flatMap(sb => db.select().from(storyboardPanels).where(eq(storyboardPanels.storyboardId, sb.id)).all()),
@@ -205,7 +205,7 @@ bakRouter.post("/projects/:id/snapshots/:snapId/restore", requireAuth, async (re
   const projectId = parseInt(String(req.params.id), 10);
   const snapId = parseInt(String(req.params.snapId), 10);
   
-  if (!canAccessProject(projectId, req.user!.id)) {
+  if (!(await canAccessProject(projectId, req.user!.id))) {
     return res.status(403).json({ message: "Forbidden" });
   }
 
@@ -246,7 +246,7 @@ bakRouter.post("/projects/:id/snapshots/:snapId/restore", requireAuth, async (re
 
 bakRouter.get("/projects/:id/snapshots", requireAuth, async (req, res) => {
   const projectId = parseInt(String(req.params.id), 10);
-  if (!canAccessProject(projectId, req.user!.id)) {
+  if (!(await canAccessProject(projectId, req.user!.id))) {
     return res.status(403).json({ message: "Forbidden" });
   }
 
@@ -264,7 +264,7 @@ bakRouter.get("/projects/:id/export/:kind", requireAuth, async (req, res) => {
   const projectId = parseInt(String(req.params.id), 10);
   const { kind } = req.params;
   
-  if (!canAccessProject(projectId, req.user!.id)) {
+  if (!(await canAccessProject(projectId, req.user!.id))) {
     return res.status(403).json({ message: "Forbidden" });
   }
 
@@ -344,7 +344,7 @@ bakRouter.get("/projects/:id/export/:kind", requireAuth, async (req, res) => {
 // 5. Sprite-Sheet Auto-Packer
 bakRouter.post("/projects/:id/spritesheet", requireAuth, async (req, res) => {
   const projectId = parseInt(String(req.params.id), 10);
-  if (!canAccessProject(projectId, req.user!.id)) {
+  if (!(await canAccessProject(projectId, req.user!.id))) {
     return res.status(403).json({ message: "Forbidden" });
   }
 
@@ -421,7 +421,7 @@ bakRouter.post("/scenes/:id/gltf-stub", requireAuth, async (req, res) => {
   const sceneObj = db.select().from(scenes).where(eq(scenes.id, sceneId)).get();
   
   if (!sceneObj) return res.status(404).json({ message: "Scene not found" });
-  if (!canAccessProject(sceneObj.projectId, req.user!.id)) {
+  if (!(await canAccessProject(sceneObj.projectId, req.user!.id))) {
     return res.status(403).json({ message: "Forbidden" });
   }
 
@@ -480,7 +480,7 @@ bakRouter.post("/scenes/:id/gltf-stub", requireAuth, async (req, res) => {
 // 7. Asset Integrity Scan
 bakRouter.get("/projects/:id/trash/integrity", requireAuth, async (req, res) => {
   const projectId = parseInt(String(req.params.id), 10);
-  if (!canAccessProject(projectId, req.user!.id)) {
+  if (!(await canAccessProject(projectId, req.user!.id))) {
     return res.status(403).json({ message: "Forbidden" });
   }
 
@@ -541,7 +541,7 @@ bakRouter.get("/projects/:id/trash/integrity", requireAuth, async (req, res) => 
 // 2. Trash Recovery API
 bakRouter.get("/projects/:id/trash", requireAuth, async (req, res) => {
   const projectId = parseInt(String(req.params.id), 10);
-  if (!canAccessProject(projectId, req.user!.id)) {
+  if (!(await canAccessProject(projectId, req.user!.id))) {
     return res.status(403).json({ message: "Forbidden" });
   }
 
@@ -591,7 +591,7 @@ bakRouter.post("/trash/restore/:kind/:id", requireAuth, async (req, res) => {
     return res.status(400).json({ message: "Invalid kind" });
   }
 
-  if (!canAccessProject(projectId, req.user!.id)) {
+  if (!(await canAccessProject(projectId, req.user!.id))) {
     return res.status(403).json({ message: "No access" });
   }
 
@@ -635,7 +635,7 @@ bakRouter.delete("/trash/permanent/:kind/:id", requireAuth, async (req, res) => 
     return res.status(400).json({ message: "Invalid kind" });
   }
 
-  if (!canAccessProject(projectId, req.user!.id)) {
+  if (!(await canAccessProject(projectId, req.user!.id))) {
     return res.status(403).json({ message: "No access" });
   }
 
