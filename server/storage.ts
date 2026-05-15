@@ -549,8 +549,6 @@ export const storage = {
   _db: db,
 };
 
-export type Storage = typeof storage;
-
 // ============================================================
 // v4 — table creation and extensions
 // ============================================================
@@ -1230,3 +1228,5 @@ Object.assign(storage, {
   },
   // === LORE ADDITIONS END ===
 });
+
+export type Storage = typeof storage;

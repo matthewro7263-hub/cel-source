@@ -60,6 +60,7 @@ import { registerA11yRoutes } from "./a11y_routes";
 import { registerChallengeRoutes } from "./challenge_routes";
 import { registerReviewRoom } from "./review_room";
 import { registerMcpRoutes } from "./mcp_routes";
+import { registerBizRoutes } from "./biz_routes";
 
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
 
@@ -1079,7 +1080,7 @@ const upload = multer({
     const token = req.params.token;
     const p = storage.getProjectByToken(token);
     if (!p || !p.shareEnabled) return res.status(404).json({ message: "Not found" });
-    const approvals = (storage as any).getCliApprovals(p.id);
+    const approvals = storage.getCliApprovals(p.id);
     res.json(approvals);
   });
 
@@ -1088,7 +1089,7 @@ const upload = multer({
   app.get("/api/projects/:id/ai/key", requireAuth, (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
-    const row = (storage as any).getProjectAiKey(id);
+    const row = storage.getProjectAiKey(id);
     res.json({ hasKey: !!row, model: row?.model || null });
   });
 
@@ -1097,14 +1098,14 @@ const upload = multer({
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
     const schema = z.object({ key: z.string().min(1), model: z.string().optional() });
     const body = schema.parse(req.body);
-    (storage as any).setProjectAiKey(id, obfuscateKey(body.key), body.model);
+    storage.setProjectAiKey(id, obfuscateKey(body.key), body.model);
     res.json({ ok: true });
   });
 
   app.delete("/api/projects/:id/ai/key", requireAuth, (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
-    (storage as any).deleteProjectAiKey(id);
+    storage.deleteProjectAiKey(id);
     res.json({ ok: true });
   });
 
@@ -1115,7 +1116,7 @@ const upload = multer({
     let body: { scriptText: string };
     try { body = schema.parse(req.body); } catch (e: any) { return res.status(400).json({ message: e.message }); }
 
-    const keyRow = (storage as any).getProjectAiKey(id);
+    const keyRow = storage.getProjectAiKey(id);
     if (!keyRow) return res.status(400).json({ message: "No AI key set for this project" });
     const apiKey = deobfuscateKey(keyRow.encryptedKey);
 
@@ -1160,7 +1161,7 @@ const upload = multer({
   app.get("/api/projects/:id/ai/sessions", requireAuth, (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
-    const sessions = (storage as any).listAiChatSessions(id);
+    const sessions = storage.listAiChatSessions(id);
     res.json(sessions);
   });
 
@@ -1169,21 +1170,21 @@ const upload = multer({
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
     const schema = z.object({ title: z.string().optional(), scriptId: z.number().optional() });
     const body = schema.parse(req.body);
-    const session = (storage as any).createAiChatSession({ projectId: id, ...body });
+    const session = storage.createAiChatSession({ projectId: id, ...body });
     res.json(session);
   });
 
   app.delete("/api/projects/:id/ai/sessions/:sessionId", requireAuth, (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
-    (storage as any).deleteAiChatSession(parseInt(req.params.sessionId));
+    storage.deleteAiChatSession(parseInt(req.params.sessionId));
     res.json({ ok: true });
   });
 
   app.get("/api/projects/:id/ai/sessions/:sessionId/messages", requireAuth, (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
-    const messages = (storage as any).listAiChatMessages(parseInt(req.params.sessionId));
+    const messages = storage.listAiChatMessages(parseInt(req.params.sessionId));
     res.json(messages);
   });
 
@@ -1199,7 +1200,7 @@ const upload = multer({
     let body;
     try { body = schema.parse(req.body); } catch (e: any) { return res.status(400).json({ message: e.message }); }
 
-    const keyRow = (storage as any).getProjectAiKey(id);
+    const keyRow = storage.getProjectAiKey(id);
     if (!keyRow) return res.status(400).json({ message: "No AI key set for this project" });
     const apiKey = deobfuscateKey(keyRow.encryptedKey);
     // Use user's preferred model or fallback to Gemma 2 9B (which supports tools well)
@@ -1216,14 +1217,13 @@ You have access to tools that can edit the current script directly. When a user 
 ${body.scriptContent}
 </Current_Script_Context>`;
 
-    // Save user message
-    (storage as any).createAiChatMessage({
+    storage.createAiChatMessage({
       sessionId: body.sessionId,
       role: "user",
       content: body.content
     });
 
-    const messages = (storage as any).listAiChatMessages(body.sessionId).map((m: any) => {
+    const messages = storage.listAiChatMessages(body.sessionId).map((m: any) => {
       const msg: any = { role: m.role, content: m.content };
       if (m.toolCalls) msg.tool_calls = JSON.parse(m.toolCalls);
       if (m.toolCallId) msg.tool_call_id = m.toolCallId;
@@ -1311,8 +1311,7 @@ ${body.scriptContent}
       const responseMessage = data.choices?.[0]?.message;
       if (!responseMessage) return res.status(500).json({ message: "No response from AI" });
 
-      // Save assistant message to DB
-      const savedMsg = (storage as any).createAiChatMessage({
+      const savedMsg = storage.createAiChatMessage({
         sessionId: body.sessionId,
         role: "assistant",
         content: responseMessage.content || "",
