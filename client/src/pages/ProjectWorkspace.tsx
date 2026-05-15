@@ -1883,8 +1883,7 @@ function EmptyTabState({ icon, title, body, ctaLabel, onCta }: { icon: React.Rea
 // The SketchModal integration: "Sketch" button opens a canvas that saves as a new panel.
 // This is appended here as an augmentation. To inject into StoryboardView we edit inline below.
 
-// v4: SortablePanel with pin mode (replaces original above via re-export is not possible,
-// so we do direct efunction AiAgentPanel({ projectId, scriptContent, open, onOpenChange, onApplyScriptEdit }: {
+function AiAgentPanel({ projectId, scriptContent, open, onOpenChange, onApplyScriptEdit }: {
   projectId: number;
   scriptContent: string;
   open: boolean;
