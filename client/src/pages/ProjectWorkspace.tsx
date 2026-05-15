@@ -2163,7 +2163,7 @@ export function V4SettingsExtras({ project }: { project: Project }) {
 }
 
 // ===== v4 ScriptTab AI suggest button (exported for inline injection) =====
-export function V4ScriptAiButton({ projectId, scriptContent }: { projectId: number; scriptContent: string }) {
+export function V4ScriptAiButton({ projectId, scriptContent, onApplyScriptEdit }: { projectId: number; scriptContent: string; onApplyScriptEdit?: (newText: string) => void }) {
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -2173,13 +2173,14 @@ export function V4ScriptAiButton({ projectId, scriptContent }: { projectId: numb
         onClick={() => setOpen(true)}
         data-testid="button-ai-shot-suggest"
       >
-        <Sparkles size={13} className="mr-1.5" /> Suggest shots
+        <Sparkles size={13} className="mr-1.5" /> Cel Assistant
       </GlassButton>
-      <AiShotSuggestSheet
+      <AiAgentPanel
         projectId={projectId}
         scriptContent={scriptContent}
         open={open}
         onOpenChange={setOpen}
+        onApplyScriptEdit={onApplyScriptEdit || (() => {})}
       />
     </>
   );
