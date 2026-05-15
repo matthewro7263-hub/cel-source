@@ -11,7 +11,7 @@ import type {
   AnimaticProject, InsertAnimaticProject, AnimaticTrack, InsertAnimaticTrack,
   AnimaticClip, InsertAnimaticClip,
 } from "@shared/schema";
-import { drizzle } from "drizzle-orm/better-sqlite3";
+import { drizzle } from "drizzle-orm/neon-serverless";
 import Database from "better-sqlite3";
 import { eq, and, or, inArray, asc, desc, like } from "drizzle-orm";
 import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
@@ -329,11 +329,11 @@ export function destroySession(sid: string) {
 
 export const storage = {
   // ===== USERS =====
-  getUser: (id: number) => db.select().from(users).where(eq(users.id, id)).get(),
-  getUserByEmail: (email: string) => db.select().from(users).where(eq(users.email, email)).get(),
-  createUser: (u: InsertUser) => db.insert(users).values(u).returning().get(),
-  updateUser: (id: number, patch: Partial<InsertUser>) =>
-    db.update(users).set(patch).where(eq(users.id, id)).returning().get(),
+  async getUser: (id: number) => await db.select().from(users).where(eq(users.id, id)).then(r => r[0]),
+  async getUserByEmail: (email: string) => await db.select().from(users).where(eq(users.email, email)).then(r => r[0]),
+  async createUser: (u: InsertUser) => await db.insert(users).values(u).returning().then(r => r[0]),
+  async updateUser: (id: number, patch: Partial<InsertUser>) =>
+    await db.update(users).set(patch).where(eq(users.id, id)).returning().then(r => r[0]),
 
   // ===== PROJECTS =====
   listProjectsForUser: (userId: number): Project[] => {
@@ -341,149 +341,149 @@ export const storage = {
       .select({ projectId: projectMembers.projectId })
       .from(projectMembers)
       .where(eq(projectMembers.userId, userId))
-      .all();
+      ;
     const ids = memberRows.map((r) => r.projectId);
     if (ids.length === 0) {
-      return db.select().from(projects).where(eq(projects.ownerId, userId)).all();
+      return await db.select().from(projects).where(eq(projects.ownerId, userId));
     }
     return db
       .select()
       .from(projects)
       .where(or(eq(projects.ownerId, userId), inArray(projects.id, ids)))
-      .all();
+      ;
   },
-  getProject: (id: number) => db.select().from(projects).where(eq(projects.id, id)).get(),
-  getProjectByToken: (token: string) =>
-    db.select().from(projects).where(eq(projects.shareToken, token)).get(),
+  async getProject: (id: number) => await db.select().from(projects).where(eq(projects.id, id)).then(r => r[0]),
+  async getProjectByToken: (token: string) =>
+    await db.select().from(projects).where(eq(projects.shareToken, token)).then(r => r[0]),
   createProject: (p: InsertProject): Project => {
-    const row = db.insert(projects).values({ ...p, createdAt: new Date().toISOString() }).returning().get();
+    const row = await db.insert(projects).values({ ...p, createdAt: new Date().toISOString() }).returning().then(r => r[0]);
     return row;
   },
-  updateProject: (id: number, patch: Partial<InsertProject>) =>
-    db.update(projects).set(patch).where(eq(projects.id, id)).returning().get(),
-  deleteProject: (id: number) => {
-    db.delete(comments).where(eq(comments.projectId, id)).run();
-    db.delete(scenes).where(eq(scenes.projectId, id)).run();
-    const sbs = db.select().from(storyboards).where(eq(storyboards.projectId, id)).all();
-    for (const sb of sbs) db.delete(storyboardPanels).where(eq(storyboardPanels.storyboardId, sb.id)).run();
-    db.delete(storyboards).where(eq(storyboards.projectId, id)).run();
-    db.delete(animatics).where(eq(animatics.projectId, id)).run();
-    db.delete(scripts).where(eq(scripts.projectId, id)).run();
-    db.delete(projectMembers).where(eq(projectMembers.projectId, id)).run();
-    db.delete(projects).where(eq(projects.id, id)).run();
+  async updateProject: (id: number, patch: Partial<InsertProject>) =>
+    await db.update(projects).set(patch).where(eq(projects.id, id)).returning().then(r => r[0]),
+  async deleteProject: (id: number) => {
+    await db.delete(comments).where(eq(comments.projectId, id));
+    await db.delete(scenes).where(eq(scenes.projectId, id));
+    const sbs = await db.select().from(storyboards).where(eq(storyboards.projectId, id));
+    for (const sb of sbs) await db.delete(storyboardPanels).where(eq(storyboardPanels.storyboardId, sb.id));
+    await db.delete(storyboards).where(eq(storyboards.projectId, id));
+    await db.delete(animatics).where(eq(animatics.projectId, id));
+    await db.delete(scripts).where(eq(scripts.projectId, id));
+    await db.delete(projectMembers).where(eq(projectMembers.projectId, id));
+    await db.delete(projects).where(eq(projects.id, id));
   },
 
   // ===== MEMBERS =====
   listMembers: (projectId: number): (ProjectMember & { user: User })[] => {
-    const rows = db.select().from(projectMembers).where(eq(projectMembers.projectId, projectId)).all();
+    const rows = await db.select().from(projectMembers).where(eq(projectMembers.projectId, projectId));
     if (rows.length === 0) return [];
     const userIds = rows.map(r => r.userId);
-    const allUsers = db.select().from(users).where(inArray(users.id, userIds)).all();
+    const allUsers = await db.select().from(users).where(inArray(users.id, userIds));
     const userMap = allUsers.reduce((acc, u) => {
       acc[u.id] = u;
       return acc;
     }, {} as Record<number, User>);
     return rows.map((r) => ({ ...r, user: userMap[r.userId]! }));
   },
-  addMember: (m: InsertProjectMember) => db.insert(projectMembers).values(m).returning().get(),
-  removeMember: (projectId: number, userId: number) =>
-    db.delete(projectMembers).where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId))).run(),
+  async addMember: (m: InsertProjectMember) => await db.insert(projectMembers).values(m).returning().then(r => r[0]),
+  async removeMember: (projectId: number, userId: number) =>
+    await db.delete(projectMembers).where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId))),
   isMember: (projectId: number, userId: number): boolean => {
-    const row = db.select().from(projectMembers).where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId))).get();
+    const row = await db.select().from(projectMembers).where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId))).then(r => r[0]);
     return !!row;
   },
 
   // ===== SCRIPTS =====
-  listScripts: (projectId: number) => db.select().from(scripts).where(eq(scripts.projectId, projectId)).all(),
-  getScript: (id: number) => db.select().from(scripts).where(eq(scripts.id, id)).get(),
-  createScript: (s: InsertScript) => db.insert(scripts).values({ ...s, updatedAt: new Date().toISOString() }).returning().get(),
-  updateScript: (id: number, patch: Partial<InsertScript>) =>
-    db.update(scripts).set({ ...patch, updatedAt: new Date().toISOString() }).where(eq(scripts.id, id)).returning().get(),
-  deleteScript: (id: number) => db.delete(scripts).where(eq(scripts.id, id)).run(),
+  async listScripts: (projectId: number) => await db.select().from(scripts).where(eq(scripts.projectId, projectId)),
+  async getScript: (id: number) => await db.select().from(scripts).where(eq(scripts.id, id)).then(r => r[0]),
+  async createScript: (s: InsertScript) => await db.insert(scripts).values({ ...s, updatedAt: new Date().toISOString() }).returning().then(r => r[0]),
+  async updateScript: (id: number, patch: Partial<InsertScript>) =>
+    await db.update(scripts).set({ ...patch, updatedAt: new Date().toISOString() }).where(eq(scripts.id, id)).returning().then(r => r[0]),
+  async deleteScript: (id: number) => await db.delete(scripts).where(eq(scripts.id, id)),
 
   // ===== STORYBOARDS =====
-  listStoryboards: (projectId: number) => db.select().from(storyboards).where(eq(storyboards.projectId, projectId)).all(),
-  getStoryboard: (id: number) => db.select().from(storyboards).where(eq(storyboards.id, id)).get(),
-  createStoryboard: (s: InsertStoryboard) =>
-    db.insert(storyboards).values({ ...s, createdAt: new Date().toISOString() }).returning().get(),
-  deleteStoryboard: (id: number) => {
-    db.delete(storyboardPanels).where(eq(storyboardPanels.storyboardId, id)).run();
-    db.delete(storyboards).where(eq(storyboards.id, id)).run();
+  async listStoryboards: (projectId: number) => await db.select().from(storyboards).where(eq(storyboards.projectId, projectId)),
+  async getStoryboard: (id: number) => await db.select().from(storyboards).where(eq(storyboards.id, id)).then(r => r[0]),
+  async createStoryboard: (s: InsertStoryboard) =>
+    await db.insert(storyboards).values({ ...s, createdAt: new Date().toISOString() }).returning().then(r => r[0]),
+  async deleteStoryboard: (id: number) => {
+    await db.delete(storyboardPanels).where(eq(storyboardPanels.storyboardId, id));
+    await db.delete(storyboards).where(eq(storyboards.id, id));
   },
 
   // ===== PANELS =====
-  listPanels: (storyboardId: number) =>
-    db.select().from(storyboardPanels).where(eq(storyboardPanels.storyboardId, storyboardId)).orderBy(asc(storyboardPanels.orderIdx)).all(),
-  createPanel: (p: InsertPanel) => db.insert(storyboardPanels).values(p).returning().get(),
-  updatePanel: (id: number, patch: Partial<InsertPanel>) =>
-    db.update(storyboardPanels).set(patch).where(eq(storyboardPanels.id, id)).returning().get(),
-  deletePanel: (id: number) => db.delete(storyboardPanels).where(eq(storyboardPanels.id, id)).run(),
-  getPanel: (id: number) => db.select().from(storyboardPanels).where(eq(storyboardPanels.id, id)).get(),
+  async listPanels: (storyboardId: number) =>
+    await db.select().from(storyboardPanels).where(eq(storyboardPanels.storyboardId, storyboardId)).orderBy(asc(storyboardPanels.orderIdx)),
+  async createPanel: (p: InsertPanel) => await db.insert(storyboardPanels).values(p).returning().then(r => r[0]),
+  async updatePanel: (id: number, patch: Partial<InsertPanel>) =>
+    await db.update(storyboardPanels).set(patch).where(eq(storyboardPanels.id, id)).returning().then(r => r[0]),
+  async deletePanel: (id: number) => await db.delete(storyboardPanels).where(eq(storyboardPanels.id, id)),
+  async getPanel: (id: number) => await db.select().from(storyboardPanels).where(eq(storyboardPanels.id, id)).then(r => r[0]),
 
   // ===== ANIMATICS =====
-  listAnimatics: (projectId: number) => db.select().from(animatics).where(eq(animatics.projectId, projectId)).all(),
-  createAnimatic: (a: InsertAnimatic) =>
-    db.insert(animatics).values({ ...a, createdAt: new Date().toISOString() }).returning().get(),
-  deleteAnimatic: (id: number) => db.delete(animatics).where(eq(animatics.id, id)).run(),
+  async listAnimatics: (projectId: number) => await db.select().from(animatics).where(eq(animatics.projectId, projectId)),
+  async createAnimatic: (a: InsertAnimatic) =>
+    await db.insert(animatics).values({ ...a, createdAt: new Date().toISOString() }).returning().then(r => r[0]),
+  async deleteAnimatic: (id: number) => await db.delete(animatics).where(eq(animatics.id, id)),
 
   // ===== SCENES =====
-  listScenes: (projectId: number) => db.select().from(scenes).where(eq(scenes.projectId, projectId)).all(),
-  getScene: (id: number) => db.select().from(scenes).where(eq(scenes.id, id)).get(),
-  createScene: (s: InsertScene) => db.insert(scenes).values(s).returning().get(),
-  updateScene: (id: number, patch: Partial<InsertScene>) =>
-    db.update(scenes).set(patch).where(eq(scenes.id, id)).returning().get(),
-  deleteScene: (id: number) => db.delete(scenes).where(eq(scenes.id, id)).run(),
+  async listScenes: (projectId: number) => await db.select().from(scenes).where(eq(scenes.projectId, projectId)),
+  async getScene: (id: number) => await db.select().from(scenes).where(eq(scenes.id, id)).then(r => r[0]),
+  async createScene: (s: InsertScene) => await db.insert(scenes).values(s).returning().then(r => r[0]),
+  async updateScene: (id: number, patch: Partial<InsertScene>) =>
+    await db.update(scenes).set(patch).where(eq(scenes.id, id)).returning().then(r => r[0]),
+  async deleteScene: (id: number) => await db.delete(scenes).where(eq(scenes.id, id)),
 
   // ===== COMMENTS =====
-  listComments: (projectId: number) =>
-    db.select().from(comments).where(eq(comments.projectId, projectId)).orderBy(desc(comments.createdAt)).all(),
-  createComment: (c: InsertComment) =>
-    db.insert(comments).values({ ...c, createdAt: new Date().toISOString() }).returning().get(),
-  deleteComment: (id: number) => db.delete(comments).where(eq(comments.id, id)).run(),
+  async listComments: (projectId: number) =>
+    await db.select().from(comments).where(eq(comments.projectId, projectId)).orderBy(desc(comments.createdAt)),
+  async createComment: (c: InsertComment) =>
+    await db.insert(comments).values({ ...c, createdAt: new Date().toISOString() }).returning().then(r => r[0]),
+  async deleteComment: (id: number) => await db.delete(comments).where(eq(comments.id, id)),
 
   // ===== ASSETS =====
   listAssets: (projectId: number, category?: string): Asset[] => {
     if (category) {
-      return db.select().from(assets).where(and(eq(assets.projectId, projectId), eq(assets.category, category))).orderBy(desc(assets.createdAt)).all();
+      return await db.select().from(assets).where(and(eq(assets.projectId, projectId), eq(assets.category, category))).orderBy(desc(assets.createdAt));
     }
-    return db.select().from(assets).where(eq(assets.projectId, projectId)).orderBy(desc(assets.createdAt)).all();
+    return await db.select().from(assets).where(eq(assets.projectId, projectId)).orderBy(desc(assets.createdAt));
   },
-  getAsset: (id: number) => db.select().from(assets).where(eq(assets.id, id)).get(),
+  async getAsset: (id: number) => await db.select().from(assets).where(eq(assets.id, id)).then(r => r[0]),
   createAsset: (a: InsertAsset): Asset =>
-    db.insert(assets).values({ ...a, createdAt: new Date().toISOString() }).returning().get(),
-  updateAsset: (id: number, patch: Partial<Pick<InsertAsset, 'notes' | 'tags' | 'category'>>) =>
-    db.update(assets).set(patch).where(eq(assets.id, id)).returning().get(),
-  deleteAsset: (id: number) => db.delete(assets).where(eq(assets.id, id)).run(),
+    await db.insert(assets).values({ ...a, createdAt: new Date().toISOString() }).returning().then(r => r[0]),
+  async updateAsset: (id: number, patch: Partial<Pick<InsertAsset, 'notes' | 'tags' | 'category'>>) =>
+    await db.update(assets).set(patch).where(eq(assets.id, id)).returning().then(r => r[0]),
+  async deleteAsset: (id: number) => await db.delete(assets).where(eq(assets.id, id)),
 
   // ===== COMMISSIONS =====
   listCommissions: (ownerUserId: number): Commission[] =>
-    db.select().from(commissions).where(eq(commissions.ownerUserId, ownerUserId)).orderBy(asc(commissions.status), desc(commissions.createdAt)).all(),
-  getCommission: (id: number) => db.select().from(commissions).where(eq(commissions.id, id)).get(),
+    await db.select().from(commissions).where(eq(commissions.ownerUserId, ownerUserId)).orderBy(asc(commissions.status), desc(commissions.createdAt)),
+  async getCommission: (id: number) => await db.select().from(commissions).where(eq(commissions.id, id)).then(r => r[0]),
   createCommission: (c: InsertCommission): Commission =>
-    db.insert(commissions).values({ ...c, createdAt: new Date().toISOString() }).returning().get(),
-  updateCommission: (id: number, patch: Partial<Pick<Commission, 'status' | 'notes' | 'linkedProjectId'>>) =>
-    db.update(commissions).set(patch).where(eq(commissions.id, id)).returning().get(),
+    await db.insert(commissions).values({ ...c, createdAt: new Date().toISOString() }).returning().then(r => r[0]),
+  async updateCommission: (id: number, patch: Partial<Pick<Commission, 'status' | 'notes' | 'linkedProjectId'>>) =>
+    await db.update(commissions).set(patch).where(eq(commissions.id, id)).returning().then(r => r[0]),
 
   // ===== RENDERS =====
   listRenders: (sceneId: number): Render[] =>
-    db.select().from(renders).where(eq(renders.sceneId, sceneId)).orderBy(desc(renders.createdAt)).all(),
-  getRender: (id: number) => db.select().from(renders).where(eq(renders.id, id)).get(),
+    await db.select().from(renders).where(eq(renders.sceneId, sceneId)).orderBy(desc(renders.createdAt)),
+  async getRender: (id: number) => await db.select().from(renders).where(eq(renders.id, id)).then(r => r[0]),
   createRender: (r: InsertRender): Render =>
-    db.insert(renders).values({ ...r, createdAt: new Date().toISOString() }).returning().get(),
-  updateRender: (id: number, patch: Partial<InsertRender>) =>
-    db.update(renders).set(patch).where(eq(renders.id, id)).returning().get(),
-  deleteRender: (id: number) => db.delete(renders).where(eq(renders.id, id)).run(),
+    await db.insert(renders).values({ ...r, createdAt: new Date().toISOString() }).returning().then(r => r[0]),
+  async updateRender: (id: number, patch: Partial<InsertRender>) =>
+    await db.update(renders).set(patch).where(eq(renders.id, id)).returning().then(r => r[0]),
+  async deleteRender: (id: number) => await db.delete(renders).where(eq(renders.id, id)),
 
   // ===== ANIMATIC PROJECTS (v2) =====
   getAnimaticProjectsByProject: (projectId: number): AnimaticProject[] =>
-    db.select().from(animaticProjects).where(eq(animaticProjects.projectId, projectId)).orderBy(desc(animaticProjects.createdAt)).all(),
+    await db.select().from(animaticProjects).where(eq(animaticProjects.projectId, projectId)).orderBy(desc(animaticProjects.createdAt)),
 
-  getAnimaticProject: (id: number) => {
-    const ap = db.select().from(animaticProjects).where(eq(animaticProjects.id, id)).get();
+  async getAnimaticProject: (id: number) => {
+    const ap = await db.select().from(animaticProjects).where(eq(animaticProjects.id, id)).then(r => r[0]);
     if (!ap) return undefined;
-    const tracks = db.select().from(animaticTracks).where(eq(animaticTracks.animaticProjectId, id)).orderBy(asc(animaticTracks.orderIdx)).all();
+    const tracks = await db.select().from(animaticTracks).where(eq(animaticTracks.animaticProjectId, id)).orderBy(asc(animaticTracks.orderIdx));
     const allClips = tracks.length > 0
-      ? db.select().from(animaticClips).where(inArray(animaticClips.trackId, tracks.map(t => t.id))).all()
+      ? await db.select().from(animaticClips).where(inArray(animaticClips.trackId, tracks.map(t => t.id)))
       : [];
     const tracksWithClips = tracks.map(t => ({
       ...t,
@@ -494,7 +494,7 @@ export const storage = {
 
   createAnimaticProject: (data: InsertAnimaticProject): AnimaticProject => {
     const now = new Date().toISOString();
-    const ap = db.insert(animaticProjects).values({ ...data, createdAt: now, updatedAt: now }).returning().get();
+    const ap = await db.insert(animaticProjects).values({ ...data, createdAt: now, updatedAt: now }).returning().then(r => r[0]);
     // Create 4 default tracks
     const defaultTracks: { kind: string; name: string; orderIdx: number }[] = [
       { kind: "panel", name: "Panels", orderIdx: 0 },
@@ -503,47 +503,47 @@ export const storage = {
       { kind: "music", name: "Music", orderIdx: 3 },
     ];
     for (const t of defaultTracks) {
-      db.insert(animaticTracks).values({ animaticProjectId: ap.id, kind: t.kind, name: t.name, orderIdx: t.orderIdx, muted: false, volume: "1.0" }).run();
+      await db.insert(animaticTracks).values({ animaticProjectId: ap.id, kind: t.kind, name: t.name, orderIdx: t.orderIdx, muted: false, volume: "1.0" });
     }
     return ap;
   },
 
-  updateAnimaticProject: (id: number, patch: Partial<InsertAnimaticProject>) =>
-    db.update(animaticProjects).set({ ...patch, updatedAt: new Date().toISOString() }).where(eq(animaticProjects.id, id)).returning().get(),
+  async updateAnimaticProject: (id: number, patch: Partial<InsertAnimaticProject>) =>
+    await db.update(animaticProjects).set({ ...patch, updatedAt: new Date().toISOString() }).where(eq(animaticProjects.id, id)).returning().then(r => r[0]),
 
-  deleteAnimaticProject: (id: number) => {
-    const tracks = db.select().from(animaticTracks).where(eq(animaticTracks.animaticProjectId, id)).all();
+  async deleteAnimaticProject: (id: number) => {
+    const tracks = await db.select().from(animaticTracks).where(eq(animaticTracks.animaticProjectId, id));
     for (const t of tracks) {
-      db.delete(animaticClips).where(eq(animaticClips.trackId, t.id)).run();
+      await db.delete(animaticClips).where(eq(animaticClips.trackId, t.id));
     }
-    db.delete(animaticTracks).where(eq(animaticTracks.animaticProjectId, id)).run();
-    db.delete(animaticProjects).where(eq(animaticProjects.id, id)).run();
+    await db.delete(animaticTracks).where(eq(animaticTracks.animaticProjectId, id));
+    await db.delete(animaticProjects).where(eq(animaticProjects.id, id));
   },
 
   // ===== ANIMATIC TRACKS =====
   createTrack: (data: InsertAnimaticTrack): AnimaticTrack =>
-    db.insert(animaticTracks).values(data).returning().get(),
+    await db.insert(animaticTracks).values(data).returning().then(r => r[0]),
 
-  updateTrack: (id: number, patch: Partial<InsertAnimaticTrack>) =>
-    db.update(animaticTracks).set(patch).where(eq(animaticTracks.id, id)).returning().get(),
+  async updateTrack: (id: number, patch: Partial<InsertAnimaticTrack>) =>
+    await db.update(animaticTracks).set(patch).where(eq(animaticTracks.id, id)).returning().then(r => r[0]),
 
-  deleteTrack: (id: number) => {
-    db.delete(animaticClips).where(eq(animaticClips.trackId, id)).run();
-    db.delete(animaticTracks).where(eq(animaticTracks.id, id)).run();
+  async deleteTrack: (id: number) => {
+    await db.delete(animaticClips).where(eq(animaticClips.trackId, id));
+    await db.delete(animaticTracks).where(eq(animaticTracks.id, id));
   },
 
-  getTrack: (id: number) => db.select().from(animaticTracks).where(eq(animaticTracks.id, id)).get(),
+  async getTrack: (id: number) => await db.select().from(animaticTracks).where(eq(animaticTracks.id, id)).then(r => r[0]),
 
   // ===== ANIMATIC CLIPS =====
   createClip: (data: InsertAnimaticClip): AnimaticClip =>
-    db.insert(animaticClips).values(data).returning().get(),
+    await db.insert(animaticClips).values(data).returning().then(r => r[0]),
 
-  updateClip: (id: number, patch: Partial<InsertAnimaticClip>) =>
-    db.update(animaticClips).set(patch).where(eq(animaticClips.id, id)).returning().get(),
+  async updateClip: (id: number, patch: Partial<InsertAnimaticClip>) =>
+    await db.update(animaticClips).set(patch).where(eq(animaticClips.id, id)).returning().then(r => r[0]),
 
-  deleteClip: (id: number) => db.delete(animaticClips).where(eq(animaticClips.id, id)).run(),
+  async deleteClip: (id: number) => await db.delete(animaticClips).where(eq(animaticClips.id, id)),
 
-  getClip: (id: number) => db.select().from(animaticClips).where(eq(animaticClips.id, id)).get(),
+  async getClip: (id: number) => await db.select().from(animaticClips).where(eq(animaticClips.id, id)).then(r => r[0]),
 
   // raw access for seed
   _db: db,
@@ -857,129 +857,129 @@ CREATE TABLE IF NOT EXISTS biz_expenses (
 // Extend the storage object with v4 methods
 Object.assign(storage, {
   // v4 AI Keys
-  getProjectAiKey: (projectId: number) =>
-    db.select().from(projectAiKeys).where(eq(projectAiKeys.projectId, projectId)).get(),
+  async getProjectAiKey: (projectId: number) =>
+    await db.select().from(projectAiKeys).where(eq(projectAiKeys.projectId, projectId)).then(r => r[0]),
   setProjectAiKey: (projectId: number, encryptedKey: string, model: string | null = null): ProjectAiKey => {
-    const existing = db.select().from(projectAiKeys).where(eq(projectAiKeys.projectId, projectId)).get();
+    const existing = await db.select().from(projectAiKeys).where(eq(projectAiKeys.projectId, projectId)).then(r => r[0]);
     if (existing) {
-      return db.update(projectAiKeys).set({ encryptedKey, model }).where(eq(projectAiKeys.projectId, projectId)).returning().get()!;
+      return await db.update(projectAiKeys).set({ encryptedKey, model }).where(eq(projectAiKeys.projectId, projectId)).returning().then(r => r[0])!;
     }
-    return db.insert(projectAiKeys).values({ projectId, encryptedKey, model, createdAt: new Date().toISOString() }).returning().get();
+    return await db.insert(projectAiKeys).values({ projectId, encryptedKey, model, createdAt: new Date().toISOString() }).returning().then(r => r[0]);
   },
-  deleteProjectAiKey: (projectId: number) =>
-    db.delete(projectAiKeys).where(eq(projectAiKeys.projectId, projectId)).run(),
+  async deleteProjectAiKey: (projectId: number) =>
+    await db.delete(projectAiKeys).where(eq(projectAiKeys.projectId, projectId)),
 
   // v4 AI Agent Chat
   listAiChatSessions: (projectId: number): AiChatSession[] =>
-    db.select().from(aiChatSessions).where(eq(aiChatSessions.projectId, projectId)).orderBy(desc(aiChatSessions.createdAt)).all(),
+    await db.select().from(aiChatSessions).where(eq(aiChatSessions.projectId, projectId)).orderBy(desc(aiChatSessions.createdAt)),
   getAiChatSession: (id: number): AiChatSession | undefined =>
-    db.select().from(aiChatSessions).where(eq(aiChatSessions.id, id)).get(),
+    await db.select().from(aiChatSessions).where(eq(aiChatSessions.id, id)).then(r => r[0]),
   createAiChatSession: (data: InsertAiChatSession): AiChatSession =>
-    db.insert(aiChatSessions).values({ ...data, createdAt: new Date().toISOString() }).returning().get(),
-  deleteAiChatSession: (id: number) => {
-    db.delete(aiChatMessages).where(eq(aiChatMessages.sessionId, id)).run();
-    db.delete(aiChatSessions).where(eq(aiChatSessions.id, id)).run();
+    await db.insert(aiChatSessions).values({ ...data, createdAt: new Date().toISOString() }).returning().then(r => r[0]),
+  async deleteAiChatSession: (id: number) => {
+    await db.delete(aiChatMessages).where(eq(aiChatMessages.sessionId, id));
+    await db.delete(aiChatSessions).where(eq(aiChatSessions.id, id));
   },
   listAiChatMessages: (sessionId: number): AiChatMessage[] =>
-    db.select().from(aiChatMessages).where(eq(aiChatMessages.sessionId, sessionId)).orderBy(asc(aiChatMessages.id)).all(),
+    await db.select().from(aiChatMessages).where(eq(aiChatMessages.sessionId, sessionId)).orderBy(asc(aiChatMessages.id)),
   createAiChatMessage: (data: InsertAiChatMessage): AiChatMessage =>
-    db.insert(aiChatMessages).values({ ...data, createdAt: new Date().toISOString() }).returning().get(),
+    await db.insert(aiChatMessages).values({ ...data, createdAt: new Date().toISOString() }).returning().then(r => r[0]),
 
   // v4 Achievements
   listAchievements: (userId: number): Achievement[] =>
-    db.select().from(achievements).where(eq(achievements.userId, userId)).all(),
+    await db.select().from(achievements).where(eq(achievements.userId, userId)),
   hasAchievement: (userId: number, code: string): boolean =>
-    !!db.select().from(achievements).where(and(eq(achievements.userId, userId), eq(achievements.code, code))).get(),
+    !!await db.select().from(achievements).where(and(eq(achievements.userId, userId), eq(achievements.code, code))).then(r => r[0]),
   unlockAchievement: (userId: number, code: string): Achievement =>
-    db.insert(achievements).values({ userId, code, unlockedAt: new Date().toISOString() }).returning().get(),
+    await db.insert(achievements).values({ userId, code, unlockedAt: new Date().toISOString() }).returning().then(r => r[0]),
 
   // v4 Panel Pins
   listPanelPins: (panelId: number): PanelPin[] =>
-    db.select().from(panelPins).where(eq(panelPins.panelId, panelId)).all(),
+    await db.select().from(panelPins).where(eq(panelPins.panelId, panelId)),
   createPanelPin: (p: InsertPanelPin): PanelPin =>
-    db.insert(panelPins).values({ ...p, createdAt: new Date().toISOString() }).returning().get(),
-  deletePanelPin: (id: number) => db.delete(panelPins).where(eq(panelPins.id, id)).run(),
-  getPanelPin: (id: number) => db.select().from(panelPins).where(eq(panelPins.id, id)).get(),
+    await db.insert(panelPins).values({ ...p, createdAt: new Date().toISOString() }).returning().then(r => r[0]),
+  async deletePanelPin: (id: number) => await db.delete(panelPins).where(eq(panelPins.id, id)),
+  async getPanelPin: (id: number) => await db.select().from(panelPins).where(eq(panelPins.id, id)).then(r => r[0]),
 
   // v4 Commission Line Items
   listCommissionLineItems: (commissionId: number): CommissionLineItem[] =>
-    db.select().from(commissionLineItems).where(eq(commissionLineItems.commissionId, commissionId)).all(),
+    await db.select().from(commissionLineItems).where(eq(commissionLineItems.commissionId, commissionId)),
   createCommissionLineItem: (item: InsertCommissionLineItem): CommissionLineItem =>
-    db.insert(commissionLineItems).values({ ...item, createdAt: new Date().toISOString() }).returning().get(),
+    await db.insert(commissionLineItems).values({ ...item, createdAt: new Date().toISOString() }).returning().then(r => r[0]),
   updateCommissionLineItem: (id: number, patch: Partial<InsertCommissionLineItem>): CommissionLineItem | undefined =>
-    db.update(commissionLineItems).set(patch).where(eq(commissionLineItems.id, id)).returning().get(),
-  deleteCommissionLineItem: (id: number) => db.delete(commissionLineItems).where(eq(commissionLineItems.id, id)).run(),
-  updateCommissionQuote: (id: number, quoteCents: number | null, invoicedAt?: string | null) => {
+    await db.update(commissionLineItems).set(patch).where(eq(commissionLineItems.id, id)).returning().then(r => r[0]),
+  async deleteCommissionLineItem: (id: number) => await db.delete(commissionLineItems).where(eq(commissionLineItems.id, id)),
+  async updateCommissionQuote: (id: number, quoteCents: number | null, invoicedAt?: string | null) => {
     const patch: any = {};
     if (quoteCents !== undefined) patch.quoteCents = quoteCents;
     if (invoicedAt !== undefined) patch.invoicedAt = invoicedAt;
-    return db.update(commissions).set(patch).where(eq(commissions.id, id)).returning().get();
+    return await db.update(commissions).set(patch).where(eq(commissions.id, id)).returning().then(r => r[0]);
   },
 
   // v4 Inbox Items
   listInboxItems: (userId: number): InboxItem[] =>
-    db.select().from(inboxItems).where(eq(inboxItems.userId, userId)).orderBy(desc(inboxItems.createdAt)).all(),
+    await db.select().from(inboxItems).where(eq(inboxItems.userId, userId)).orderBy(desc(inboxItems.createdAt)),
   createInboxItem: (item: InsertInboxItem): InboxItem =>
-    db.insert(inboxItems).values({ ...item, createdAt: new Date().toISOString() }).returning().get(),
+    await db.insert(inboxItems).values({ ...item, createdAt: new Date().toISOString() }).returning().then(r => r[0]),
   updateInboxItem: (id: number, patch: Partial<InsertInboxItem>): InboxItem | undefined =>
-    db.update(inboxItems).set(patch).where(eq(inboxItems.id, id)).returning().get(),
-  deleteInboxItem: (id: number) => db.delete(inboxItems).where(eq(inboxItems.id, id)).run(),
-  getInboxItem: (id: number) => db.select().from(inboxItems).where(eq(inboxItems.id, id)).get(),
+    await db.update(inboxItems).set(patch).where(eq(inboxItems.id, id)).returning().then(r => r[0]),
+  async deleteInboxItem: (id: number) => await db.delete(inboxItems).where(eq(inboxItems.id, id)),
+  async getInboxItem: (id: number) => await db.select().from(inboxItems).where(eq(inboxItems.id, id)).then(r => r[0]),
 
   // v4 Tags
   listTags: (userId: number): Tag[] =>
-    db.select().from(tags).where(eq(tags.userId, userId)).all(),
+    await db.select().from(tags).where(eq(tags.userId, userId)),
   createTag: (t: InsertTag): Tag =>
-    db.insert(tags).values(t).returning().get(),
+    await db.insert(tags).values(t).returning().then(r => r[0]),
   updateTag: (id: number, patch: Partial<InsertTag>): Tag | undefined =>
-    db.update(tags).set(patch).where(eq(tags.id, id)).returning().get(),
-  deleteTag: (id: number) => {
-    db.delete(tagAssignments).where(eq(tagAssignments.tagId, id)).run();
-    db.delete(tags).where(eq(tags.id, id)).run();
+    await db.update(tags).set(patch).where(eq(tags.id, id)).returning().then(r => r[0]),
+  async deleteTag: (id: number) => {
+    await db.delete(tagAssignments).where(eq(tagAssignments.tagId, id));
+    await db.delete(tags).where(eq(tags.id, id));
   },
-  getTag: (id: number) => db.select().from(tags).where(eq(tags.id, id)).get(),
+  async getTag: (id: number) => await db.select().from(tags).where(eq(tags.id, id)).then(r => r[0]),
 
   // v4 Tag Assignments
   listTagAssignments: (entityKind: string, entityId: number): TagAssignment[] =>
-    db.select().from(tagAssignments).where(and(eq(tagAssignments.entityKind, entityKind), eq(tagAssignments.entityId, entityId))).all(),
+    await db.select().from(tagAssignments).where(and(eq(tagAssignments.entityKind, entityKind), eq(tagAssignments.entityId, entityId))),
   createTagAssignment: (a: InsertTagAssignment): TagAssignment =>
-    db.insert(tagAssignments).values(a).returning().get(),
-  deleteTagAssignment: (id: number) => db.delete(tagAssignments).where(eq(tagAssignments.id, id)).run(),
-  getTagAssignment: (id: number) => db.select().from(tagAssignments).where(eq(tagAssignments.id, id)).get(),
+    await db.insert(tagAssignments).values(a).returning().then(r => r[0]),
+  async deleteTagAssignment: (id: number) => await db.delete(tagAssignments).where(eq(tagAssignments.id, id)),
+  async getTagAssignment: (id: number) => await db.select().from(tagAssignments).where(eq(tagAssignments.id, id)).then(r => r[0]),
 
   // v4 Scene Time Entries
   listSceneTimeEntries: (sceneId: number): SceneTimeEntry[] =>
-    db.select().from(sceneTimeEntries).where(eq(sceneTimeEntries.sceneId, sceneId)).all(),
+    await db.select().from(sceneTimeEntries).where(eq(sceneTimeEntries.sceneId, sceneId)),
   getActiveTimeEntry: (sceneId: number, userId: number): SceneTimeEntry | undefined =>
-    db.select().from(sceneTimeEntries)
+    await db.select().from(sceneTimeEntries)
       .where(and(eq(sceneTimeEntries.sceneId, sceneId), eq(sceneTimeEntries.userId, userId)))
-      .all()
+      
       .find(e => e.endedAt === null || e.endedAt === undefined),
   startTimer: (sceneId: number, userId: number): SceneTimeEntry =>
-    db.insert(sceneTimeEntries).values({ sceneId, userId, startedAt: Date.now(), endedAt: null, durationMs: null }).returning().get(),
+    await db.insert(sceneTimeEntries).values({ sceneId, userId, startedAt: Date.now(), endedAt: null, durationMs: null }).returning().then(r => r[0]),
   stopTimer: (id: number): SceneTimeEntry | undefined => {
-    const entry = db.select().from(sceneTimeEntries).where(eq(sceneTimeEntries.id, id)).get();
+    const entry = await db.select().from(sceneTimeEntries).where(eq(sceneTimeEntries.id, id)).then(r => r[0]);
     if (!entry) return undefined;
     const durationMs = Date.now() - entry.startedAt;
-    return db.update(sceneTimeEntries).set({ endedAt: Date.now(), durationMs }).where(eq(sceneTimeEntries.id, id)).returning().get();
+    return await db.update(sceneTimeEntries).set({ endedAt: Date.now(), durationMs }).where(eq(sceneTimeEntries.id, id)).returning().then(r => r[0]);
   },
 
   // v4 Commission Pricing Presets
   listCommissionPricingPresets: (projectId: number): CommissionPricingPreset[] =>
-    db.select().from(commissionPricingPresets).where(eq(commissionPricingPresets.projectId, projectId)).all(),
+    await db.select().from(commissionPricingPresets).where(eq(commissionPricingPresets.projectId, projectId)),
   createCommissionPricingPreset: (p: InsertCommissionPricingPreset): CommissionPricingPreset =>
-    db.insert(commissionPricingPresets).values({ ...p, createdAt: new Date().toISOString() }).returning().get(),
+    await db.insert(commissionPricingPresets).values({ ...p, createdAt: new Date().toISOString() }).returning().then(r => r[0]),
   updateCommissionPricingPreset: (id: number, patch: Partial<InsertCommissionPricingPreset>): CommissionPricingPreset | undefined =>
-    db.update(commissionPricingPresets).set(patch).where(eq(commissionPricingPresets.id, id)).returning().get(),
-  deleteCommissionPricingPreset: (id: number) =>
-    db.delete(commissionPricingPresets).where(eq(commissionPricingPresets.id, id)).run(),
+    await db.update(commissionPricingPresets).set(patch).where(eq(commissionPricingPresets.id, id)).returning().then(r => r[0]),
+  async deleteCommissionPricingPreset: (id: number) =>
+    await db.delete(commissionPricingPresets).where(eq(commissionPricingPresets.id, id)),
 
   // v4 Global Search — uses raw SQLite for LIKE queries across user's accessible projects
-  globalSearch: (userId: number, q: string, limit = 20) => {
+  async globalSearch: (userId: number, q: string, limit = 20) => {
     const likeQ = `%${q.toLowerCase()}%`;
     // Get user's accessible project IDs
-    const memberRows = db.select({ projectId: projectMembers.projectId }).from(projectMembers).where(eq(projectMembers.userId, userId)).all();
-    const ownedProjects = db.select({ id: projects.id }).from(projects).where(eq(projects.ownerId, userId)).all();
+    const memberRows = await db.select({ projectId: projectMembers.projectId }).from(projectMembers).where(eq(projectMembers.userId, userId));
+    const ownedProjects = await db.select({ id: projects.id }).from(projects).where(eq(projects.ownerId, userId));
     const allIds = memberRows.map(r => r.projectId).concat(ownedProjects.map(r => r.id));
     const projectIds = Array.from(new Set(allIds));
     if (projectIds.length === 0) return { projects: [], scenes: [], scripts: [], assets: [], comments: [] };
@@ -1016,48 +1016,48 @@ Object.assign(storage, {
 
   // v5 Agent 5
   getCommissionHours: (commissionId: number): DltCommissionHours[] =>
-    db.select().from(dltCommissionHours).where(eq(dltCommissionHours.commissionId, commissionId)).all(),
+    await db.select().from(dltCommissionHours).where(eq(dltCommissionHours.commissionId, commissionId)),
   addCommissionHours: (hours: InsertDltCommissionHours): DltCommissionHours =>
-    db.insert(dltCommissionHours).values({ ...hours, loggedAt: new Date().toISOString() }).returning().get(),
-  createAudVoiceTake: (take: InsertAudVoiceTake) =>
-    db.insert(audVoiceTakes).values(take).returning().get(),
+    await db.insert(dltCommissionHours).values({ ...hours, loggedAt: new Date().toISOString() }).returning().then(r => r[0]),
+  async createAudVoiceTake: (take: InsertAudVoiceTake) =>
+    await db.insert(audVoiceTakes).values(take).returning().then(r => r[0]),
   
-  getAudVoiceTakesByProject: (projectId: number) =>
-    db.select().from(audVoiceTakes).where(eq(audVoiceTakes.projectId, projectId)).all(),
+  async getAudVoiceTakesByProject: (projectId: number) =>
+    await db.select().from(audVoiceTakes).where(eq(audVoiceTakes.projectId, projectId)),
   
-  createAudCaption: (caption: InsertAudCaption) =>
-    db.insert(audCaptions).values(caption).returning().get(),
+  async createAudCaption: (caption: InsertAudCaption) =>
+    await db.insert(audCaptions).values(caption).returning().then(r => r[0]),
     
-  getAudCaptionsByAnimatic: (animaticProjectId: number) =>
-    db.select().from(audCaptions).where(eq(audCaptions.animaticProjectId, animaticProjectId)).all(),
+  async getAudCaptionsByAnimatic: (animaticProjectId: number) =>
+    await db.select().from(audCaptions).where(eq(audCaptions.animaticProjectId, animaticProjectId)),
     
-  deleteAudCaption: (id: number) =>
-    db.delete(audCaptions).where(eq(audCaptions.id, id)).run(),
+  async deleteAudCaption: (id: number) =>
+    await db.delete(audCaptions).where(eq(audCaptions.id, id)),
 
-  getCliApprovals: (projectId: number) =>
-    db.select().from(cli_approvals).where(eq(cli_approvals.projectId, projectId)).all(),
+  async getCliApprovals: (projectId: number) =>
+    await db.select().from(cli_approvals).where(eq(cli_approvals.projectId, projectId)),
   
-  createCliApproval: (data: Partial<typeof cli_approvals.$inferInsert>) =>
-    db.insert(cli_approvals).values(data as any).returning().get(),
+  async createCliApproval: (data: Partial<typeof cli_approvals.$inferInsert>) =>
+    await db.insert(cli_approvals).values(data as any).returning().then(r => r[0]),
 
-  getCliFeedback: (projectId: number) =>
-    db.select().from(cli_feedback).where(eq(cli_feedback.projectId, projectId)).all(),
+  async getCliFeedback: (projectId: number) =>
+    await db.select().from(cli_feedback).where(eq(cli_feedback.projectId, projectId)),
     
-  createCliFeedback: (data: Partial<typeof cli_feedback.$inferInsert>) =>
-    db.insert(cli_feedback).values({ ...data, createdAt: new Date().toISOString() } as any).returning().get(),
+  async createCliFeedback: (data: Partial<typeof cli_feedback.$inferInsert>) =>
+    await db.insert(cli_feedback).values({ ...data, createdAt: new Date().toISOString() } as any).returning().then(r => r[0]),
 
-  getA11yPrefs: (userId: number) => 
-    db.select().from(a11y_user_prefs).where(eq(a11y_user_prefs.userId, userId)).get(),
+  async getA11yPrefs: (userId: number) => 
+    await db.select().from(a11y_user_prefs).where(eq(a11y_user_prefs.userId, userId)).then(r => r[0]),
   
-  createA11yPrefs: (prefs: InsertA11yPrefs) => 
-    db.insert(a11y_user_prefs).values(prefs).returning().get(),
+  async createA11yPrefs: (prefs: InsertA11yPrefs) => 
+    await db.insert(a11y_user_prefs).values(prefs).returning().then(r => r[0]),
   
-  updateA11yPrefs: (userId: number, patch: Partial<InsertA11yPrefs>) => {
-    const existing = db.select().from(a11y_user_prefs).where(eq(a11y_user_prefs.userId, userId)).get();
+  async updateA11yPrefs: (userId: number, patch: Partial<InsertA11yPrefs>) => {
+    const existing = await db.select().from(a11y_user_prefs).where(eq(a11y_user_prefs.userId, userId)).then(r => r[0]);
     if (existing) {
-      return db.update(a11y_user_prefs).set(patch).where(eq(a11y_user_prefs.userId, userId)).returning().get();
+      return await db.update(a11y_user_prefs).set(patch).where(eq(a11y_user_prefs.userId, userId)).returning().then(r => r[0]);
     }
-    return db.insert(a11y_user_prefs).values({
+    return await db.insert(a11y_user_prefs).values({
       userId,
       focusMode: patch.focusMode || 0,
       dyslexia: patch.dyslexia || 0,
@@ -1065,20 +1065,20 @@ Object.assign(storage, {
       reducedMotion: patch.reducedMotion || 0,
       largeTouch: patch.largeTouch || 0,
       audioCues: patch.audioCues || 0,
-    }).returning().get();
+    }).returning().then(r => r[0]);
   },
 
-  listChallengePrompts: () => db.select().from(challenge_prompts).orderBy(desc(challenge_prompts.weekNumber)).all(),
+  async listChallengePrompts: () => await db.select().from(challenge_prompts).orderBy(desc(challenge_prompts.weekNumber)),
   
-  listChallengeSubmissions: (userId: number) => db.select().from(challenge_submissions).where(eq(challenge_submissions.userId, userId)).all(),
+  async listChallengeSubmissions: (userId: number) => await db.select().from(challenge_submissions).where(eq(challenge_submissions.userId, userId)),
 
-  createChallengeSubmission: (submission: InsertChallengeSubmission & { userId: number }) => 
-    db.insert(challenge_submissions).values({ ...submission, createdAt: new Date().toISOString() }).returning().get(),
+  async createChallengeSubmission: (submission: InsertChallengeSubmission & { userId: number }) => 
+    await db.insert(challenge_submissions).values({ ...submission, createdAt: new Date().toISOString() }).returning().then(r => r[0]),
 
-  listChallengeFeed: (userId: number) => {
-    const prompts = db.select().from(challenge_prompts).all();
-    const submissions = db.select().from(challenge_submissions).orderBy(desc(challenge_submissions.createdAt)).all();
-    const reactions = db.select().from(challenge_reactions).all();
+  async listChallengeFeed: (userId: number) => {
+    const prompts = await db.select().from(challenge_prompts);
+    const submissions = await db.select().from(challenge_submissions).orderBy(desc(challenge_submissions.createdAt));
+    const reactions = await db.select().from(challenge_reactions);
     return submissions.map((submission) => {
       const counts = reactions
         .filter((reaction) => reaction.submissionId === submission.id)
@@ -1096,134 +1096,134 @@ Object.assign(storage, {
   },
 
   toggleChallengeReaction: (submissionId: number, userId: number, sticker: string): { active: boolean; reaction?: ChallengeReaction } => {
-    const submission = db.select().from(challenge_submissions).where(eq(challenge_submissions.id, submissionId)).get();
+    const submission = await db.select().from(challenge_submissions).where(eq(challenge_submissions.id, submissionId)).then(r => r[0]);
     if (!submission) throw new Error("Submission not found");
-    const existing = db.select().from(challenge_reactions).where(and(
+    const existing = await db.select().from(challenge_reactions).where(and(
       eq(challenge_reactions.submissionId, submissionId),
       eq(challenge_reactions.userId, userId),
-    )).get();
+    )).then(r => r[0]);
     if (existing?.sticker === sticker) {
-      db.delete(challenge_reactions).where(eq(challenge_reactions.id, existing.id)).run();
+      await db.delete(challenge_reactions).where(eq(challenge_reactions.id, existing.id));
       return { active: false };
     }
     if (existing) {
-      const updated = db.update(challenge_reactions)
+      const updated = await db.update(challenge_reactions)
         .set({ sticker, createdAt: new Date().toISOString() })
         .where(eq(challenge_reactions.id, existing.id))
         .returning()
-        .get();
+        .then(r => r[0]);
       return { active: true, reaction: updated };
     }
-    const reaction = db.insert(challenge_reactions).values({
+    const reaction = await db.insert(challenge_reactions).values({
       submissionId,
       userId,
       sticker,
       createdAt: new Date().toISOString(),
-    }).returning().get();
+    }).returning().then(r => r[0]);
     return { active: true, reaction };
   },
 
   // Studio Render Budget
   getStudioRenderBudget: (projectId: number): StudioRenderBudget | undefined =>
-    db.select().from(studio_render_budget).where(eq(studio_render_budget.projectId, projectId)).get(),
+    await db.select().from(studio_render_budget).where(eq(studio_render_budget.projectId, projectId)).then(r => r[0]),
   upsertStudioRenderBudget: (projectId: number, totalMinutes: number): StudioRenderBudget => {
-    const existing = db.select().from(studio_render_budget).where(eq(studio_render_budget.projectId, projectId)).get();
+    const existing = await db.select().from(studio_render_budget).where(eq(studio_render_budget.projectId, projectId)).then(r => r[0]);
     const now = new Date().toISOString();
     if (existing) {
-      return db.update(studio_render_budget).set({ totalMinutes, updatedAt: now }).where(eq(studio_render_budget.projectId, projectId)).returning().get()!;
+      return await db.update(studio_render_budget).set({ totalMinutes, updatedAt: now }).where(eq(studio_render_budget.projectId, projectId)).returning().then(r => r[0])!;
     }
-    return db.insert(studio_render_budget).values({ projectId, totalMinutes, updatedAt: now }).returning().get();
+    return await db.insert(studio_render_budget).values({ projectId, totalMinutes, updatedAt: now }).returning().then(r => r[0]);
   },
 
   // Studio Render Events
   listStudioRenderEvents: (projectId: number): StudioRenderEvent[] =>
-    db.select().from(studio_render_events).where(eq(studio_render_events.projectId, projectId)).orderBy(asc(studio_render_events.createdAt)).all(),
+    await db.select().from(studio_render_events).where(eq(studio_render_events.projectId, projectId)).orderBy(asc(studio_render_events.createdAt)),
   createStudioRenderEvent: (data: InsertStudioRenderEvent): StudioRenderEvent =>
-    db.insert(studio_render_events).values({ ...data, createdAt: new Date().toISOString() }).returning().get(),
-  deleteStudioRenderEvent: (id: number) =>
-    db.delete(studio_render_events).where(eq(studio_render_events.id, id)).run(),
+    await db.insert(studio_render_events).values({ ...data, createdAt: new Date().toISOString() }).returning().then(r => r[0]),
+  async deleteStudioRenderEvent: (id: number) =>
+    await db.delete(studio_render_events).where(eq(studio_render_events.id, id)),
 
   // Studio Snapshots
   listStudioSnapshots: (projectId: number): StudioSnapshot[] =>
-    db.select().from(studio_snapshots).where(eq(studio_snapshots.projectId, projectId)).orderBy(asc(studio_snapshots.createdAt)).all(),
+    await db.select().from(studio_snapshots).where(eq(studio_snapshots.projectId, projectId)).orderBy(asc(studio_snapshots.createdAt)),
   createStudioSnapshot: (data: InsertStudioSnapshot): StudioSnapshot =>
-    db.insert(studio_snapshots).values({ ...data, createdAt: new Date().toISOString() }).returning().get(),
-  deleteStudioSnapshot: (id: number) =>
-    db.delete(studio_snapshots).where(eq(studio_snapshots.id, id)).run(),
+    await db.insert(studio_snapshots).values({ ...data, createdAt: new Date().toISOString() }).returning().then(r => r[0]),
+  async deleteStudioSnapshot: (id: number) =>
+    await db.delete(studio_snapshots).where(eq(studio_snapshots.id, id)),
   getStudioSnapshot: (id: number): StudioSnapshot | undefined =>
-    db.select().from(studio_snapshots).where(eq(studio_snapshots.id, id)).get(),
+    await db.select().from(studio_snapshots).where(eq(studio_snapshots.id, id)).then(r => r[0]),
   restoreStudioSnapshot: (snapshotId: number, projectId: number): StudioSnapshot =>
-    db.insert(studio_snapshots).values({
+    await db.insert(studio_snapshots).values({
       projectId,
       label: `Restored from #${snapshotId}`,
       parentId: snapshotId,
       restoredFromId: snapshotId,
       createdAt: new Date().toISOString(),
-    }).returning().get(),
+    }).returning().then(r => r[0]),
 
   // Studio Credit Entries
   listStudioCreditEntries: (projectId: number): StudioCreditEntry[] =>
-    db.select().from(studio_credit_entries).where(eq(studio_credit_entries.projectId, projectId)).orderBy(asc(studio_credit_entries.orderIdx)).all(),
+    await db.select().from(studio_credit_entries).where(eq(studio_credit_entries.projectId, projectId)).orderBy(asc(studio_credit_entries.orderIdx)),
   createStudioCreditEntry: (data: InsertStudioCreditEntry): StudioCreditEntry =>
-    db.insert(studio_credit_entries).values({ ...data, createdAt: new Date().toISOString() }).returning().get(),
+    await db.insert(studio_credit_entries).values({ ...data, createdAt: new Date().toISOString() }).returning().then(r => r[0]),
   updateStudioCreditEntry: (id: number, patch: Partial<InsertStudioCreditEntry>): StudioCreditEntry | undefined =>
-    db.update(studio_credit_entries).set(patch).where(eq(studio_credit_entries.id, id)).returning().get(),
-  deleteStudioCreditEntry: (id: number) =>
-    db.delete(studio_credit_entries).where(eq(studio_credit_entries.id, id)).run(),
+    await db.update(studio_credit_entries).set(patch).where(eq(studio_credit_entries.id, id)).returning().then(r => r[0]),
+  async deleteStudioCreditEntry: (id: number) =>
+    await db.delete(studio_credit_entries).where(eq(studio_credit_entries.id, id)),
   replaceStudioCreditEntries: (projectId: number, entries: InsertStudioCreditEntry[]): StudioCreditEntry[] => {
-    db.delete(studio_credit_entries).where(eq(studio_credit_entries.projectId, projectId)).run();
+    await db.delete(studio_credit_entries).where(eq(studio_credit_entries.projectId, projectId));
     const now = new Date().toISOString();
     const result: StudioCreditEntry[] = [];
     for (const e of entries) {
-      result.push(db.insert(studio_credit_entries).values({ ...e, createdAt: now }).returning().get());
+      result.push(await db.insert(studio_credit_entries).values({ ...e, createdAt: now }).returning().then(r => r[0]));
     }
     return result;
   },
 
   // === LORE ADDITIONS START ===
   listLorFacts: (projectId: number): LorContinuityFact[] =>
-    db.select().from(lor_continuity_facts).where(eq(lor_continuity_facts.projectId, projectId)).all(),
+    await db.select().from(lor_continuity_facts).where(eq(lor_continuity_facts.projectId, projectId)),
   createLorFact: (f: InsertLorContinuityFact): LorContinuityFact =>
-    db.insert(lor_continuity_facts).values({ ...f, createdAt: new Date().toISOString() }).returning().get(),
+    await db.insert(lor_continuity_facts).values({ ...f, createdAt: new Date().toISOString() }).returning().then(r => r[0]),
   updateLorFact: (id: number, patch: Partial<InsertLorContinuityFact>): LorContinuityFact | undefined =>
-    db.update(lor_continuity_facts).set(patch).where(eq(lor_continuity_facts.id, id)).returning().get(),
-  deleteLorFact: (id: number) => db.delete(lor_continuity_facts).where(eq(lor_continuity_facts.id, id)).run(),
+    await db.update(lor_continuity_facts).set(patch).where(eq(lor_continuity_facts.id, id)).returning().then(r => r[0]),
+  async deleteLorFact: (id: number) => await db.delete(lor_continuity_facts).where(eq(lor_continuity_facts.id, id)),
   getLorFact: (id: number): LorContinuityFact | undefined =>
-    db.select().from(lor_continuity_facts).where(eq(lor_continuity_facts.id, id)).get(),
+    await db.select().from(lor_continuity_facts).where(eq(lor_continuity_facts.id, id)).then(r => r[0]),
 
   listLorPalettes: (projectId: number): LorPalette[] =>
-    db.select().from(lor_palettes).where(eq(lor_palettes.projectId, projectId)).all(),
+    await db.select().from(lor_palettes).where(eq(lor_palettes.projectId, projectId)),
   createLorPalette: (p: InsertLorPalette): LorPalette =>
-    db.insert(lor_palettes).values({ ...p, createdAt: new Date().toISOString() }).returning().get(),
-  deleteLorPalette: (id: number) => db.delete(lor_palettes).where(eq(lor_palettes.id, id)).run(),
+    await db.insert(lor_palettes).values({ ...p, createdAt: new Date().toISOString() }).returning().then(r => r[0]),
+  async deleteLorPalette: (id: number) => await db.delete(lor_palettes).where(eq(lor_palettes.id, id)),
   getLorPalette: (id: number): LorPalette | undefined =>
-    db.select().from(lor_palettes).where(eq(lor_palettes.id, id)).get(),
+    await db.select().from(lor_palettes).where(eq(lor_palettes.id, id)).then(r => r[0]),
 
   listLorAssetVersions: (assetId: number): LorAssetVersion[] =>
-    db.select().from(lor_asset_versions).where(eq(lor_asset_versions.assetId, assetId)).orderBy(desc(lor_asset_versions.versionNum)).all(),
+    await db.select().from(lor_asset_versions).where(eq(lor_asset_versions.assetId, assetId)).orderBy(desc(lor_asset_versions.versionNum)),
   createLorAssetVersion: (v: InsertLorAssetVersion): LorAssetVersion =>
-    db.insert(lor_asset_versions).values({ ...v, uploadedAt: new Date().toISOString() }).returning().get(),
-  updateLorAssetVersionsForAsset: (assetId: number, patch: Partial<LorAssetVersion>) =>
-    db.update(lor_asset_versions).set(patch).where(eq(lor_asset_versions.assetId, assetId)).run(),
+    await db.insert(lor_asset_versions).values({ ...v, uploadedAt: new Date().toISOString() }).returning().then(r => r[0]),
+  async updateLorAssetVersionsForAsset: (assetId: number, patch: Partial<LorAssetVersion>) =>
+    await db.update(lor_asset_versions).set(patch).where(eq(lor_asset_versions.assetId, assetId)),
   updateLorAssetVersion: (id: number, patch: Partial<LorAssetVersion>): LorAssetVersion | undefined =>
-    db.update(lor_asset_versions).set(patch).where(eq(lor_asset_versions.id, id)).returning().get(),
+    await db.update(lor_asset_versions).set(patch).where(eq(lor_asset_versions.id, id)).returning().then(r => r[0]),
   getLorAssetVersion: (id: number): LorAssetVersion | undefined =>
-    db.select().from(lor_asset_versions).where(eq(lor_asset_versions.id, id)).get(),
+    await db.select().from(lor_asset_versions).where(eq(lor_asset_versions.id, id)).then(r => r[0]),
 
   listLorCasting: (projectId: number): LorCastingMatrix[] =>
-    db.select().from(lor_casting_matrix).where(eq(lor_casting_matrix.projectId, projectId)).all(),
-  upsertLorCasting: (projectId: number, sceneId: number, entityId: number, present: boolean) => {
-    const existing = db.select().from(lor_casting_matrix).where(
+    await db.select().from(lor_casting_matrix).where(eq(lor_casting_matrix.projectId, projectId)),
+  async upsertLorCasting: (projectId: number, sceneId: number, entityId: number, present: boolean) => {
+    const existing = await db.select().from(lor_casting_matrix).where(
       and(
         eq(lor_casting_matrix.projectId, projectId),
         eq(lor_casting_matrix.sceneId, sceneId),
         eq(lor_casting_matrix.entityId, entityId)
       )
-    ).get();
+    ).then(r => r[0]);
     if (existing) {
-      return db.update(lor_casting_matrix).set({ present }).where(eq(lor_casting_matrix.id, existing.id)).run();
+      return await db.update(lor_casting_matrix).set({ present }).where(eq(lor_casting_matrix.id, existing.id));
     } else {
-      return db.insert(lor_casting_matrix).values({ projectId, sceneId, entityId, present }).run();
+      return await db.insert(lor_casting_matrix).values({ projectId, sceneId, entityId, present });
     }
   },
   // === LORE ADDITIONS END ===

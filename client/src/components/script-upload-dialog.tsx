@@ -106,89 +106,59 @@ export function ScriptUploadDialog({ open, onOpenChange, projectId, onUploaded }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Upload size={18} /> Upload Script
-          </DialogTitle>
-          <DialogDescription>
-            Import your script from a document file. Supports PDF, DOCX, TXT, and Markdown.
+      <DialogContent className="sm:max-w-[480px] rounded-3xl p-0 overflow-hidden border-none shadow-2xl bg-background/95 backdrop-blur-xl">
+        <div className="bg-primary/5 p-8 flex flex-col items-center text-center border-b border-border/20">
+          <div className="h-16 w-16 bg-primary/10 rounded-2xl flex items-center justify-center mb-4 text-primary">
+            <Upload size={32} />
+          </div>
+          <DialogTitle className="font-display text-2xl font-bold">Import Script</DialogTitle>
+          <DialogDescription className="mt-2 text-sm text-muted-foreground">
+            Drag and drop your script file or click to browse.
           </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-4 py-4">
-          {/* File info */}
-          <div className="rounded-lg bg-blue-50 dark:bg-blue-950/30 p-3 flex gap-2 items-start">
-            <AlertCircle size={16} className="text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
-            <div className="text-sm text-blue-700 dark:text-blue-300">
-              <p className="font-medium mb-1">Supported formats:</p>
-              <ul className="text-xs space-y-0.5">
-                <li>• <strong>PDF</strong> - Text extracted from the document</li>
-                <li>• <strong>DOCX</strong> - Word documents</li>
-                <li>• <strong>TXT</strong> - Plain text</li>
-                <li>• <strong>Markdown</strong> - MD files</li>
-              </ul>
-            </div>
-          </div>
-
-          {/* File selection area */}
-          <div>
-            <Label className="mb-2 block">Select file</Label>
-            <input
-              ref={fileRef}
-              type="file"
-              accept={allowedMimes.join(",")}
-              onChange={handleFileSelect}
-              disabled={uploading}
-              className="hidden"
-            />
-            <button
-              onClick={() => fileRef.current?.click()}
-              disabled={uploading}
-              className="w-full border-2 border-dashed border-border rounded-lg p-6 text-center hover:bg-muted/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {uploading ? (
-                <div className="flex flex-col items-center gap-2">
-                  <Loader2 size={24} className="animate-spin text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground">Processing file...</p>
-                </div>
-              ) : (
-                <div className="flex flex-col items-center gap-2">
-                  <FileText size={24} className="text-muted-foreground" />
-                  <div>
-                    <p className="font-medium text-sm">Click to upload</p>
-                    <p className="text-xs text-muted-foreground">or drag and drop</p>
-                  </div>
-                  {fileName && <p className="text-xs text-primary mt-1">{fileName}</p>}
-                </div>
-              )}
-            </button>
-          </div>
-
-          {/* Info note */}
-          <div className="text-xs text-muted-foreground space-y-1">
-            <p>✓ Text will be automatically extracted and searchable</p>
-            <p>✓ Original file is stored for download</p>
-            <p>✓ The extracted script opens in the reader after upload</p>
-          </div>
         </div>
 
-        <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={uploading}>
-            Cancel
-          </Button>
-          <Button onClick={() => fileRef.current?.click()} disabled={uploading}>
+        <div className="p-8">
+          <div 
+            onClick={() => !uploading && fileRef.current?.click()}
+            className={`border-2 border-dashed rounded-2xl p-10 flex flex-col items-center justify-center transition-all cursor-pointer ${uploading ? 'opacity-50 pointer-events-none' : 'hover:border-primary/50 hover:bg-primary/5 border-border/30'}`}
+          >
             {uploading ? (
               <>
-                <Loader2 size={14} className="mr-2 animate-spin" />
-                Uploading...
+                <Loader2 size={24} className="animate-spin text-primary mb-2" />
+                <span className="text-sm font-medium">Processing "{fileName}"...</span>
               </>
             ) : (
               <>
-                <Upload size={14} className="mr-2" />
-                Choose file
+                <FileText size={24} className="text-muted-foreground mb-2" />
+                <span className="text-sm font-medium">
+                  {fileName || "Click to select a file"}
+                </span>
+                <span className="text-[10px] text-muted-foreground mt-1 text-center">
+                  PDF, DOCX, TXT, MD (Max 10MB)
+                </span>
               </>
             )}
+            <input
+              ref={fileRef}
+              type="file"
+              className="hidden"
+              accept={allowedMimes.join(",")}
+              onChange={handleFileSelect}
+            />
+          </div>
+
+          <div className="mt-6 flex items-start gap-3 bg-muted/30 p-4 rounded-xl">
+            <AlertCircle size={16} className="text-muted-foreground mt-0.5 shrink-0" />
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              We'll use AI to analyze the structure of your script and prepare it for storyboarding.
+              Large files may take a few seconds to process.
+            </p>
+          </div>
+        </div>
+
+        <DialogFooter className="p-4 bg-muted/20 border-t border-border/20 flex sm:justify-center">
+          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={uploading} className="rounded-full">
+            Cancel
           </Button>
         </DialogFooter>
       </DialogContent>

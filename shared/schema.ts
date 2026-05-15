@@ -1,10 +1,10 @@
-import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
+import { pgTable, text, integer , serial, boolean} from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
 // ===== USERS =====
-export const users = sqliteTable("users", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const users = pgTable("users", {
+  id: serial("id").primaryKey(),
   email: text("email").notNull().unique(),
   name: text("name").notNull(),
   avatarColor: text("avatar_color").notNull().default("#6E4FE8"),
@@ -15,8 +15,8 @@ export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 
 // ===== PROJECTS =====
-export const projects = sqliteTable("projects", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const projects = pgTable("projects", {
+  id: serial("id").primaryKey(),
   ownerId: integer("owner_id").notNull(),
   title: text("title").notNull(),
   description: text("description").notNull().default(""),
@@ -24,7 +24,7 @@ export const projects = sqliteTable("projects", {
   deadline: text("deadline"),
   status: text("status").notNull().default("active"),
   shareToken: text("share_token").notNull(),
-  shareEnabled: integer("share_enabled", { mode: "boolean" }).notNull().default(false),
+  shareEnabled: boolean("share_enabled").notNull().default(false),
   createdAt: text("created_at").notNull().default(""),
   cli_brandLogo: text("cli_brand_logo"), // base64
   cli_brandColor: text("cli_brand_color").notNull().default("#9DD0FF"),
@@ -36,8 +36,8 @@ export type InsertProject = z.infer<typeof insertProjectSchema>;
 export type Project = typeof projects.$inferSelect;
 
 // ===== PROJECT MEMBERS =====
-export const projectMembers = sqliteTable("project_members", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const projectMembers = pgTable("project_members", {
+  id: serial("id").primaryKey(),
   projectId: integer("project_id").notNull(),
   userId: integer("user_id").notNull(),
   role: text("role").notNull().default("editor"),
@@ -47,8 +47,8 @@ export type InsertProjectMember = z.infer<typeof insertProjectMemberSchema>;
 export type ProjectMember = typeof projectMembers.$inferSelect;
 
 // ===== SCRIPTS =====
-export const scripts = sqliteTable("scripts", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const scripts = pgTable("scripts", {
+  id: serial("id").primaryKey(),
   projectId: integer("project_id").notNull(),
   title: text("title").notNull().default("Untitled Script"),
   content: text("content").notNull().default(""),
@@ -63,8 +63,8 @@ export type InsertScript = z.infer<typeof insertScriptSchema>;
 export type Script = typeof scripts.$inferSelect;
 
 // ===== STORYBOARDS =====
-export const storyboards = sqliteTable("storyboards", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const storyboards = pgTable("storyboards", {
+  id: serial("id").primaryKey(),
   projectId: integer("project_id").notNull(),
   title: text("title").notNull().default("Storyboard"),
   createdAt: text("created_at").notNull().default(""),
@@ -74,8 +74,8 @@ export type InsertStoryboard = z.infer<typeof insertStoryboardSchema>;
 export type Storyboard = typeof storyboards.$inferSelect;
 
 // ===== STORYBOARD PANELS =====
-export const storyboardPanels = sqliteTable("storyboard_panels", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const storyboardPanels = pgTable("storyboard_panels", {
+  id: serial("id").primaryKey(),
   storyboardId: integer("storyboard_id").notNull(),
   orderIdx: integer("order_idx").notNull().default(0),
   imageData: text("image_data").notNull(),
@@ -88,8 +88,8 @@ export type InsertPanel = z.infer<typeof insertPanelSchema>;
 export type Panel = typeof storyboardPanels.$inferSelect;
 
 // ===== ANIMATICS =====
-export const animatics = sqliteTable("animatics", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const animatics = pgTable("animatics", {
+  id: serial("id").primaryKey(),
   projectId: integer("project_id").notNull(),
   title: text("title").notNull().default("Animatic"),
   videoData: text("video_data").notNull(),
@@ -101,8 +101,8 @@ export type InsertAnimatic = z.infer<typeof insertAnimaticSchema>;
 export type Animatic = typeof animatics.$inferSelect;
 
 // ===== SCENES =====
-export const scenes = sqliteTable("scenes", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const scenes = pgTable("scenes", {
+  id: serial("id").primaryKey(),
   projectId: integer("project_id").notNull(),
   number: text("number").notNull().default("1"),
   title: text("title").notNull().default("Untitled Scene"),
@@ -117,8 +117,8 @@ export type InsertScene = z.infer<typeof insertSceneSchema>;
 export type Scene = typeof scenes.$inferSelect;
 
 // ===== COMMENTS =====
-export const comments = sqliteTable("comments", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const comments = pgTable("comments", {
+  id: serial("id").primaryKey(),
   projectId: integer("project_id").notNull(),
   sceneId: integer("scene_id"),
   authorId: integer("author_id").notNull(),
@@ -130,8 +130,8 @@ export type InsertComment = z.infer<typeof insertCommentSchema>;
 export type Comment = typeof comments.$inferSelect;
 
 // ===== ASSETS =====
-export const assets = sqliteTable("assets", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const assets = pgTable("assets", {
+  id: serial("id").primaryKey(),
   projectId: integer("project_id").notNull(),
   category: text("category").notNull().default("Other"), // Characters | Backgrounds | Props | References | Other
   filename: text("filename").notNull(),
@@ -149,8 +149,8 @@ export type InsertAsset = z.infer<typeof insertAssetSchema>;
 export type Asset = typeof assets.$inferSelect;
 
 // ===== COMMISSIONS =====
-export const commissions = sqliteTable("commissions", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const commissions = pgTable("commissions", {
+  id: serial("id").primaryKey(),
   ownerUserId: integer("owner_user_id").notNull(), // artist
   clientName: text("client_name").notNull(),
   clientEmail: text("client_email").notNull(),
@@ -169,8 +169,8 @@ export type InsertCommission = z.infer<typeof insertCommissionSchema>;
 export type Commission = typeof commissions.$inferSelect;
 
 // ===== ANIMATIC PROJECTS (v2 multi-track editor) =====
-export const animaticProjects = sqliteTable("animatic_projects", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const animaticProjects = pgTable("animatic_projects", {
+  id: serial("id").primaryKey(),
   projectId: integer("project_id").notNull(),
   title: text("title").notNull().default("Untitled Animatic"),
   fps: integer("fps").notNull().default(24),
@@ -183,13 +183,13 @@ export type InsertAnimaticProject = z.infer<typeof insertAnimaticProjectSchema>;
 export type AnimaticProject = typeof animaticProjects.$inferSelect;
 
 // ===== ANIMATIC TRACKS =====
-export const animaticTracks = sqliteTable("animatic_tracks", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const animaticTracks = pgTable("animatic_tracks", {
+  id: serial("id").primaryKey(),
   animaticProjectId: integer("animatic_project_id").notNull(),
   kind: text("kind").notNull().default("panel"), // panel | voice | sfx | music
   name: text("name").notNull().default("Track"),
   orderIdx: integer("order_idx").notNull().default(0),
-  muted: integer("muted", { mode: "boolean" }).notNull().default(false),
+  muted: boolean("muted").notNull().default(false),
   volume: text("volume").notNull().default("1.0"), // stored as text to avoid float precision issues
 });
 export const insertAnimaticTrackSchema = createInsertSchema(animaticTracks).omit({ id: true });
@@ -197,8 +197,8 @@ export type InsertAnimaticTrack = z.infer<typeof insertAnimaticTrackSchema>;
 export type AnimaticTrack = typeof animaticTracks.$inferSelect;
 
 // ===== ANIMATIC CLIPS =====
-export const animaticClips = sqliteTable("animatic_clips", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const animaticClips = pgTable("animatic_clips", {
+  id: serial("id").primaryKey(),
   trackId: integer("track_id").notNull(),
   startMs: integer("start_ms").notNull().default(0),
   durationMs: integer("duration_ms").notNull().default(2000),
@@ -215,8 +215,8 @@ export type InsertAnimaticClip = z.infer<typeof insertAnimaticClipSchema>;
 export type AnimaticClip = typeof animaticClips.$inferSelect;
 
 // ===== RENDERS =====
-export const renders = sqliteTable("renders", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const renders = pgTable("renders", {
+  id: serial("id").primaryKey(),
   sceneId: integer("scene_id").notNull(),
   label: text("label").notNull().default("Render"), // e.g. "v3 final"
   status: text("status").notNull().default("queued"), // queued | running | done | failed
@@ -233,8 +233,8 @@ export type Render = typeof renders.$inferSelect;
 // ============================================================
 // v4 AI Shot Helper
 // ============================================================
-export const projectAiKeys = sqliteTable("project_ai_keys", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const projectAiKeys = pgTable("project_ai_keys", {
+  id: serial("id").primaryKey(),
   projectId: integer("project_id").notNull(),
   encryptedKey: text("encrypted_key").notNull(), // base64 obfuscation (NOT real encryption - see build notes)
   model: text("model"), // Optional model preference
@@ -244,8 +244,8 @@ export const insertProjectAiKeySchema = createInsertSchema(projectAiKeys).omit({
 export type InsertProjectAiKey = z.infer<typeof insertProjectAiKeySchema>;
 export type ProjectAiKey = typeof projectAiKeys.$inferSelect;
 
-export const aiChatSessions = sqliteTable("ai_chat_sessions", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const aiChatSessions = pgTable("ai_chat_sessions", {
+  id: serial("id").primaryKey(),
   projectId: integer("project_id").notNull(),
   scriptId: integer("script_id"), // Optional: lock session to a specific script
   title: text("title").notNull().default("AI Assistant"),
@@ -255,8 +255,8 @@ export const insertAiChatSessionSchema = createInsertSchema(aiChatSessions).omit
 export type InsertAiChatSession = z.infer<typeof insertAiChatSessionSchema>;
 export type AiChatSession = typeof aiChatSessions.$inferSelect;
 
-export const aiChatMessages = sqliteTable("ai_chat_messages", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const aiChatMessages = pgTable("ai_chat_messages", {
+  id: serial("id").primaryKey(),
   sessionId: integer("session_id").notNull(),
   role: text("role").notNull(), // 'user' | 'assistant' | 'system' | 'tool'
   content: text("content").notNull(),
@@ -272,8 +272,8 @@ export type AiChatMessage = typeof aiChatMessages.$inferSelect;
 // ============================================================
 // v4 Achievements
 // ============================================================
-export const achievements = sqliteTable("achievements", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const achievements = pgTable("achievements", {
+  id: serial("id").primaryKey(),
   userId: integer("user_id").notNull(),
   code: text("code").notNull(),
   unlockedAt: text("unlocked_at").notNull().default(""),
@@ -285,8 +285,8 @@ export type Achievement = typeof achievements.$inferSelect;
 // ============================================================
 // v4 Panel Pins
 // ============================================================
-export const panelPins = sqliteTable("panel_pins", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const panelPins = pgTable("panel_pins", {
+  id: serial("id").primaryKey(),
   panelId: integer("panel_id").notNull(),
   xPercent: integer("x_percent").notNull().default(0),
   yPercent: integer("y_percent").notNull().default(0),
@@ -301,8 +301,8 @@ export type PanelPin = typeof panelPins.$inferSelect;
 // ============================================================
 // v4 Commission Line Items + pricing cols (migration-style alter added in storage)
 // ============================================================
-export const commissionLineItems = sqliteTable("commission_line_items", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const commissionLineItems = pgTable("commission_line_items", {
+  id: serial("id").primaryKey(),
   commissionId: integer("commission_id").notNull(),
   description: text("description").notNull(),
   quantity: integer("quantity").notNull().default(1),
@@ -316,8 +316,8 @@ export type CommissionLineItem = typeof commissionLineItems.$inferSelect;
 // ============================================================
 // v4 Inbox Items
 // ============================================================
-export const inboxItems = sqliteTable("inbox_items", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const inboxItems = pgTable("inbox_items", {
+  id: serial("id").primaryKey(),
   userId: integer("user_id").notNull(),
   body: text("body").notNull(),
   tags: text("tags").notNull().default(""), // comma-separated
@@ -331,8 +331,8 @@ export type InboxItem = typeof inboxItems.$inferSelect;
 // ============================================================
 // v4 Tags + Tag Assignments
 // ============================================================
-export const tags = sqliteTable("tags", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const tags = pgTable("tags", {
+  id: serial("id").primaryKey(),
   userId: integer("user_id").notNull(),
   name: text("name").notNull(),
   color: text("color").notNull().default("#6E4FE8"),
@@ -341,8 +341,8 @@ export const insertTagSchema = createInsertSchema(tags).omit({ id: true });
 export type InsertTag = z.infer<typeof insertTagSchema>;
 export type Tag = typeof tags.$inferSelect;
 
-export const tagAssignments = sqliteTable("tag_assignments", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const tagAssignments = pgTable("tag_assignments", {
+  id: serial("id").primaryKey(),
   tagId: integer("tag_id").notNull(),
   entityKind: text("entity_kind").notNull(), // scene | asset | panel | inboxItem
   entityId: integer("entity_id").notNull(),
@@ -354,8 +354,8 @@ export type TagAssignment = typeof tagAssignments.$inferSelect;
 // ============================================================
 // v4 Scene Time Entries
 // ============================================================
-export const sceneTimeEntries = sqliteTable("scene_time_entries", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const sceneTimeEntries = pgTable("scene_time_entries", {
+  id: serial("id").primaryKey(),
   sceneId: integer("scene_id").notNull(),
   userId: integer("user_id").notNull(),
   startedAt: integer("started_at").notNull(), // timestamp ms
@@ -372,16 +372,16 @@ export type SceneTimeEntry = typeof sceneTimeEntries.$inferSelect;
 // ============================================================
 // v5 Agent 4 - Backup/Export/Game Dev
 // ============================================================
-export const bakSnapshots = sqliteTable("bak_snapshots", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const bakSnapshots = pgTable("bak_snapshots", {
+  id: serial("id").primaryKey(),
   projectId: integer("project_id").notNull(),
   label: text("label").notNull().default("Snapshot"),
   jsonBlob: text("json_blob").notNull(),
   createdAt: text("created_at").notNull().default(""),
 });
 
-export const bakGltfExports = sqliteTable("bak_gltf_exports", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const bakGltfExports = pgTable("bak_gltf_exports", {
+  id: serial("id").primaryKey(),
   sceneId: integer("scene_id").notNull(),
   fileData: text("file_data").notNull(), // base64 or json string
   createdAt: text("created_at").notNull().default(""),
@@ -390,10 +390,10 @@ export const bakGltfExports = sqliteTable("bak_gltf_exports", {
 // ============================================================
 // v5 Agent 5 - Analytics, Heatmap, Webhooks, Commission Hours
 // ============================================================
-export const dltCommissionHours = sqliteTable("dlt_commission_hours", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const dltCommissionHours = pgTable("dlt_commission_hours", {
+  id: serial("id").primaryKey(),
   commissionId: integer("commission_id").notNull(),
-  hours: integer("hours", { mode: "number" }).notNull().default(0), 
+  hours: integer("hours").notNull().default(0), 
   loggedAt: text("logged_at").notNull().default(""),
 });
 export const insertDltCommissionHoursSchema = createInsertSchema(dltCommissionHours).omit({ id: true, loggedAt: true });
@@ -403,8 +403,8 @@ export type DltCommissionHours = typeof dltCommissionHours.$inferSelect;
 // ============================================================
 // v5 Agent 2 - Audio Features
 // ============================================================
-export const audVoiceTakes = sqliteTable("aud_voice_takes", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const audVoiceTakes = pgTable("aud_voice_takes", {
+  id: serial("id").primaryKey(),
   projectId: integer("project_id").notNull(),
   sceneId: integer("scene_id"),
   audioData: text("audio_data").notNull(), // base64 WAV
@@ -415,8 +415,8 @@ export const insertAudVoiceTakeSchema = createInsertSchema(audVoiceTakes).omit({
 export type InsertAudVoiceTake = z.infer<typeof insertAudVoiceTakeSchema>;
 export type AudVoiceTake = typeof audVoiceTakes.$inferSelect;
 
-export const audCaptions = sqliteTable("aud_captions", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const audCaptions = pgTable("aud_captions", {
+  id: serial("id").primaryKey(),
   animaticProjectId: integer("animatic_project_id").notNull(),
   text: text("text").notNull(),
   startMs: integer("start_ms").notNull(),
@@ -430,8 +430,8 @@ export type AudCaption = typeof audCaptions.$inferSelect;
 
 
 // ===== CLI: APPROVALS =====
-export const cli_approvals = sqliteTable("cli_approvals", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const cli_approvals = pgTable("cli_approvals", {
+  id: serial("id").primaryKey(),
   projectId: integer("project_id").notNull(),
   phase: text("phase").notNull(), // storyboard | animatic | final
   signedName: text("signed_name").notNull(),
@@ -443,8 +443,8 @@ export type InsertCliApproval = z.infer<typeof insertCliApprovalSchema>;
 export type CliApproval = typeof cli_approvals.$inferSelect;
 
 // ===== CLI: FEEDBACK =====
-export const cli_feedback = sqliteTable("cli_feedback", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const cli_feedback = pgTable("cli_feedback", {
+  id: serial("id").primaryKey(),
   projectId: integer("project_id").notNull(),
   sceneId: integer("scene_id"),
   fields: text("fields").notNull(), // JSON string representing the rubric
@@ -460,8 +460,8 @@ export type CliFeedback = typeof cli_feedback.$inferSelect;
 // ============================================================
 // v4 Commission Pricing Presets (per-project)
 // ============================================================
-export const commissionPricingPresets = sqliteTable("commission_pricing_presets", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const commissionPricingPresets = pgTable("commission_pricing_presets", {
+  id: serial("id").primaryKey(),
   projectId: integer("project_id").notNull(),
   kind: text("kind").notNull().default("package"), // package | addon
   name: text("name").notNull(),

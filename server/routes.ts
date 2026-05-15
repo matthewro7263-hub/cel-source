@@ -1261,6 +1261,7 @@ ${body.scriptContent}
     const openRouterPayload = {
       model: models[0],
       messages: [{ role: "system", content: systemPrompt }, ...messages],
+      stream: true,
       tools: [
         {
           type: "function",
@@ -1270,26 +1271,11 @@ ${body.scriptContent}
             parameters: {
               type: "object",
               properties: {
-                original_text: { type: "string", description: "The exact original text from the script to be replaced." },
-                replacement_text: { type: "string", description: "The new text that will replace the original." },
-                explanation: { type: "string", description: "Brief explanation of the change." }
+                original_text: { type: "string" },
+                replacement_text: { type: "string" },
+                explanation: { type: "string" }
               },
               required: ["original_text", "replacement_text"]
-            }
-          }
-        },
-        {
-          type: "function",
-          function: {
-            name: "add_script_comment",
-            description: "Add a contextual comment or note to a specific line in the script.",
-            parameters: {
-              type: "object",
-              properties: {
-                target_text: { type: "string", description: "The text to attach the comment to." },
-                comment_body: { type: "string", description: "The comment content." }
-              },
-              required: ["target_text", "comment_body"]
             }
           }
         },
@@ -1329,26 +1315,109 @@ ${body.scriptContent}
           "Authorization": `Bearer ${apiKey}`,
           "Content-Type": "application/json",
           "HTTP-Referer": "https://cel.app",
-          "X-Title": "Cel Storyboard App",
+          "X-Title": "Cel Assistant",
         },
         body: JSON.stringify(openRouterPayload),
       });
-      const data = await response.json() as any;
-      if (!response.ok) return res.status(500).json({ message: data?.error?.message || "OpenRouter Error" });
-      
-      const responseMessage = data.choices?.[0]?.message;
-      if (!responseMessage) return res.status(500).json({ message: "No response from AI" });
 
-      const savedMsg = storage.createAiChatMessage({
-        sessionId: body.sessionId,
-        role: "assistant",
-        content: responseMessage.content || "",
-        toolCalls: responseMessage.tool_calls ? JSON.stringify(responseMessage.tool_calls) : null
-      });
+      if (!response.ok) {
+        const err = await response.text();
+        return res.status(500).json({ message: `OpenRouter Error: ${err}` });
+      }
 
-      return res.json(savedMsg);
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error("No reader");
+
+      let fullContent = "";
+      let toolCalls: any[] = [];
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = new TextDecoder().decode(value);
+        const lines = chunk.split("\n").filter(l => l.trim().startsWith("data: "));
+
+        for (const line of lines) {
+          const dataText = line.substring(6);
+          if (dataText === "[DONE]") {
+            const saved = await storage.createAiChatMessage({
+              sessionId: body.sessionId,
+              role: "assistant",
+              content: fullContent,
+              toolCalls: toolCalls.length > 0 ? JSON.stringify(toolCalls) : null,
+              createdAt: new Date().toISOString()
+            });
+            res.write(`data: ${JSON.stringify({ done: true, message: saved })}\n\n`);
+            res.end();
+            return;
+          }
+
+          try {
+            const data = JSON.parse(dataText);
+            const delta = data.choices[0].delta;
+            if (delta.content) {
+              fullContent += delta.content;
+              res.write(`data: ${JSON.stringify({ content: delta.content })}\n\n`);
+            }
+            if (delta.tool_calls) {
+              for (const tc of delta.tool_calls) {
+                const i = tc.index;
+                if (!toolCalls[i]) toolCalls[i] = { id: tc.id, type: "function", function: { name: "", arguments: "" } };
+                if (tc.id) toolCalls[i].id = tc.id;
+                if (tc.function?.name) toolCalls[i].function.name += tc.function.name;
+                if (tc.function?.arguments) toolCalls[i].function.arguments += tc.function.arguments;
+              }
+            }
+          } catch (e) {}
+        }
+      }
     } catch (e: any) {
       return res.status(500).json({ message: `Agent error: ${e.message}` });
+    }
+  });
+
+  app.post("/api/projects/:projectId/ai/agent/check", requireAuth, async (req, res) => {
+    const projectId = parseInt(req.params.projectId, 10);
+    const { scriptContent, lastVersion } = req.body;
+
+    const apiKey = await storage.getProjectAiKey(projectId);
+    if (!apiKey) return res.status(404).json({ message: "No API key configured" });
+
+    const prompt = `You are the Cel Assistant. The user has just finished a draft of their script. 
+    Analyze the changes between the last version and this version (if provided), or just summarize the current script.
+    Suggest any immediate improvements or shots that come to mind. 
+    Keep it concise (2-3 sentences max).
+    
+    Current Script:
+    ${scriptContent}
+    
+    Last Version (Partial/Full):
+    ${lastVersion || "N/A"}`;
+
+    try {
+      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey.encryptedKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: apiKey.model || "openai/gpt-4o-mini",
+          messages: [{ role: "user", content: prompt }]
+        })
+      });
+
+      const data = await response.json() as any;
+      const content = data.choices?.[0]?.message?.content || "No feedback at this time.";
+      
+      res.json({ feedback: content });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
     }
   });
 

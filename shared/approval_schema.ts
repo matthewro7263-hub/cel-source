@@ -1,9 +1,9 @@
-import { sqliteTable, integer, text } from "drizzle-orm/sqlite-core";
+import { pgTable, integer, text , serial} from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-export const approval_signoffs = sqliteTable("approval_signoffs", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const approval_signoffs = pgTable("approval_signoffs", {
+  id: serial("id").primaryKey(),
   projectId: integer("project_id").notNull(),
   milestone: text("milestone").notNull(), // 'storyboard' | 'animatic' | 'final'
   status: text("status").notNull().default("pending"),

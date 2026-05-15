@@ -1,17 +1,17 @@
-import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
+import { pgTable, text, integer , serial} from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-export const challenge_prompts = sqliteTable("challenge_prompts", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const challenge_prompts = pgTable("challenge_prompts", {
+  id: serial("id").primaryKey(),
   weekNumber: integer("week_number").notNull(),
   title: text("title").notNull(),
   body: text("body").notNull(),
   createdAt: text("created_at").notNull(),
 });
 
-export const challenge_submissions = sqliteTable("challenge_submissions", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const challenge_submissions = pgTable("challenge_submissions", {
+  id: serial("id").primaryKey(),
   promptId: integer("prompt_id").notNull(),
   userId: integer("user_id").notNull(),
   imageUrl: text("image_url"),
@@ -19,8 +19,8 @@ export const challenge_submissions = sqliteTable("challenge_submissions", {
   createdAt: text("created_at").notNull(),
 });
 
-export const challenge_reactions = sqliteTable("challenge_reactions", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const challenge_reactions = pgTable("challenge_reactions", {
+  id: serial("id").primaryKey(),
   submissionId: integer("submission_id").notNull(),
   userId: integer("user_id").notNull(),
   sticker: text("sticker").notNull(),

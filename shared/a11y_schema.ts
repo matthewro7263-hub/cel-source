@@ -1,8 +1,8 @@
-import { sqliteTable, integer } from "drizzle-orm/sqlite-core";
+import { pgTable, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-export const a11y_user_prefs = sqliteTable("a11y_user_prefs", {
+export const a11y_user_prefs = pgTable("a11y_user_prefs", {
   userId: integer("user_id").primaryKey(),
   focusMode: integer("focus_mode").notNull().default(0),
   dyslexia: integer("dyslexia").notNull().default(0),

@@ -182,30 +182,30 @@ export default function ProjectWorkspace() {
         <TabsContent value="signoff"><SignOffPanel projectId={projectId} /></TabsContent>
       </Tabs>
 
-      {/* v5 quick-action toolbar — relocated from inside TabsList where they crashed layout */}
-      <div className="mt-6 flex flex-wrap items-center gap-2">
-        <Button
-          variant="outline"
-          size="sm"
+      {/* v5 quick-action toolbar — premium layout */}
+      <div className="mt-8 pt-6 border-t border-border/30 flex flex-wrap items-center gap-3">
+        <div className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground mr-2">Quick Actions</div>
+        <GlassButton
+          className="bg-primary/10 text-primary hover:bg-primary/20 text-xs h-9 px-4"
           onClick={() => { window.location.hash = `/projects/${projectId}/audio2`; }}
-          data-testid="button-audio-tools"
         >
-          <Mic size={14} className="mr-1.5" /> Audio Tools
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          className="glass h-8 border border-white/20"
+          <Mic size={14} className="mr-2" /> Audio Tools
+        </GlassButton>
+        <GlassButton
+          className="bg-card text-foreground hover:bg-muted text-xs h-9 px-4 border border-border/50"
           onClick={() => setLocation(`/projects/${projectId}/couch`)}
         >
-          <Presentation size={14} className="mr-1.5" /> Couch Mode
-        </Button>
+          <Presentation size={14} className="mr-2" /> Couch Mode
+        </GlassButton>
         <GlassButton
-          className="bg-[#9DD0FF] text-black hover:bg-[#AED9FF] text-sm h-8"
+          className="bg-[#9DD0FF] text-black hover:bg-[#AED9FF] text-xs h-9 px-4"
           onClick={() => setLocation(`/projects/${projectId}/voicebooth`)}
         >
-          <Mic size={14} className="mr-1.5" /> Voice Booth
+          <Mic size={14} className="mr-2" /> Voice Booth
         </GlassButton>
+        <div className="ml-auto">
+           <AiAgentStatus projectId={projectId} />
+        </div>
       </div>
     </div>
   );
@@ -323,6 +323,34 @@ function ScriptTab({ projectId }: { projectId: number }) {
     if (current) setDraft({ title: current.title, content: current.content });
   }, [active, current?.id]);
 
+  const { data: aiStatus } = useQuery<{ hasKey: boolean } | null>({
+    queryKey: ["/api/projects", projectId, "ai", "key"],
+  });
+
+  const [agentFeedback, setAgentFeedback] = useState<string | null>(null);
+  const [isAgentChecking, setIsAgentChecking] = useState(false);
+  const lastCheckedContent = useRef("");
+
+  useEffect(() => {
+    if (!aiStatus?.hasKey || !draft.content || draft.content === lastCheckedContent.current) return;
+
+    const timer = setTimeout(async () => {
+      setIsAgentChecking(true);
+      try {
+        const res = await apiRequest("POST", `/api/projects/${projectId}/ai/agent/check`, {
+          scriptContent: draft.content,
+          lastVersion: lastCheckedContent.current
+        });
+        const data = await res.json();
+        setAgentFeedback(data.feedback);
+        lastCheckedContent.current = draft.content;
+      } catch (e) {}
+      setIsAgentChecking(false);
+    }, 15000); // Check every 15s of inactivity
+
+    return () => clearTimeout(timer);
+  }, [draft.content, aiStatus, projectId]);
+
   useEffect(() => {
     const token = getAuthToken();
     if (!token || !projectId) return;
@@ -429,7 +457,29 @@ function ScriptTab({ projectId }: { projectId: number }) {
                 <Upload size={10} /> Uploaded
               </span>
             )}
+            <div className="flex items-center gap-2">
+              {isAgentChecking && (
+                <div className="text-[10px] font-medium text-primary animate-pulse flex items-center gap-1.5 shrink-0">
+                  <Sparkles size={10} /> Agent thinking...
+                </div>
+              )}
+              <Button size="sm" onClick={() => save.mutate()} disabled={save.isPending}>
+                {save.isPending ? "Saving..." : "Save Draft"}
+              </Button>
+            </div>
           </div>
+          
+          {agentFeedback && (
+            <div className="p-3 rounded-2xl bg-primary/5 border border-primary/10 text-xs text-primary relative animate-in fade-in slide-in-from-top-2">
+              <Button variant="ghost" size="icon" className="h-5 w-5 absolute top-1.5 right-1.5 rounded-full" onClick={() => setAgentFeedback(null)}>
+                <X size={12} />
+              </Button>
+              <div className="font-bold mb-1 flex items-center gap-1.5">
+                <Sparkles size={12} className="text-primary" /> Agent Suggestion
+              </div>
+              <div className="pr-6 leading-relaxed opacity-90">{agentFeedback}</div>
+            </div>
+          )}
           
           {current.sourceType === "upload" ? (
             <div className="rounded-md border border-border bg-background p-4 min-h-[32rem] max-h-[70vh] overflow-auto prose-cel">
@@ -1865,28 +1915,55 @@ function AiAgentPanel({ projectId, scriptContent, open, onOpenChange, onApplyScr
     enabled: !!sessionId && open,
   });
 
-  const chatMutation = useMutation({
-    mutationFn: async (content: string) => {
-      if (!sessionId) throw new Error("No active session");
-      const res = await apiRequest("POST", `/api/projects/${projectId}/ai/chat`, {
-        sessionId,
-        content,
-        scriptContent
-      });
-      return res.json();
-    },
-    onSuccess: () => {
-      setInput("");
-      refetchMessages();
-    },
-    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" })
-  });
+  const [streamingContent, setStreamingContent] = useState("");
+  const [isGenerating, setIsGenerating] = useState(false);
 
-  const handleSend = (e?: React.FormEvent) => {
+  const handleSend = async (e?: React.FormEvent) => {
     e?.preventDefault();
-    if (!input.trim() || chatMutation.isPending) return;
-    // Optimistic user message rendering could be added here, but relying on refetch is safer for now.
-    chatMutation.mutate(input);
+    if (!input.trim() || isGenerating || !sessionId) return;
+    
+    const userMsg = input;
+    setInput("");
+    setIsGenerating(true);
+    setStreamingContent("");
+
+    try {
+      const response = await fetch(`/api/projects/${projectId}/ai/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, content: userMsg, scriptContent })
+      });
+
+      if (!response.body) throw new Error("No response body");
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+
+      // Optimistically refetch to show user message
+      refetchMessages();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        const chunk = decoder.decode(value);
+        const lines = chunk.split("\n").filter(l => l.trim().startsWith("data: "));
+        
+        for (const line of lines) {
+          const data = JSON.parse(line.substring(6));
+          if (data.content) {
+            setStreamingContent(prev => prev + data.content);
+          }
+          if (data.done) {
+            setIsGenerating(false);
+            setStreamingContent("");
+            refetchMessages();
+          }
+        }
+      }
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+      setIsGenerating(false);
+    }
   };
 
   const handleApproveEdit = (toolCall: any, tcId: string) => {
@@ -1911,10 +1988,8 @@ function AiAgentPanel({ projectId, scriptContent, open, onOpenChange, onApplyScr
     setResolvedEdits(prev => ({ ...prev, [tcId]: 'declined' }));
   };
 
-  if (!open) return null;
-
   return (
-    <div className="fixed bottom-6 right-6 w-[320px] h-[450px] bg-card border border-border/50 rounded-3xl rounded-br-md shadow-2xl flex flex-col z-50 overflow-hidden animate-in slide-in-from-bottom-5 fade-in-0 duration-300">
+    <div className={`fixed bottom-6 right-6 w-[350px] h-[550px] bg-card border border-border/50 rounded-3xl rounded-br-md shadow-2xl flex flex-col z-50 overflow-hidden ${open ? 'chat-panel-enter' : 'chat-panel-exit pointer-events-none'}`}>
       <div className="p-3 border-b border-border/30 shrink-0 flex justify-between items-center bg-muted/20">
         <div className="flex items-center gap-2 font-display text-sm font-medium">
           <Sparkles size={14} className="text-primary" /> Cel Assistant
@@ -1987,9 +2062,18 @@ function AiAgentPanel({ projectId, scriptContent, open, onOpenChange, onApplyScr
               </div>
             </div>
           ))}
-          {chatMutation.isPending && (
-             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-               <Loader2 size={12} className="animate-spin" /> Thinking...
+          {streamingContent && (
+            <div className="flex flex-col items-start">
+              <div className="px-3 py-2 rounded-lg text-sm max-w-[85%] bg-muted border border-border">
+                <div className="prose-cel prose-sm max-w-none">
+                  <ReactMarkdown>{streamingContent}</ReactMarkdown>
+                </div>
+              </div>
+            </div>
+          )}
+          {isGenerating && !streamingContent && (
+             <div className="flex items-center gap-2 text-xs font-medium shimmer-text">
+               <Sparkles size={12} className="animate-pulse" /> Generating...
              </div>
           )}
         </div>
@@ -2000,9 +2084,10 @@ function AiAgentPanel({ projectId, scriptContent, open, onOpenChange, onApplyScr
               placeholder="Ask the assistant..." 
               value={input} 
               onChange={e => setInput(e.target.value)}
-              disabled={chatMutation.isPending}
+              disabled={isGenerating}
+              className="rounded-full bg-muted/50 border-none focus-visible:ring-1 focus-visible:ring-primary/30"
             />
-            <Button type="submit" size="icon" disabled={!input.trim() || chatMutation.isPending}>
+            <Button type="submit" size="icon" disabled={!input.trim() || isGenerating} className="rounded-full shrink-0">
               <Send size={14} />
             </Button>
           </form>
@@ -2018,7 +2103,26 @@ function AiAgentPanel({ projectId, scriptContent, open, onOpenChange, onApplyScr
   );
 }
 
+function AiAgentStatus({ projectId }: { projectId: number }) {
+  const { data: status } = useQuery<{ hasKey: boolean; model: string | null } | null>({
+    queryKey: ["/api/projects", projectId, "ai", "key"],
+  });
+
+  if (!status?.hasKey) return null;
+
+  return (
+    <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/5 border border-primary/20 text-[11px] font-medium text-primary shadow-sm">
+      <div className="relative flex h-2 w-2">
+        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+        <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
+      </div>
+      AI Agent: <span className="opacity-80 font-normal">{status.model?.split('/').pop()}</span>
+    </div>
+  );
+}
+
 // v4 AI Key Settings section (for SettingsTab)
+// ... (rest of the file)
 function AiKeySettings({ projectId }: { projectId: number }) {
   const [key, setKey] = useState("");
   const [model, setModel] = useState("openai/gpt-4o-mini");
