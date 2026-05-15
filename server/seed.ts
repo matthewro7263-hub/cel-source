@@ -164,7 +164,7 @@ Right. New game. *Detectives.*
         { weekNumber: 4, title: "Hand expressions sheet", body: "Fill a page with 10 different hand poses that tell a story without seeing the face.", createdAt: now },
         { weekNumber: 5, title: "Bluey-style watercolor sky", body: "Paint a bright, optimistic sky background using watercolor techniques (digital or traditional) inspired by Bluey's art direction.", createdAt: now },
         { weekNumber: 6, title: "Tight character lineup in your style", body: "Draw a clean, tight lineup of 3-5 characters showing size relationships and distinct silhouettes.", createdAt: now },
-      ]).run();
+      ]);
     }
   } catch (e) {
     console.error("[seed] challenge_prompts seed failed:", e);

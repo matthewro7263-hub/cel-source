@@ -92,7 +92,7 @@ function generateMinimalGLTF(b64Data: string, bufferLength: number) {
 export function registerSpriteSheetRoutes(app: Express) {
   app.post("/api/projects/:id/spritesheet", requireAuth, async (req, res) => {
     const projectId = parseInt(String(req.params.id), 10);
-    if (!canAccessProject(projectId, (req as any).user.id)) {
+    if (!(await canAccessProject(projectId, (req as any).user.id))) {
       return res.status(403).json({ message: "No access" });
     }
 
@@ -116,11 +116,10 @@ export function registerSpriteSheetRoutes(app: Express) {
         return res.status(400).json({ message: "No storyboards in this project" });
       }
 
-      const panels = await db.select()
+      const panels = (await db.select()
         .from(storyboardPanels)
         .where(inArray(storyboardPanels.id, body.panelIds))
-        
-        .filter(p => sbIds.includes(p.storyboardId)); // Only panels belonging to this project
+      ).filter(p => sbIds.includes(p.storyboardId)); // Only panels belonging to this project
 
       const images = [];
       for (const p of panels) {

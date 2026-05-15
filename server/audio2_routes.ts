@@ -36,25 +36,25 @@ export function registerAudio2Routes(app: Express) {
   app.get("/api/projects/:id/lipsync", requireAuth, async (req, res) => {
     const projectId = parseInt(String(req.params.id), 10);
     const userId = (req as any).user.id;
-    if (!canAccessProject(projectId, userId)) return res.status(403).json({ message: "Forbidden" });
+    if (!(await canAccessProject(projectId, userId))) return res.status(403).json({ message: "Forbidden" });
 
-    const results = db.select().from(audio2_lipsync).where(eq(audio2_lipsync.projectId, projectId)).all();
+    const results = await db.select().from(audio2_lipsync).where(eq(audio2_lipsync.projectId, projectId));
     res.json(results);
   });
 
   app.post("/api/projects/:id/lipsync", requireAuth, async (req, res) => {
     const projectId = parseInt(String(req.params.id), 10);
     const userId = (req as any).user.id;
-    if (!canAccessProject(projectId, userId)) return res.status(403).json({ message: "Forbidden" });
+    if (!(await canAccessProject(projectId, userId))) return res.status(403).json({ message: "Forbidden" });
 
     const parsed = insertAudio2LipsyncSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json(parsed.error);
 
-    const inserted = db.insert(audio2_lipsync).values({
+    const inserted = await db.insert(audio2_lipsync).values({
       ...parsed.data,
       projectId,
-      createdAt: new Date().toISOString()
-    }).returning().get();
+      createdAt: new Date()
+    }).returning().then((r) => r[0]);
     res.json(inserted);
   });
   
@@ -62,9 +62,9 @@ export function registerAudio2Routes(app: Express) {
     const lipsyncId = parseInt(String(req.params.id), 10);
     const userId = (req as any).user.id;
     
-    const lipsync = db.select().from(audio2_lipsync).where(eq(audio2_lipsync.id, lipsyncId)).get();
+    const lipsync = await db.select().from(audio2_lipsync).where(eq(audio2_lipsync.id, lipsyncId)).then((r) => r[0]);
     if (!lipsync) return res.status(404).json({ message: "Not found" });
-    if (!canAccessProject(lipsync.projectId, userId)) return res.status(403).json({ message: "Forbidden" });
+    if (!(await canAccessProject(lipsync.projectId, userId))) return res.status(403).json({ message: "Forbidden" });
 
     const updateSchema = z.object({
       transcript: z.string().optional(),
@@ -74,7 +74,7 @@ export function registerAudio2Routes(app: Express) {
     const parsed = updateSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json(parsed.error);
 
-    const updated = db.update(audio2_lipsync).set(parsed.data).where(eq(audio2_lipsync.id, lipsyncId)).returning().get();
+    const updated = await db.update(audio2_lipsync).set(parsed.data).where(eq(audio2_lipsync.id, lipsyncId)).returning().then((r) => r[0]);
     res.json(updated);
   });
 
@@ -82,11 +82,11 @@ export function registerAudio2Routes(app: Express) {
     const lipsyncId = parseInt(String(req.params.id), 10);
     const userId = (req as any).user.id;
     
-    const lipsync = db.select().from(audio2_lipsync).where(eq(audio2_lipsync.id, lipsyncId)).get();
+    const lipsync = await db.select().from(audio2_lipsync).where(eq(audio2_lipsync.id, lipsyncId)).then((r) => r[0]);
     if (!lipsync) return res.status(404).json({ message: "Not found" });
-    if (!canAccessProject(lipsync.projectId, userId)) return res.status(403).json({ message: "Forbidden" });
+    if (!(await canAccessProject(lipsync.projectId, userId))) return res.status(403).json({ message: "Forbidden" });
 
-    db.delete(audio2_lipsync).where(eq(audio2_lipsync.id, lipsyncId)).run();
+    await db.delete(audio2_lipsync).where(eq(audio2_lipsync.id, lipsyncId));
     res.json({ success: true });
   });
 
@@ -94,25 +94,25 @@ export function registerAudio2Routes(app: Express) {
   app.get("/api/projects/:id/cues", requireAuth, async (req, res) => {
     const projectId = parseInt(String(req.params.id), 10);
     const userId = (req as any).user.id;
-    if (!canAccessProject(projectId, userId)) return res.status(403).json({ message: "Forbidden" });
+    if (!(await canAccessProject(projectId, userId))) return res.status(403).json({ message: "Forbidden" });
 
-    const results = db.select().from(audio2_cues).where(eq(audio2_cues.projectId, projectId)).all();
+    const results = await db.select().from(audio2_cues).where(eq(audio2_cues.projectId, projectId));
     res.json(results);
   });
 
   app.post("/api/projects/:id/cues", requireAuth, async (req, res) => {
     const projectId = parseInt(String(req.params.id), 10);
     const userId = (req as any).user.id;
-    if (!canAccessProject(projectId, userId)) return res.status(403).json({ message: "Forbidden" });
+    if (!(await canAccessProject(projectId, userId))) return res.status(403).json({ message: "Forbidden" });
 
     const parsed = insertAudio2CueSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json(parsed.error);
 
-    const inserted = db.insert(audio2_cues).values({
+    const inserted = await db.insert(audio2_cues).values({
       ...parsed.data,
       projectId,
-      createdAt: new Date().toISOString()
-    }).returning().get();
+      createdAt: new Date()
+    }).returning().then((r) => r[0]);
     res.json(inserted);
   });
 
@@ -120,9 +120,9 @@ export function registerAudio2Routes(app: Express) {
     const cueId = parseInt(String(req.params.id), 10);
     const userId = (req as any).user.id;
     
-    const cue = db.select().from(audio2_cues).where(eq(audio2_cues.id, cueId)).get();
+    const cue = await db.select().from(audio2_cues).where(eq(audio2_cues.id, cueId)).then((r) => r[0]);
     if (!cue) return res.status(404).json({ message: "Not found" });
-    if (!canAccessProject(cue.projectId, userId)) return res.status(403).json({ message: "Forbidden" });
+    if (!(await canAccessProject(cue.projectId, userId))) return res.status(403).json({ message: "Forbidden" });
 
     const updateSchema = z.object({
       timestampMs: z.number().optional(),
@@ -133,7 +133,7 @@ export function registerAudio2Routes(app: Express) {
     const parsed = updateSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json(parsed.error);
 
-    const updated = db.update(audio2_cues).set(parsed.data).where(eq(audio2_cues.id, cueId)).returning().get();
+    const updated = await db.update(audio2_cues).set(parsed.data).where(eq(audio2_cues.id, cueId)).returning().then((r) => r[0]);
     res.json(updated);
   });
 
@@ -141,11 +141,11 @@ export function registerAudio2Routes(app: Express) {
     const cueId = parseInt(String(req.params.id), 10);
     const userId = (req as any).user.id;
     
-    const cue = db.select().from(audio2_cues).where(eq(audio2_cues.id, cueId)).get();
+    const cue = await db.select().from(audio2_cues).where(eq(audio2_cues.id, cueId)).then((r) => r[0]);
     if (!cue) return res.status(404).json({ message: "Not found" });
-    if (!canAccessProject(cue.projectId, userId)) return res.status(403).json({ message: "Forbidden" });
+    if (!(await canAccessProject(cue.projectId, userId))) return res.status(403).json({ message: "Forbidden" });
 
-    db.delete(audio2_cues).where(eq(audio2_cues.id, cueId)).run();
+    await db.delete(audio2_cues).where(eq(audio2_cues.id, cueId));
     res.json({ success: true });
   });
 

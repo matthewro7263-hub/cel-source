@@ -144,7 +144,7 @@ export function registerBizRoutes(app: Express) {
 
   app.get("/api/biz/festivals", requireAuth, async (req, res) => {
     const userId = (req as any).user.id;
-    const rows = db.select().from(biz_festivals).where(eq(biz_festivals.userId, userId)).all();
+    const rows = await db.select().from(biz_festivals).where(eq(biz_festivals.userId, userId));
     res.json(rows);
   });
 
@@ -152,7 +152,7 @@ export function registerBizRoutes(app: Express) {
     const userId = (req as any).user.id;
     let body: any;
     try { body = festivalSchema.parse(req.body); } catch (e: any) { return res.status(400).json({ message: e.message }); }
-    const row = db.insert(biz_festivals).values({
+    const row = await db.insert(biz_festivals).values({
       userId,
       name: body.name,
       deadline: body.deadline ?? null,
@@ -160,31 +160,31 @@ export function registerBizRoutes(app: Express) {
       fee: body.fee ?? 0,
       notes: body.notes ?? null,
       projectId: body.projectId ?? null,
-      createdAt: new Date().toISOString(),
-    }).returning().get();
+      createdAt: new Date(),
+    }).returning().then((r) => r[0]);
     res.json(row);
   });
 
-  app.patch("/api/biz/festivals/:id", requireAuth, (req, res) => {
+  app.patch("/api/biz/festivals/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const userId = (req as any).user.id;
-    const existing = db.select().from(biz_festivals).where(eq(biz_festivals.id, id)).get();
+    const existing = await db.select().from(biz_festivals).where(eq(biz_festivals.id, id)).then((r) => r[0]);
     if (!existing) return res.status(404).json({ message: "Not found" });
     if (existing.userId !== userId) return res.status(403).json({ message: "No access" });
     const patchSchema = festivalSchema.partial();
     let patch: any;
     try { patch = patchSchema.parse(req.body); } catch (e: any) { return res.status(400).json({ message: e.message }); }
-    const updated = db.update(biz_festivals).set(patch).where(eq(biz_festivals.id, id)).returning().get();
+    const updated = await db.update(biz_festivals).set(patch).where(eq(biz_festivals.id, id)).returning().then((r) => r[0]);
     res.json(updated);
   });
 
   app.delete("/api/biz/festivals/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const userId = (req as any).user.id;
-    const existing = db.select().from(biz_festivals).where(eq(biz_festivals.id, id)).get();
+    const existing = await db.select().from(biz_festivals).where(eq(biz_festivals.id, id)).then((r) => r[0]);
     if (!existing) return res.status(404).json({ message: "Not found" });
     if (existing.userId !== userId) return res.status(403).json({ message: "No access" });
-    db.delete(biz_festivals).where(eq(biz_festivals.id, id)).run();
+    await db.delete(biz_festivals).where(eq(biz_festivals.id, id));
     res.json({ ok: true });
   });
 
@@ -198,18 +198,18 @@ export function registerBizRoutes(app: Express) {
   app.get("/api/biz/contracts", requireAuth, async (req, res) => {
     const userId = (req as any).user.id;
     // Auto-seed 3 canonical templates on first access
-    const existing = db.select().from(biz_contracts).where(eq(biz_contracts.userId, userId)).all();
+    const existing = await db.select().from(biz_contracts).where(eq(biz_contracts.userId, userId));
     if (existing.length === 0) {
       for (const tmpl of SEED_CONTRACTS) {
-        db.insert(biz_contracts).values({
+        await db.insert(biz_contracts).values({
           userId,
           name: tmpl.name,
           kind: tmpl.kind as any,
           body: tmpl.body,
-          createdAt: new Date().toISOString(),
-        }).run();
+          createdAt: new Date(),
+        });
       }
-      const seeded = db.select().from(biz_contracts).where(eq(biz_contracts.userId, userId)).all();
+      const seeded = await db.select().from(biz_contracts).where(eq(biz_contracts.userId, userId));
       return res.json(seeded);
     }
     res.json(existing);
@@ -219,36 +219,36 @@ export function registerBizRoutes(app: Express) {
     const userId = (req as any).user.id;
     let body: any;
     try { body = contractSchema.parse(req.body); } catch (e: any) { return res.status(400).json({ message: e.message }); }
-    const row = db.insert(biz_contracts).values({
+    const row = await db.insert(biz_contracts).values({
       userId,
       name: body.name,
       kind: body.kind,
       body: body.body,
-      createdAt: new Date().toISOString(),
-    }).returning().get();
+      createdAt: new Date(),
+    }).returning().then((r) => r[0]);
     res.json(row);
   });
 
-  app.patch("/api/biz/contracts/:id", requireAuth, (req, res) => {
+  app.patch("/api/biz/contracts/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const userId = (req as any).user.id;
-    const existing = db.select().from(biz_contracts).where(eq(biz_contracts.id, id)).get();
+    const existing = await db.select().from(biz_contracts).where(eq(biz_contracts.id, id)).then((r) => r[0]);
     if (!existing) return res.status(404).json({ message: "Not found" });
     if (existing.userId !== userId) return res.status(403).json({ message: "No access" });
     const patchSchema = contractSchema.partial();
     let patch: any;
     try { patch = patchSchema.parse(req.body); } catch (e: any) { return res.status(400).json({ message: e.message }); }
-    const updated = db.update(biz_contracts).set(patch).where(eq(biz_contracts.id, id)).returning().get();
+    const updated = await db.update(biz_contracts).set(patch).where(eq(biz_contracts.id, id)).returning().then((r) => r[0]);
     res.json(updated);
   });
 
   app.delete("/api/biz/contracts/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const userId = (req as any).user.id;
-    const existing = db.select().from(biz_contracts).where(eq(biz_contracts.id, id)).get();
+    const existing = await db.select().from(biz_contracts).where(eq(biz_contracts.id, id)).then((r) => r[0]);
     if (!existing) return res.status(404).json({ message: "Not found" });
     if (existing.userId !== userId) return res.status(403).json({ message: "No access" });
-    db.delete(biz_contracts).where(eq(biz_contracts.id, id)).run();
+    await db.delete(biz_contracts).where(eq(biz_contracts.id, id));
     res.json({ ok: true });
   });
 
@@ -264,7 +264,7 @@ export function registerBizRoutes(app: Express) {
 
   app.get("/api/biz/expenses", requireAuth, async (req, res) => {
     const userId = (req as any).user.id;
-    const rows = db.select().from(biz_expenses).where(eq(biz_expenses.userId, userId)).all();
+    const rows = await db.select().from(biz_expenses).where(eq(biz_expenses.userId, userId));
     res.json(rows);
   });
 
@@ -272,7 +272,7 @@ export function registerBizRoutes(app: Express) {
     const userId = (req as any).user.id;
     let body: any;
     try { body = expenseSchema.parse(req.body); } catch (e: any) { return res.status(400).json({ message: e.message }); }
-    const row = db.insert(biz_expenses).values({
+    const row = await db.insert(biz_expenses).values({
       userId,
       projectId: body.projectId ?? null,
       date: body.date,
@@ -280,31 +280,31 @@ export function registerBizRoutes(app: Express) {
       amount: body.amount,
       notes: body.notes ?? null,
       receiptUrl: body.receiptUrl ?? null,
-      createdAt: new Date().toISOString(),
-    }).returning().get();
+      createdAt: new Date(),
+    }).returning().then((r) => r[0]);
     res.json(row);
   });
 
-  app.patch("/api/biz/expenses/:id", requireAuth, (req, res) => {
+  app.patch("/api/biz/expenses/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const userId = (req as any).user.id;
-    const existing = db.select().from(biz_expenses).where(eq(biz_expenses.id, id)).get();
+    const existing = await db.select().from(biz_expenses).where(eq(biz_expenses.id, id)).then((r) => r[0]);
     if (!existing) return res.status(404).json({ message: "Not found" });
     if (existing.userId !== userId) return res.status(403).json({ message: "No access" });
     const patchSchema = expenseSchema.partial();
     let patch: any;
     try { patch = patchSchema.parse(req.body); } catch (e: any) { return res.status(400).json({ message: e.message }); }
-    const updated = db.update(biz_expenses).set(patch).where(eq(biz_expenses.id, id)).returning().get();
+    const updated = await db.update(biz_expenses).set(patch).where(eq(biz_expenses.id, id)).returning().then((r) => r[0]);
     res.json(updated);
   });
 
   app.delete("/api/biz/expenses/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const userId = (req as any).user.id;
-    const existing = db.select().from(biz_expenses).where(eq(biz_expenses.id, id)).get();
+    const existing = await db.select().from(biz_expenses).where(eq(biz_expenses.id, id)).then((r) => r[0]);
     if (!existing) return res.status(404).json({ message: "Not found" });
     if (existing.userId !== userId) return res.status(403).json({ message: "No access" });
-    db.delete(biz_expenses).where(eq(biz_expenses.id, id)).run();
+    await db.delete(biz_expenses).where(eq(biz_expenses.id, id));
     res.json({ ok: true });
   });
 }

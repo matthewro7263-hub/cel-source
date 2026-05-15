@@ -334,11 +334,11 @@ const upload = multer({
       const { scripts } = await import("@shared/schema.js");
       const { eq } = await import("drizzle-orm");
 
-      db.update(scripts).set({
+      await db.update(scripts).set({
         sourceType: "upload",
         sourceFormat,
         originalKey
-      }).where(eq(scripts.id, newScript.id)).run();
+      }).where(eq(scripts.id, newScript.id));
       
       const updatedScript = await (storage as any).getScript(newScript.id);
 
@@ -1809,7 +1809,7 @@ ${body.scriptContent}
   app.get("/api/analytics/commission-hours", requireAuth, async (req, res) => {
     try {
       // Scope to user's own commissions via join
-      const hours = db
+      const hours = await db
         .select({
           commissionId: dltCommissionHours.commissionId,
           hours: dltCommissionHours.hours,
@@ -1817,7 +1817,7 @@ ${body.scriptContent}
         .from(dltCommissionHours)
         .innerJoin(commissions, eq(dltCommissionHours.commissionId, commissions.id))
         .where(eq(commissions.ownerUserId, req.user!.id))
-        .all();
+        ;
 
       const hoursMap: Record<number, number> = {};
       for (const h of hours) {
@@ -1853,7 +1853,7 @@ ${body.scriptContent}
   app.get("/api/analytics/heatmap", requireAuth, async (req, res) => {
     try {
       // Gather scene time entries scoped to the current user's projects
-      const entries = db.select({
+      const entries = await db.select({
         sceneId: scenes.id,
         sceneName: scenes.title,
         startedAt: sceneTimeEntries.startedAt,
@@ -1863,7 +1863,7 @@ ${body.scriptContent}
       .innerJoin(scenes, eq(sceneTimeEntries.sceneId, scenes.id))
       .innerJoin(projects, eq(scenes.projectId, projects.id))
       .where(eq(projects.ownerId, req.user!.id))
-      .all();
+      ;
       
       // Group by scene, then by day
       // format: [ { sceneId, sceneName, days: { "2024-05-13": 120, ... } } ]
@@ -1896,7 +1896,7 @@ ${body.scriptContent}
 
   app.get("/api/analytics/task-hours", requireAuth, async (req, res) => {
     try {
-      const sceneRows = db.select({
+      const sceneRows = await db.select({
         sceneId: scenes.id,
         sceneNumber: scenes.number,
         sceneName: scenes.title,
@@ -1907,9 +1907,9 @@ ${body.scriptContent}
         .from(scenes)
         .innerJoin(projects, eq(scenes.projectId, projects.id))
         .where(eq(projects.ownerId, req.user!.id))
-        .all();
+        ;
 
-      const entries = db.select({
+      const entries = await db.select({
         sceneId: scenes.id,
         startedAt: sceneTimeEntries.startedAt,
         durationMs: sceneTimeEntries.durationMs,
@@ -1918,7 +1918,7 @@ ${body.scriptContent}
         .innerJoin(scenes, eq(sceneTimeEntries.sceneId, scenes.id))
         .innerJoin(projects, eq(scenes.projectId, projects.id))
         .where(eq(projects.ownerId, req.user!.id))
-        .all();
+        ;
 
       const entryMap = new Map<number, { totalMs: number; sessions: number; lastTrackedAt: number | null }>();
       for (const entry of entries) {

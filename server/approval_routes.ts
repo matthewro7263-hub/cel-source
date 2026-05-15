@@ -33,17 +33,17 @@ async function requireAuth(req: Request, res: Response, next: NextFunction) {
 
 const MILESTONES = ["storyboard", "animatic", "final"] as const;
 
-function ensureDefaultRows(projectId: number): void {
-  const existing = db
+async function ensureDefaultRows(projectId: number): Promise<void> {
+  const existing = await db
     .select()
     .from(approval_signoffs)
     .where(eq(approval_signoffs.projectId, projectId))
-    .all();
+    ;
 
   if (existing.length === 0) {
-    const now = new Date().toISOString();
+    const now = new Date();
     for (const milestone of MILESTONES) {
-      db.insert(approval_signoffs)
+      await db.insert(approval_signoffs)
         .values({
           projectId,
           milestone,
@@ -54,7 +54,7 @@ function ensureDefaultRows(projectId: number): void {
           approvedAt: null,
           createdAt: now,
         })
-        .run();
+        ;
     }
   }
 }
@@ -91,28 +91,28 @@ export function registerApprovalRoutes(app: Express) {
   // GET /api/projects/:id/approvals — list, auto-create 3 defaults if none
   app.get("/api/projects/:id/approvals", requireAuth, async (req, res) => {
     const projectId = parseInt(String(req.params.id), 10);
-    if (!canAccessProject(projectId, (req as any).user.id)) {
+    if (!(await canAccessProject(projectId, (req as any).user.id))) {
       return res.status(403).json({ message: "No access" });
     }
-    ensureDefaultRows(projectId);
-    const rows = db
+    await ensureDefaultRows(projectId);
+    const rows = await db
       .select()
       .from(approval_signoffs)
       .where(eq(approval_signoffs.projectId, projectId))
-      .all();
+      ;
     res.json(rows);
   });
 
   // PUT /api/approvals/:id — update status/signature/notes/approverName/approvedAt
   app.put("/api/approvals/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    const row = db
+    const row = await db
       .select()
       .from(approval_signoffs)
       .where(eq(approval_signoffs.id, id))
-      .get();
+      .then((r) => r[0]);
     if (!row) return res.status(404).json({ message: "Not found" });
-    if (!canAccessProject(row.projectId, (req as any).user.id)) {
+    if (!(await canAccessProject(row.projectId, (req as any).user.id))) {
       return res.status(403).json({ message: "No access" });
     }
     let patch: z.infer<typeof approvalPutSchema>;
@@ -147,12 +147,12 @@ export function registerApprovalRoutes(app: Express) {
       normalized.signatureHash = null;
     }
 
-    const updated = db
+    const updated = await db
       .update(approval_signoffs)
       .set(normalized as any)
       .where(eq(approval_signoffs.id, id))
       .returning()
-      .get();
+      .then((r) => r[0]);
 
     if (patch.status && updated) {
       notifyDiscord(row.projectId, `Milestone ${row.milestone} Status Update`, `Status for **${row.milestone}** is now **${patch.status}**${patch.approverName ? ` (by ${patch.approverName})` : ""}`);
