@@ -1929,7 +1929,11 @@ function AiAgentPanel({ projectId, scriptContent, open, onOpenChange, onApplyScr
           {messages?.map((m: any) => (
             <div key={m.id} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
               <div className={`px-3 py-2 rounded-lg text-sm max-w-[85%] ${m.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted border border-border'}`}>
-                {m.content && <ReactMarkdown className="prose-cel prose-sm max-w-none">{m.content}</ReactMarkdown>}
+                {m.content && (
+                  <div className="prose-cel prose-sm max-w-none">
+                    <ReactMarkdown>{m.content}</ReactMarkdown>
+                  </div>
+                )}
                 
                 {/* Render Tool Calls (Approvals) */}
                 {m.toolCalls && (() => {
