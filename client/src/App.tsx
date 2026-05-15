@@ -190,9 +190,6 @@ function AppRouter() {
         <Route path="/dashboard">
           <ProtectedShell><Dashboard /></ProtectedShell>
         </Route>
-        <Route path="/projects/:id">
-          <ProtectedShell><ProjectWorkspace /></ProtectedShell>
-        </Route>
         <Route path="/projects/:id/script">
           <ProjectSectionRoute section="script" />
         </Route>
@@ -222,6 +219,9 @@ function AppRouter() {
         </Route>
         <Route path="/projects/:id/settings">
           <ProjectSectionRoute section="settings" />
+        </Route>
+        <Route path="/projects/:id">
+          <ProtectedShell><ProjectWorkspace /></ProtectedShell>
         </Route>
         <Route path="/settings">
           <ProtectedShell><ProfileSettings /></ProtectedShell>
