@@ -1036,7 +1036,7 @@ function AddAnimaticDialog(props: AddAnimaticDialogProps) {
   const { open, setOpen, title, setTitle, url, setUrl, notes, setNotes, fileRef, uploading, onSubmit, onFile } = props;
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent>
+      <DialogContent aria-describedby={undefined}>
         <DialogHeader>
           <DialogTitle className="font-display">Add animatic</DialogTitle>
         </DialogHeader>
@@ -1360,7 +1360,7 @@ function SceneRendersPanel({ sceneId }: { sceneId: number }) {
 
       {/* Add render dialog */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent>
+        <DialogContent aria-describedby={undefined}>
           <DialogHeader><DialogTitle className="font-display">Add render</DialogTitle></DialogHeader>
           <div className="space-y-3 pt-2">
             <div className="grid grid-cols-2 gap-3">
@@ -1505,7 +1505,7 @@ function NewSceneDialog({ open, setOpen, projectId }: { open: boolean; setOpen: 
   });
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent>
+      <DialogContent aria-describedby={undefined}>
         <DialogHeader><DialogTitle className="font-display">New scene</DialogTitle></DialogHeader>
         <div className="space-y-4 pt-2">
           <div className="grid grid-cols-2 gap-3">
@@ -1911,14 +1911,18 @@ function AiAgentPanel({ projectId, scriptContent, open, onOpenChange, onApplyScr
     setResolvedEdits(prev => ({ ...prev, [tcId]: 'declined' }));
   };
 
+  if (!open) return null;
+
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full sm:max-w-[400px] flex flex-col p-0">
-        <SheetHeader className="p-4 border-b border-border shrink-0">
-          <SheetTitle className="flex items-center gap-2">
-            <Sparkles size={16} className="text-primary" /> Cel Assistant
-          </SheetTitle>
-        </SheetHeader>
+    <div className="fixed bottom-6 right-6 w-[320px] h-[450px] bg-card border border-border/50 rounded-3xl rounded-br-md shadow-2xl flex flex-col z-50 overflow-hidden animate-in slide-in-from-bottom-5 fade-in-0 duration-300">
+      <div className="p-3 border-b border-border/30 shrink-0 flex justify-between items-center bg-muted/20">
+        <div className="flex items-center gap-2 font-display text-sm font-medium">
+          <Sparkles size={14} className="text-primary" /> Cel Assistant
+        </div>
+        <Button variant="ghost" size="icon" className="h-6 w-6 rounded-full" onClick={() => onOpenChange(false)}>
+          <X size={14} />
+        </Button>
+      </div>
         
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {messages?.length === 0 && (
@@ -2010,8 +2014,7 @@ function AiAgentPanel({ projectId, scriptContent, open, onOpenChange, onApplyScr
             }}>New Chat</Button>
           </div>
         </div>
-      </SheetContent>
-    </Sheet>
+    </div>
   );
 }
 

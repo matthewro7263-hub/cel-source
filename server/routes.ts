@@ -299,15 +299,25 @@ const upload = multer({
         });
       }
 
-      const r2Module = await import("./r2.js");
-      const r2 = r2Module.r2;
-      const R2_BUCKET = r2Module.R2_BUCKET;
+      if (!process.env.R2_BUCKET || !process.env.R2_ENDPOINT) {
+        throw new Error("Cloud storage (R2) is not configured on this server.");
+      }
+
+      const { S3Client, PutObjectCommand } = await import("@aws-sdk/client-s3");
+      const r2Client = new S3Client({
+        region: "auto",
+        endpoint: process.env.R2_ENDPOINT,
+        credentials: {
+          accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+          secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+        },
+      });
 
       const safeName = originalname.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 120);
       const originalKey = `uploads/${req.user!.id}/scripts/${randomUUID()}-${safeName}`;
 
-      await r2.send(new PutObjectCommand({
-        Bucket: R2_BUCKET,
+      await r2Client.send(new PutObjectCommand({
+        Bucket: process.env.R2_BUCKET,
         Key: originalKey,
         ContentType: mimetype,
         Body: buffer
@@ -353,8 +363,26 @@ const upload = multer({
     }
 
     try {
-      const r2Module = await import("./r2.js");
-      const url = await r2Module.presignDownload(script.originalKey, 300);
+      if (!process.env.R2_BUCKET || !process.env.R2_ENDPOINT) {
+        throw new Error("Cloud storage (R2) is not configured on this server.");
+      }
+      const { S3Client, GetObjectCommand } = await import("@aws-sdk/client-s3");
+      const { getSignedUrl } = await import("@aws-sdk/s3-request-presigner");
+      
+      const r2Client = new S3Client({
+        region: "auto",
+        endpoint: process.env.R2_ENDPOINT,
+        credentials: {
+          accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+          secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+        },
+      });
+
+      const url = await getSignedUrl(r2Client, new GetObjectCommand({
+        Bucket: process.env.R2_BUCKET,
+        Key: script.originalKey,
+      }), { expiresIn: 300 });
+      
       res.json({ url });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
