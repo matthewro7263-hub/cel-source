@@ -21,9 +21,7 @@ import { getDailySketchPrompt, principleDrills } from "@/data/daily-drills";
 const COLORS = ["#6E4FE8", "#E8744F", "#4FBFE8", "#E84F9F", "#4FE89A", "#E8C44F", "#E84F4F"];
 
 export default function Dashboard() {
-  // === AGENT_3 ADDITIONS START ===
   const [useBibleTemplate, setUseBibleTemplate] = useState(false);
-  // === AGENT_3 ADDITIONS END ===
   const { data: projects, isLoading } = useQuery<Project[]>({ queryKey: ["/api/projects"] });
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
@@ -43,11 +41,9 @@ export default function Dashboard() {
         title, description, deadline: deadline || null, coverColor: color,
       });
       const newProj = await r.json();
-      /* === AGENT_3 ADDITIONS START === */
       if (useBibleTemplate) {
         await apiRequest("POST", `/api/projects/${newProj.id}/lor_seed_bible`);
       }
-      /* === AGENT_3 ADDITIONS END === */
       return newProj;
     },
     onSuccess: () => {

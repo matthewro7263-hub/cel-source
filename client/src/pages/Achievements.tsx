@@ -91,12 +91,10 @@ export default function Achievements() {
   );
 }
 
-// === AGENT_5 ADDITIONS ===
 // Add styles for holographic card
 
 function AchievementCard({ achievement }: { achievement: AchievementEntry }) {
   const isUnlocked = !achievement.locked;
-  // === AGENT_5 ADDITIONS START ===
   const [flipped, setFlipped] = useState(false);
   
   if (isUnlocked) {
@@ -133,7 +131,6 @@ function AchievementCard({ achievement }: { achievement: AchievementEntry }) {
       </div>
     );
   }
-  // === AGENT_5 ADDITIONS END ===
 
   return (
     <div

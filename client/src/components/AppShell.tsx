@@ -122,7 +122,6 @@ export function AppShell({ children }: { children: ReactNode }) {
               </Link>
             )}
 
-            {/* === AGENT_BIZ ADDITIONS START === */}
             {user && (
               <Link href="/business">
                 <div
@@ -139,7 +138,6 @@ export function AppShell({ children }: { children: ReactNode }) {
                 </div>
               </Link>
             )}
-            {/* === AGENT_BIZ ADDITIONS END === */}
 
             <div className="pt-5 pb-2 px-3 text-[11px] font-semibold tracking-wider uppercase text-muted-foreground">
               Community
@@ -216,14 +214,12 @@ export function AppShell({ children }: { children: ReactNode }) {
                   <DropdownMenuItem onSelect={() => setLocation("/settings")} data-testid="menuitem-settings">
                     <Settings className="mr-2 h-4 w-4" /> Profile settings
                   </DropdownMenuItem>
-                  {/* === AGENT_5 ADDITIONS START === */}
                   <DropdownMenuItem onSelect={() => setLocation("/analytics")} data-testid="menuitem-analytics">
                     <LayoutDashboard className="mr-2 h-4 w-4" /> Analytics
                   </DropdownMenuItem>
                   <DropdownMenuItem onSelect={() => setLocation("/scratchpad")} data-testid="menuitem-scratchpad">
                     <LayoutDashboard className="mr-2 h-4 w-4" /> Scratchpad
                   </DropdownMenuItem>
-                  {/* === AGENT_5 ADDITIONS END === */}
                   {/* v4 nav items */}
                   <DropdownMenuItem onSelect={() => setLocation("/achievements")} data-testid="menuitem-achievements">
                     <Trophy className="mr-2 h-4 w-4" /> Achievements

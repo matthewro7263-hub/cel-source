@@ -1,14 +1,17 @@
-// v4 Cmd+K search palette
-import { useState, useEffect } from "react";
+// v5 Cmd+K search palette with quick actions
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
+import { useTheme } from "@/lib/theme";
 import {
   CommandDialog, CommandInput, CommandList, CommandEmpty,
-  CommandGroup, CommandItem,
+  CommandGroup, CommandItem, CommandSeparator,
 } from "@/components/ui/command";
 import {
   FolderOpen, Film, FileText, Package, MessageSquare, Search,
+  Plus, LayoutDashboard, Settings, Sun, Moon, Inbox, Trophy,
+  Keyboard, Briefcase, BarChart3,
 } from "lucide-react";
 
 interface SearchResults {
@@ -27,6 +30,7 @@ interface CmdkPaletteProps {
 export function CmdkPalette({ open, onOpenChange }: CmdkPaletteProps) {
   const [query, setQuery] = useState("");
   const [, setLocation] = useLocation();
+  const { theme, toggle: toggleTheme } = useTheme();
 
   const { data: results, isLoading } = useQuery<SearchResults>({
     queryKey: ["/api/search", query],
@@ -39,10 +43,14 @@ export function CmdkPalette({ open, onOpenChange }: CmdkPaletteProps) {
     staleTime: 10_000,
   });
 
-  const navigate = (path: string) => {
-    setLocation(path);
+  const close = () => {
     onOpenChange(false);
     setQuery("");
+  };
+
+  const navigate = (path: string) => {
+    setLocation(path);
+    close();
   };
 
   const totalResults = results
@@ -52,18 +60,74 @@ export function CmdkPalette({ open, onOpenChange }: CmdkPaletteProps) {
   return (
     <CommandDialog open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) setQuery(""); }}>
       <CommandInput
-        placeholder="Search projects, scenes, scripts, assets…"
+        placeholder="Search or jump to…"
         value={query}
         onValueChange={setQuery}
         data-testid="input-cmdk-search"
       />
       <CommandList>
+        {/* Quick actions — always visible when no query typed */}
         {query.trim().length === 0 && (
-          <div className="flex flex-col items-center justify-center py-10 text-muted-foreground text-sm gap-2">
-            <Search size={20} className="opacity-40" />
-            <span>Type to search across your workspace</span>
-          </div>
+          <>
+            <CommandGroup heading="Quick Actions">
+              <CommandItem
+                onSelect={() => { close(); window.dispatchEvent(new CustomEvent("cel:new-project")); }}
+                data-testid="cmdk-new-project"
+              >
+                <Plus size={14} className="mr-2 text-muted-foreground" />
+                <span>New project</span>
+                <span className="ml-auto text-[11px] text-muted-foreground/60 font-mono">⌘N</span>
+              </CommandItem>
+              <CommandItem onSelect={() => navigate("/dashboard")} data-testid="cmdk-go-dashboard">
+                <LayoutDashboard size={14} className="mr-2 text-muted-foreground" />
+                <span>Go to Dashboard</span>
+              </CommandItem>
+              <CommandItem onSelect={() => navigate("/inbox")} data-testid="cmdk-go-inbox">
+                <Inbox size={14} className="mr-2 text-muted-foreground" />
+                <span>Go to Inbox</span>
+              </CommandItem>
+              <CommandItem onSelect={() => navigate("/commissions")} data-testid="cmdk-go-commissions">
+                <Briefcase size={14} className="mr-2 text-muted-foreground" />
+                <span>Go to Commissions</span>
+              </CommandItem>
+              <CommandItem onSelect={() => navigate("/analytics")} data-testid="cmdk-go-analytics">
+                <BarChart3 size={14} className="mr-2 text-muted-foreground" />
+                <span>Go to Analytics</span>
+              </CommandItem>
+            </CommandGroup>
+            <CommandSeparator />
+            <CommandGroup heading="Preferences">
+              <CommandItem
+                onSelect={() => { toggleTheme(); close(); }}
+                data-testid="cmdk-toggle-theme"
+              >
+                {theme === "dark"
+                  ? <Sun size={14} className="mr-2 text-muted-foreground" />
+                  : <Moon size={14} className="mr-2 text-muted-foreground" />
+                }
+                <span>Switch to {theme === "dark" ? "light" : "dark"} mode</span>
+              </CommandItem>
+              <CommandItem onSelect={() => navigate("/settings")} data-testid="cmdk-go-settings">
+                <Settings size={14} className="mr-2 text-muted-foreground" />
+                <span>Open settings</span>
+              </CommandItem>
+              <CommandItem onSelect={() => navigate("/achievements")} data-testid="cmdk-go-achievements">
+                <Trophy size={14} className="mr-2 text-muted-foreground" />
+                <span>View achievements</span>
+              </CommandItem>
+              <CommandItem
+                onSelect={() => { close(); window.dispatchEvent(new CustomEvent("cel:open-cheatsheet")); }}
+                data-testid="cmdk-shortcuts"
+              >
+                <Keyboard size={14} className="mr-2 text-muted-foreground" />
+                <span>Keyboard shortcuts</span>
+                <span className="ml-auto text-[11px] text-muted-foreground/60 font-mono">?</span>
+              </CommandItem>
+            </CommandGroup>
+          </>
         )}
+
+        {/* Search results */}
         {query.trim().length > 0 && isLoading && (
           <CommandEmpty>Searching…</CommandEmpty>
         )}

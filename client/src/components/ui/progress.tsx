@@ -9,7 +9,6 @@ const Progress = React.forwardRef<
   React.ElementRef<typeof ProgressPrimitive.Root>,
   React.ComponentPropsWithoutRef<typeof ProgressPrimitive.Root>
 >(({ className, value, ...props }, ref) => {
-  // === AGENT_5 ADDITIONS START ===
   // Jelly effect when hitting 100%
   const [pop, setPop] = React.useState(false);
   
@@ -20,7 +19,6 @@ const Progress = React.forwardRef<
       return () => clearTimeout(t);
     }
   }, [value]);
-  // === AGENT_5 ADDITIONS END ===
 
   return (
     <ProgressPrimitive.Root

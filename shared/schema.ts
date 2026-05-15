@@ -26,14 +26,10 @@ export const projects = sqliteTable("projects", {
   shareToken: text("share_token").notNull(),
   shareEnabled: integer("share_enabled", { mode: "boolean" }).notNull().default(false),
   createdAt: text("created_at").notNull().default(""),
-  // === AGENT_1 ADDITIONS START ===
   cli_brandLogo: text("cli_brand_logo"), // base64
   cli_brandColor: text("cli_brand_color").notNull().default("#9DD0FF"),
   cli_brandWelcome: text("cli_brand_welcome"),
-  // === AGENT_1 ADDITIONS END ===
-  // === AGENT_5 ADDITIONS START ===
   dltDiscordWebhookUrl: text("dlt_discord_webhook_url"),
-  // === AGENT_5 ADDITIONS END ===
 });
 export const insertProjectSchema = createInsertSchema(projects).omit({ id: true, createdAt: true });
 export type InsertProject = z.infer<typeof insertProjectSchema>;
@@ -248,6 +244,31 @@ export const insertProjectAiKeySchema = createInsertSchema(projectAiKeys).omit({
 export type InsertProjectAiKey = z.infer<typeof insertProjectAiKeySchema>;
 export type ProjectAiKey = typeof projectAiKeys.$inferSelect;
 
+export const aiChatSessions = sqliteTable("ai_chat_sessions", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  projectId: integer("project_id").notNull(),
+  scriptId: integer("script_id"), // Optional: lock session to a specific script
+  title: text("title").notNull().default("AI Assistant"),
+  createdAt: text("created_at").notNull().default(""),
+});
+export const insertAiChatSessionSchema = createInsertSchema(aiChatSessions).omit({ id: true, createdAt: true });
+export type InsertAiChatSession = z.infer<typeof insertAiChatSessionSchema>;
+export type AiChatSession = typeof aiChatSessions.$inferSelect;
+
+export const aiChatMessages = sqliteTable("ai_chat_messages", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  sessionId: integer("session_id").notNull(),
+  role: text("role").notNull(), // 'user' | 'assistant' | 'system' | 'tool'
+  content: text("content").notNull(),
+  toolCalls: text("tool_calls"), // JSON stringified tool_calls array
+  toolCallId: text("tool_call_id"), // For 'tool' role responses
+  createdAt: text("created_at").notNull().default(""),
+});
+export const insertAiChatMessageSchema = createInsertSchema(aiChatMessages).omit({ id: true, createdAt: true });
+export type InsertAiChatMessage = z.infer<typeof insertAiChatMessageSchema>;
+export type AiChatMessage = typeof aiChatMessages.$inferSelect;
+
+
 // ============================================================
 // v4 Achievements
 // ============================================================
@@ -407,7 +428,6 @@ export type InsertAudCaption = z.infer<typeof insertAudCaptionSchema>;
 export type AudCaption = typeof audCaptions.$inferSelect;
 
 
-// === AGENT_1 ADDITIONS START ===
 
 // ===== CLI: APPROVALS =====
 export const cli_approvals = sqliteTable("cli_approvals", {
@@ -434,7 +454,6 @@ export const insertCliFeedbackSchema = createInsertSchema(cli_feedback).omit({ i
 export type InsertCliFeedback = z.infer<typeof insertCliFeedbackSchema>;
 export type CliFeedback = typeof cli_feedback.$inferSelect;
 
-// === AGENT_1 ADDITIONS END ===
 
 
 

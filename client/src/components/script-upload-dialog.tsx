@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2, Upload, FileText, AlertCircle } from "lucide-react";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getAuthToken } from "@/lib/queryClient";
 
 interface ScriptUploadDialogProps {
   open: boolean;
@@ -64,11 +64,13 @@ export function ScriptUploadDialog({ open, onOpenChange, projectId, onUploaded }
       const formData = new FormData();
       formData.append("file", file);
 
+      const token = getAuthToken();
+      const headers: Record<string, string> = {};
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+
       const res = await fetch(`/api/projects/${projectId}/scripts/upload`, {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("cel_token") || ""}`,
-        },
+        headers,
         body: formData,
       });
 

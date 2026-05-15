@@ -27,7 +27,6 @@ declare global {
   }
 }
 
-import { notifyDiscord } from "./discord"; // === AGENT_5 ADDITIONS ===
 
 /** Extract bearer token from Authorization header */
 function extractToken(req: Request): string | undefined {
@@ -56,8 +55,7 @@ function canAccessProject(projectId: number, userId: number): boolean {
 }
 
 import { bakRouter } from "./routes/bak/index.js";
-import { registerStudioRoutes } from "./studio_routes"; // === AGENT_STUDIO ===
-import { registerBizRoutes } from "./biz_routes"; // === AGENT_BIZ ADDITIONS ===
+import { registerStudioRoutes } from "./studio_routes";
 import { registerA11yRoutes } from "./a11y_routes";
 import { registerChallengeRoutes } from "./challenge_routes";
 import { registerReviewRoom } from "./review_room";
@@ -73,17 +71,11 @@ const upload = multer({
   registerReviewRoom(httpServer);
   registerMcpRoutes(app);
 
-  // === AGENT_4 ADDITIONS START ===
   app.use("/api", bakRouter);
-  // === AGENT_4 ADDITIONS END ===
 
-  // === AGENT_BIZ ADDITIONS START ===
   registerBizRoutes(app);
-  // === AGENT_BIZ ADDITIONS END ===
 
-  // === AGENT_STUDIO ADDITIONS START ===
   registerStudioRoutes(app);
-  // === AGENT_STUDIO ADDITIONS END ===
 
   registerA11yRoutes(app);
   registerChallengeRoutes(app);
@@ -197,11 +189,9 @@ const upload = multer({
       coverColor: z.string().optional(),
       status: z.string().optional(),
       shareEnabled: z.boolean().optional(),
-      // === AGENT_1 ADDITIONS START ===
       cli_brandLogo: z.string().optional().nullable(),
       cli_brandColor: z.string().optional(),
       cli_brandWelcome: z.string().optional().nullable(),
-      // === AGENT_1 ADDITIONS END ===
       dltDiscordWebhookUrl: z.string().url().nullable().optional(),
     });
     const patch = schema.parse(req.body);
@@ -492,9 +482,7 @@ const upload = multer({
     const created = storage.createAnimatic({
       projectId: id, title: body.title || "Animatic", videoData: body.videoData, notes: body.notes || "",
     });
-    // === AGENT_5 ADDITIONS START ===
     notifyDiscord(id, `Animatic Published`, `Animatic "${created.title}" has been published.`);
-    // === AGENT_5 ADDITIONS END ===
     res.json(created);
   });
   app.delete("/api/projects/:id/animatics/:aId", requireAuth, (req, res) => {
@@ -548,11 +536,9 @@ const upload = multer({
     const patch = schema.parse(req.body);
     const updated = storage.updateScene(sceneId, patch as any);
     
-    // === AGENT_5 ADDITIONS START ===
     if (patch.status && updated) {
       notifyDiscord(id, `Scene Status Updated`, `Scene "${updated.title}" is now **${patch.status}**`);
     }
-    // === AGENT_5 ADDITIONS END ===
     
     res.json(updated);
   });
@@ -584,9 +570,7 @@ const upload = multer({
       projectId: id, authorId: req.user!.id, body: body.body, sceneId: body.sceneId ?? null,
     });
     
-    // === AGENT_5 ADDITIONS START ===
     notifyDiscord(id, `New Comment from ${req.user!.name}`, body.body);
-    // === AGENT_5 ADDITIONS END ===
     
     res.json(comment);
   });
@@ -748,12 +732,10 @@ const upload = multer({
     const patch = schema.parse(req.body);
     const updated = storage.updateCommission(id, patch);
     
-    // === AGENT_5 ADDITIONS START ===
     // If it's linked to a project and status changed, notify Discord
     if (patch.status && updated?.linkedProjectId) {
       notifyDiscord(updated.linkedProjectId, `Commission Status Updated`, `Commission from ${updated.clientName} is now **${patch.status}**`);
     }
-    // === AGENT_5 ADDITIONS END ===
     
     res.json(updated);
   });
@@ -830,11 +812,9 @@ const upload = multer({
     const patch = schema.parse(req.body);
     const updated = storage.updateRender(id, patch as any);
     
-    // === AGENT_5 ADDITIONS START ===
     if (patch.status === "done" && updated && render.status !== "done") {
       notifyDiscord(scene.projectId, `Render Complete`, `Render "${updated.label}" for Scene ${scene.number} is ready.`);
     }
-    // === AGENT_5 ADDITIONS END ===
     
     res.json(updated);
   });
@@ -1176,6 +1156,175 @@ const upload = multer({
     return res.status(500).json({ message: `OpenRouter error: ${lastErr}` });
   });
 
+  // ===== v4 AI Agent Chat =====
+  app.get("/api/projects/:id/ai/sessions", requireAuth, (req, res) => {
+    const id = parseInt(String(req.params.id), 10);
+    if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
+    const sessions = (storage as any).listAiChatSessions(id);
+    res.json(sessions);
+  });
+
+  app.post("/api/projects/:id/ai/sessions", requireAuth, (req, res) => {
+    const id = parseInt(String(req.params.id), 10);
+    if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
+    const schema = z.object({ title: z.string().optional(), scriptId: z.number().optional() });
+    const body = schema.parse(req.body);
+    const session = (storage as any).createAiChatSession({ projectId: id, ...body });
+    res.json(session);
+  });
+
+  app.delete("/api/projects/:id/ai/sessions/:sessionId", requireAuth, (req, res) => {
+    const id = parseInt(String(req.params.id), 10);
+    if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
+    (storage as any).deleteAiChatSession(parseInt(req.params.sessionId));
+    res.json({ ok: true });
+  });
+
+  app.get("/api/projects/:id/ai/sessions/:sessionId/messages", requireAuth, (req, res) => {
+    const id = parseInt(String(req.params.id), 10);
+    if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
+    const messages = (storage as any).listAiChatMessages(parseInt(req.params.sessionId));
+    res.json(messages);
+  });
+
+  app.post("/api/projects/:id/ai/chat", requireAuth, async (req, res) => {
+    const id = parseInt(String(req.params.id), 10);
+    if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
+    
+    const schema = z.object({
+      sessionId: z.number(),
+      content: z.string(),
+      scriptContent: z.string(), // Provide current script context
+    });
+    let body;
+    try { body = schema.parse(req.body); } catch (e: any) { return res.status(400).json({ message: e.message }); }
+
+    const keyRow = (storage as any).getProjectAiKey(id);
+    if (!keyRow) return res.status(400).json({ message: "No AI key set for this project" });
+    const apiKey = deobfuscateKey(keyRow.encryptedKey);
+    // Use user's preferred model or fallback to Gemma 2 9B (which supports tools well)
+    const models = keyRow.model ? [keyRow.model] : ["google/gemma-2-9b-it:free"];
+
+    const project = storage.getProject(id);
+    const systemPrompt = `You are Cel Assistant, an agentic AI helper for an animation studio.
+Current Date: ${new Date().toLocaleString()}
+Project: ${project?.title} - ${project?.description || ""}
+
+You have access to tools that can edit the current script directly. When a user asks you to rewrite, fix, or modify something, USE the \`edit_script_passage\` tool. DO NOT just output the rewritten text in your message, actually call the tool so it applies to the UI.
+
+<Current_Script_Context>
+${body.scriptContent}
+</Current_Script_Context>`;
+
+    // Save user message
+    (storage as any).createAiChatMessage({
+      sessionId: body.sessionId,
+      role: "user",
+      content: body.content
+    });
+
+    const messages = (storage as any).listAiChatMessages(body.sessionId).map((m: any) => {
+      const msg: any = { role: m.role, content: m.content };
+      if (m.toolCalls) msg.tool_calls = JSON.parse(m.toolCalls);
+      if (m.toolCallId) msg.tool_call_id = m.toolCallId;
+      return msg;
+    });
+
+    const openRouterPayload = {
+      model: models[0],
+      messages: [{ role: "system", content: systemPrompt }, ...messages],
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "edit_script_passage",
+            description: "Rewrite or modify a specific passage or sentence in the current script.",
+            parameters: {
+              type: "object",
+              properties: {
+                original_text: { type: "string", description: "The exact original text from the script to be replaced." },
+                replacement_text: { type: "string", description: "The new text that will replace the original." },
+                explanation: { type: "string", description: "Brief explanation of the change." }
+              },
+              required: ["original_text", "replacement_text"]
+            }
+          }
+        },
+        {
+          type: "function",
+          function: {
+            name: "add_script_comment",
+            description: "Add a contextual comment or note to a specific line in the script.",
+            parameters: {
+              type: "object",
+              properties: {
+                target_text: { type: "string", description: "The text to attach the comment to." },
+                comment_body: { type: "string", description: "The comment content." }
+              },
+              required: ["target_text", "comment_body"]
+            }
+          }
+        },
+        {
+          type: "function",
+          function: {
+            name: "suggest_shots",
+            description: "Suggest a sequence of camera shots for a given scene description.",
+            parameters: {
+              type: "object",
+              properties: {
+                scene_description: { type: "string" },
+                shots: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      shotNumber: { type: "number" },
+                      shotType: { type: "string" },
+                      cameraMove: { type: "string" },
+                      actionDescription: { type: "string" }
+                    }
+                  }
+                }
+              },
+              required: ["shots"]
+            }
+          }
+        }
+      ]
+    };
+
+    try {
+      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://cel.app",
+          "X-Title": "Cel Storyboard App",
+        },
+        body: JSON.stringify(openRouterPayload),
+      });
+      const data = await response.json() as any;
+      if (!response.ok) return res.status(500).json({ message: data?.error?.message || "OpenRouter Error" });
+      
+      const responseMessage = data.choices?.[0]?.message;
+      if (!responseMessage) return res.status(500).json({ message: "No response from AI" });
+
+      // Save assistant message to DB
+      const savedMsg = (storage as any).createAiChatMessage({
+        sessionId: body.sessionId,
+        role: "assistant",
+        content: responseMessage.content || "",
+        toolCalls: responseMessage.tool_calls ? JSON.stringify(responseMessage.tool_calls) : null
+      });
+
+      return res.json(savedMsg);
+    } catch (e: any) {
+      return res.status(500).json({ message: `Agent error: ${e.message}` });
+    }
+  });
+
   // ===== v4 ACHIEVEMENTS =====
   app.get("/api/achievements", requireAuth, (req, res) => {
     const { ACHIEVEMENT_DEFS } = require("./achievements");
@@ -1486,7 +1635,6 @@ const upload = multer({
     }
   });
 
-  // === AGENT_2 ADDITIONS START ===
   app.post("/api/aud/voice_takes", requireAuth, (req, res) => {
     try {
       const data = insertAudVoiceTakeSchema.parse(req.body);
@@ -1558,9 +1706,7 @@ const upload = multer({
        res.status(400).json({ error: e.message });
     }
   });
-  // === AGENT_2 ADDITIONS END ===
 
-  // === AGENT_5 ADDITIONS START ===
   app.get("/api/analytics/commission-hours", requireAuth, (req, res) => {
     try {
       // Scope to user's own commissions via join
@@ -1740,7 +1886,6 @@ const upload = multer({
       res.status(500).json({ error: e.message });
     }
   });
-  // === AGENT_5 ADDITIONS END ===
 
   // ===== CLI APPROVALS / FEEDBACK (token or auth) =====
   app.get("/api/projects/:id/cli_approvals", (req, res) => {

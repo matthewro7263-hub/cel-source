@@ -19,10 +19,8 @@ import Share from "@/pages/Share";
 import ProfileSettings from "@/pages/ProfileSettings";
 import CommissionIntake from "@/pages/CommissionIntake";
 import CommissionsQueue from "@/pages/CommissionsQueue";
-// === AGENT_3 ADDITIONS START ===
 import PaletteMatcher from "./pages/lor/PaletteMatcher";
 import EpisodeBible from "./pages/lor/EpisodeBible";
-// === AGENT_3 ADDITIONS END ===
 import NotFound from "@/pages/not-found";
 import AnimaticEditor from "@/pages/animatic-editor";
 import VideoEditor from "@/pages/video-editor";
@@ -39,34 +37,24 @@ import { useGlobalShortcuts } from "@/hooks/use-global-shortcuts";
 
 import { A11yProvider } from "@/lib/a11y-preferences";
 
-// === AGENT_4 ADDITIONS START ===
 import BakTrashPage from "@/pages/bak/Trash";
 import BakSpriteSheetPage from "@/pages/bak/SpriteSheet";
 import A11ySettings from "@/pages/a11y";
 import ChallengeFeed from "@/pages/challenge";
 
-// === AGENT_4 ADDITIONS END ===
 
-// === AGENT_2 ADDITIONS START ===
 import AudVoiceBoothPage from "@/pages/aud_voicebooth";
 import Audio2Page from "@/pages/audio2";
-// === AGENT_2 ADDITIONS END ===
 
-// === AGENT_5 ADDITIONS START ===
 import AnalyticsPage from "@/pages/analytics";
 import ScratchpadPage from "@/pages/scratchpad";
 import CouchModePage from "@/pages/couch-mode";
-// === AGENT_5 ADDITIONS END ===
 
-// === AGENT_STUDIO ADDITIONS START ===
 import RenderBudget from "@/pages/studio/RenderBudget";
 import Snapshots from "@/pages/studio/Snapshots";
 import CreditRoll from "@/pages/studio/CreditRoll";
-// === AGENT_STUDIO ADDITIONS END ===
 
-// === AGENT_BIZ ADDITIONS START ===
 import BizPage from "@/pages/biz/index";
-// === AGENT_BIZ ADDITIONS END ===
 
 // ── liquidGL initializer ─────────────────────────────────────────────────────
 // liquidGL is a window-global loaded via <script> in index.html.
@@ -213,14 +201,12 @@ function AppRouter() {
           <ProtectedShell><CommissionsQueue /></ProtectedShell>
         </Route>
                 <Route path="/commission/:userId" component={CommissionIntake} />
-        {/* === AGENT_3 ADDITIONS START === */}
         <Route path="/projects/:id/palette">
           <ProtectedShell><PaletteMatcher /></ProtectedShell>
         </Route>
         <Route path="/projects/:id/bible">
           <ProtectedShell><EpisodeBible /></ProtectedShell>
         </Route>
-        {/* === AGENT_3 ADDITIONS END === */}
         {/* v4 routes — achievements and inbox */}
         <Route path="/achievements">
           <ProtectedShell><Achievements /></ProtectedShell>
@@ -228,7 +214,6 @@ function AppRouter() {
         <Route path="/inbox">
           <ProtectedShell><InboxPage /></ProtectedShell>
         </Route>
-        {/* === AGENT_STUDIO ADDITIONS START === */}
         <Route path="/projects/:id/render-budget">
           <ProtectedShell><RenderBudget /></ProtectedShell>
         </Route>
@@ -238,8 +223,6 @@ function AppRouter() {
         <Route path="/projects/:id/credits">
           <ProtectedShell><CreditRoll /></ProtectedShell>
         </Route>
-        {/* === AGENT_STUDIO ADDITIONS END === */}
-        {/* === AGENT_5 ADDITIONS START === */}
         <Route path="/analytics">
           <ProtectedShell><AnalyticsPage /></ProtectedShell>
         </Route>
@@ -249,30 +232,23 @@ function AppRouter() {
         <Route path="/projects/:id/couch">
           <ProtectedFullscreen><CouchModePage /></ProtectedFullscreen>
         </Route>
-        {/* === AGENT_5 ADDITIONS END === */}
 
-        {/* === AGENT_BIZ ADDITIONS START === */}
         <Route path="/business">
           <ProtectedShell><BizPage /></ProtectedShell>
         </Route>
-        {/* === AGENT_BIZ ADDITIONS END === */}
 
-        {/* === AGENT_4 ADDITIONS START === */}
         <Route path="/projects/:id/trash">
           <ProtectedShell><BakTrashPage /></ProtectedShell>
         </Route>
         <Route path="/projects/:id/spritesheet">
           <ProtectedShell><BakSpriteSheetPage /></ProtectedShell>
         </Route>
-        {/* === AGENT_4 ADDITIONS END === */}
-        {/* === AGENT_2 ADDITIONS START === */}
         <Route path="/projects/:id/voicebooth">
           <ProtectedShell><AudVoiceBoothPage /></ProtectedShell>
         </Route>
         <Route path="/projects/:id/audio2">
           {(params) => <ProtectedShell><Audio2Page params={{id: params.id}} /></ProtectedShell>}
         </Route>
-        {/* === AGENT_2 ADDITIONS END === */}
         {/* animatic editor */}
         <Route path="/projects/:projectId/animatic/:animaticId">
           <AnimaticEditor />

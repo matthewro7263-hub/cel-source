@@ -13,9 +13,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { GlassButton } from "@/components/ui/glass-button";
 
-// === AGENT_3 ADDITIONS START ===
 import AssetRevisionTree from "./lor/AssetRevisionTree";
-// === AGENT_3 ADDITIONS END ===
 const CATEGORIES = ["All", "Characters", "Backgrounds", "Props", "References", "Other"];
 
 function fileSizeMB(base64: string): string {
@@ -442,9 +440,7 @@ function AssetModal({
                 placeholder="character, rig, bluey"
                 className="text-xs h-8"
               />
-          {/* === AGENT_3 ADDITIONS START === */}
           <AssetRevisionTree assetId={asset.id} />
-          {/* === AGENT_3 ADDITIONS END === */}
             </div>
           </div>
         </div>

@@ -17,14 +17,12 @@ import { eq, and, or, inArray, asc, desc, like } from "drizzle-orm";
 import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 
 import {
-  projectAiKeys, achievements, panelPins,
+  projectAiKeys, aiChatSessions, aiChatMessages, achievements, panelPins,
   commissionLineItems, inboxItems, tags, tagAssignments,
   sceneTimeEntries, commissionPricingPresets,
   audVoiceTakes, audCaptions,
   dltCommissionHours,
-  // === AGENT_1 ADDITIONS START ===
   cli_approvals, cli_feedback,
-  // === AGENT_1 ADDITIONS END ===
 } from "@shared/schema";
 import { a11y_user_prefs } from "@shared/a11y_schema";
 import { challenge_prompts, challenge_reactions, challenge_submissions } from "@shared/challenge_schema";
@@ -32,6 +30,8 @@ import { lor_continuity_facts, lor_palettes, lor_asset_versions, lor_casting_mat
 
 import type {
   ProjectAiKey, InsertProjectAiKey,
+  AiChatSession, InsertAiChatSession,
+  AiChatMessage, InsertAiChatMessage,
   Achievement, InsertAchievement,
   PanelPin, InsertPanelPin,
   CommissionLineItem, InsertCommissionLineItem,
@@ -52,7 +52,6 @@ import type {
   LorCastingMatrix, InsertLorCastingMatrix,
 } from "@shared/lor_schema";
 
-// === AGENT_STUDIO ADDITIONS START ===
 import {
   studio_render_events, studio_render_budget, studio_snapshots, studio_credit_entries,
 } from "@shared/studio_schema";
@@ -62,7 +61,6 @@ import type {
   StudioSnapshot, InsertStudioSnapshot,
   StudioCreditEntry, InsertStudioCreditEntry,
 } from "@shared/studio_schema";
-// === AGENT_STUDIO ADDITIONS END ===
 
 const sqlite = new Database("data.db");
 sqlite.pragma("journal_mode = WAL");
@@ -562,6 +560,23 @@ CREATE TABLE IF NOT EXISTS project_ai_keys (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   project_id INTEGER NOT NULL,
   encrypted_key TEXT NOT NULL,
+  model TEXT,
+  created_at TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS ai_chat_sessions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER NOT NULL,
+  script_id INTEGER,
+  title TEXT NOT NULL DEFAULT 'AI Assistant',
+  created_at TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS ai_chat_messages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id INTEGER NOT NULL,
+  role TEXT NOT NULL,
+  content TEXT NOT NULL,
+  tool_calls TEXT,
+  tool_call_id TEXT,
   created_at TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS achievements (
@@ -631,6 +646,7 @@ try { sqlite.exec(`ALTER TABLE commissions ADD COLUMN quote_cents INTEGER`); } c
 try { sqlite.exec(`ALTER TABLE commissions ADD COLUMN paid_cents INTEGER`); } catch {}
 try { sqlite.exec(`ALTER TABLE commissions ADD COLUMN invoiced_at TEXT`); } catch {}
 try { sqlite.exec(`ALTER TABLE approval_signoffs ADD COLUMN signature_hash TEXT`); } catch {}
+try { sqlite.exec(`ALTER TABLE project_ai_keys ADD COLUMN model TEXT`); } catch {}
 
 // ===== v5 bak modifications =====
 try { sqlite.exec(`ALTER TABLE scripts ADD COLUMN deleted_at TEXT`); } catch {}
@@ -644,7 +660,6 @@ try { sqlite.exec(`ALTER TABLE assets ADD COLUMN deleted_at TEXT`); } catch {}
 // v5 Agent 5
 try { sqlite.exec(`ALTER TABLE projects ADD COLUMN dlt_discord_webhook_url TEXT`); } catch {}
 
-// === AGENT_1 ADDITIONS START ===
 try { sqlite.exec(`ALTER TABLE projects ADD COLUMN cli_brand_logo TEXT`); } catch {}
 try { sqlite.exec(`ALTER TABLE projects ADD COLUMN cli_brand_color TEXT NOT NULL DEFAULT '#9DD0FF'`); } catch {}
 try { sqlite.exec(`ALTER TABLE projects ADD COLUMN cli_brand_welcome TEXT`); } catch {}
@@ -666,7 +681,6 @@ CREATE TABLE IF NOT EXISTS cli_feedback (
   created_at TEXT NOT NULL DEFAULT ''
 );
 `);
-// === AGENT_1 ADDITIONS END ===
 
 sqlite.exec(`
   CREATE TABLE IF NOT EXISTS bak_snapshots (
@@ -804,9 +818,7 @@ CREATE TABLE IF NOT EXISTS studio_credit_entries (
   created_at TEXT NOT NULL DEFAULT ''
 );
 `);
-// === AGENT_STUDIO ADDITIONS END ===
 
-// === AGENT_BIZ ADDITIONS START ===
 sqlite.exec(`
 CREATE TABLE IF NOT EXISTS biz_festivals (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -839,7 +851,6 @@ CREATE TABLE IF NOT EXISTS biz_expenses (
   created_at TEXT NOT NULL
 );
 `);
-// === AGENT_BIZ ADDITIONS END ===
 
 // ============================================================
 // v4 storage methods (append to export object below)
@@ -859,6 +870,22 @@ Object.assign(storage, {
   },
   deleteProjectAiKey: (projectId: number) =>
     db.delete(projectAiKeys).where(eq(projectAiKeys.projectId, projectId)).run(),
+
+  // v4 AI Agent Chat
+  listAiChatSessions: (projectId: number): AiChatSession[] =>
+    db.select().from(aiChatSessions).where(eq(aiChatSessions.projectId, projectId)).orderBy(desc(aiChatSessions.createdAt)).all(),
+  getAiChatSession: (id: number): AiChatSession | undefined =>
+    db.select().from(aiChatSessions).where(eq(aiChatSessions.id, id)).get(),
+  createAiChatSession: (data: InsertAiChatSession): AiChatSession =>
+    db.insert(aiChatSessions).values({ ...data, createdAt: new Date().toISOString() }).returning().get(),
+  deleteAiChatSession: (id: number) => {
+    db.delete(aiChatMessages).where(eq(aiChatMessages.sessionId, id)).run();
+    db.delete(aiChatSessions).where(eq(aiChatSessions.id, id)).run();
+  },
+  listAiChatMessages: (sessionId: number): AiChatMessage[] =>
+    db.select().from(aiChatMessages).where(eq(aiChatMessages.sessionId, sessionId)).orderBy(asc(aiChatMessages.id)).all(),
+  createAiChatMessage: (data: InsertAiChatMessage): AiChatMessage =>
+    db.insert(aiChatMessages).values({ ...data, createdAt: new Date().toISOString() }).returning().get(),
 
   // v4 Achievements
   listAchievements: (userId: number): Achievement[] =>
@@ -994,7 +1021,6 @@ Object.assign(storage, {
     db.select().from(dltCommissionHours).where(eq(dltCommissionHours.commissionId, commissionId)).all(),
   addCommissionHours: (hours: InsertDltCommissionHours): DltCommissionHours =>
     db.insert(dltCommissionHours).values({ ...hours, loggedAt: new Date().toISOString() }).returning().get(),
-  // === AGENT_2 ADDITIONS START ===
   createAudVoiceTake: (take: InsertAudVoiceTake) =>
     db.insert(audVoiceTakes).values(take).returning().get(),
   
@@ -1009,9 +1035,7 @@ Object.assign(storage, {
     
   deleteAudCaption: (id: number) =>
     db.delete(audCaptions).where(eq(audCaptions.id, id)).run(),
-  // === AGENT_2 ADDITIONS END ===
 
-  // === AGENT_1 ADDITIONS START ===
   getCliApprovals: (projectId: number) =>
     db.select().from(cli_approvals).where(eq(cli_approvals.projectId, projectId)).all(),
   
@@ -1023,7 +1047,6 @@ Object.assign(storage, {
     
   createCliFeedback: (data: Partial<typeof cli_feedback.$inferInsert>) =>
     db.insert(cli_feedback).values({ ...data, createdAt: new Date().toISOString() } as any).returning().get(),
-  // === AGENT_1 ADDITIONS END ===
 
   getA11yPrefs: (userId: number) => 
     db.select().from(a11y_user_prefs).where(eq(a11y_user_prefs.userId, userId)).get(),
@@ -1102,7 +1125,6 @@ Object.assign(storage, {
     return { active: true, reaction };
   },
 
-  // === AGENT_STUDIO ADDITIONS START ===
   // Studio Render Budget
   getStudioRenderBudget: (projectId: number): StudioRenderBudget | undefined =>
     db.select().from(studio_render_budget).where(eq(studio_render_budget.projectId, projectId)).get(),
@@ -1159,7 +1181,6 @@ Object.assign(storage, {
     }
     return result;
   },
-  // === AGENT_STUDIO ADDITIONS END ===
 
   // === LORE ADDITIONS START ===
   listLorFacts: (projectId: number): LorContinuityFact[] =>

@@ -608,15 +608,7 @@
 .dark .blob { opacity: 0.18; }
 
 .liquid-gl-ambient {
-  position: fixed;
-  inset: 6rem 9vw 4rem 18vw;
-  z-index: -1;
-  pointer-events: none;
-  border-radius: 32px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  opacity: 0.5;
-  /* Removed backdrop-filter — it was refracting all UI underneath */
+  display: none;
 }
 
 .dark .liquid-gl-ambient {
@@ -933,4 +925,13 @@
       rgba(205,229,255,0.5) 80%,
       rgba(205,229,255,0.5) 100%);
   border: 1px solid rgba(255,255,255,0.6);
+}
+
+/* Utility: hide scrollbar while keeping scroll functionality */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
 }

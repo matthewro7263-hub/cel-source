@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getAuthToken } from "@/lib/queryClient";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +17,9 @@ import {
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription,
   AlertDialogFooter, AlertDialogCancel, AlertDialogAction, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import {
   FileText, Image as ImageIcon, Film, ListChecks, Users, Settings as SettingsIcon,
   Plus, Trash2, Upload, Calendar, Share2, Copy, MessageSquare, Eye, X,
@@ -42,24 +45,18 @@ import { AssetsTab } from "@/pages/AssetsTab";
 import { BakSettingsExports } from "@/components/bak-settings-panel";
 import { ScriptUploadDialog } from "@/components/script-upload-dialog";
 
-// === AGENT_1 ADDITIONS START ===
 import { CliBrandSettings } from "@/components/cli-brand-settings";
-// === AGENT_1 ADDITIONS END ===
-// === AGENT_3 ADDITIONS START ===
 import ContinuityTab from "./lor/ContinuityTab";
 import CastingTab from "./lor/CastingTab";
 import LoreSafeChecklist from "./lor/LoreSafeChecklist";
-// === AGENT_3 ADDITIONS END ===
-// === APPROVAL ADDITIONS START ===
 import SignOffPanel from "./approval/SignOffPanel";
-// === APPROVAL ADDITIONS END ===
 
 // v4 feature imports
 import { SketchModal } from "@/components/storyboard-sketch";
 import { PanelPinsOverlay, PinModeToggle } from "@/components/panel-pins";
 import { TagsSettingsPanel, InlineTagSelector } from "@/components/tags-manager";
 import { SceneTimerButton, SceneTimeBreakdown } from "@/components/scene-timer";
-import { Pencil, MapPin, Sparkles, Tag, KeyRound, BookOpen, ClipboardCheck } from "lucide-react";
+import { Pencil, MapPin, Sparkles, Tag, KeyRound, BookOpen, ClipboardCheck, Send } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 
 interface ProjectDetail {
@@ -68,14 +65,6 @@ interface ProjectDetail {
 }
 
 
-function getAuthToken() {
-    try {
-      const match = document.cookie.match(/(?:^|; )token=([^;]*)/);
-      if (match) return decodeURIComponent(match[1]);
-      return localStorage.getItem("cel_token") || "";
-    } catch (e) {}
-    return "";
-  }
 export default function ProjectWorkspace() {
   const params = useParams() as { id: string };
   const projectId = parseInt(params.id, 10);
@@ -124,26 +113,34 @@ export default function ProjectWorkspace() {
           <Button variant="outline" size="sm" onClick={() => { window.location.hash = `/projects/${projectId}/review-room`; }} className="text-xs" data-testid="link-review-room">
             <Radio size={14} className="mr-1.5" /> Review Room
           </Button>
-          <Button variant="outline" size="sm" onClick={() => { window.location.hash = `/projects/${projectId}/palette`; }} className="text-xs">
-            <ImageIcon size={14} className="mr-1.5" /> Palette Matcher
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => { window.location.hash = `/projects/${projectId}/inbetween`; }} className="text-xs" data-testid="link-inbetween">
-            <Wand2 size={14} className="mr-1.5" /> Inbetween Lab
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => { window.location.hash = `/projects/${projectId}/bible`; }} className="text-xs" data-testid="link-episode-bible">
-            <BookOpen size={14} className="mr-1.5" /> Episode Bible
-          </Button>
-          {/* === AGENT_STUDIO ADDITIONS START === */}
-          <Button variant="outline" size="sm" onClick={() => { window.location.hash = `/projects/${projectId}/render-budget`; }} className="text-xs" data-testid="link-render-budget">
-            <Film size={14} className="mr-1.5" /> Render Budget
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => { window.location.hash = `/projects/${projectId}/snapshots`; }} className="text-xs" data-testid="link-snapshots">
-            <GitBranch size={14} className="mr-1.5" /> Snapshots
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => { window.location.hash = `/projects/${projectId}/credits`; }} className="text-xs" data-testid="link-credits">
-            <Scroll size={14} className="mr-1.5" /> Credits
-          </Button>
-          {/* === AGENT_STUDIO ADDITIONS END === */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="text-xs">
+                <Box size={14} className="mr-1.5" /> Tools <ChevronDown size={14} className="ml-1 opacity-50" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem onClick={() => { window.location.hash = `/projects/${projectId}/palette`; }}>
+                <ImageIcon size={14} className="mr-2" /> Palette Matcher
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => { window.location.hash = `/projects/${projectId}/inbetween`; }}>
+                <Wand2 size={14} className="mr-2" /> Inbetween Lab
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => { window.location.hash = `/projects/${projectId}/bible`; }}>
+                <BookOpen size={14} className="mr-2" /> Episode Bible
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => { window.location.hash = `/projects/${projectId}/render-budget`; }}>
+                <Film size={14} className="mr-2" /> Render Budget
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => { window.location.hash = `/projects/${projectId}/snapshots`; }}>
+                <GitBranch size={14} className="mr-2" /> Snapshots
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => { window.location.hash = `/projects/${projectId}/credits`; }}>
+                <Scroll size={14} className="mr-2" /> Credits
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <div className="flex -space-x-1.5">
             {members.slice(0, 4).map((m) => m.user && (
               <Avatar key={m.id} className="h-7 w-7 ring-2 ring-background">
@@ -158,7 +155,7 @@ export default function ProjectWorkspace() {
       </div>
 
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList className="mb-6 flex flex-wrap h-auto">
+        <TabsList className="mb-6 flex h-auto overflow-x-auto scrollbar-hide gap-0.5">
           <TabsTrigger value="overview" data-testid="tab-overview"><FileText size={14} className="mr-1.5" />Overview</TabsTrigger>
           <TabsTrigger value="script" data-testid="tab-script"><FileText size={14} className="mr-1.5" />Script</TabsTrigger>
           <TabsTrigger value="storyboards" data-testid="tab-storyboards"><ImageIcon size={14} className="mr-1.5" />Storyboards</TabsTrigger>
@@ -166,14 +163,10 @@ export default function ProjectWorkspace() {
           <TabsTrigger value="animatics" data-testid="tab-animatics"><Film size={14} className="mr-1.5" />Animatics</TabsTrigger>
           <TabsTrigger value="scenes" data-testid="tab-scenes"><ListChecks size={14} className="mr-1.5" />Scenes</TabsTrigger>
           <TabsTrigger value="comments" data-testid="tab-comments"><MessageSquare size={14} className="mr-1.5" />Comments</TabsTrigger>
-          <TabsTrigger value="settings" data-testid="tab-settings"><SettingsIcon size={14} className="mr-1.5" />Settings</TabsTrigger>
-          {/* === AGENT_3 ADDITIONS START === */}
           <TabsTrigger value="continuity" data-testid="tab-continuity"><BookOpen size={14} className="mr-1.5" />Continuity</TabsTrigger>
           <TabsTrigger value="casting" data-testid="tab-casting"><Users size={14} className="mr-1.5" />Casting</TabsTrigger>
-          {/* === AGENT_3 ADDITIONS END === */}
-          {/* === APPROVAL ADDITIONS START === */}
           <TabsTrigger value="signoff" data-testid="tab-signoff"><ClipboardCheck size={14} className="mr-1.5" />Sign-off</TabsTrigger>
-          {/* === APPROVAL ADDITIONS END === */}
+          <TabsTrigger value="settings" data-testid="tab-settings"><SettingsIcon size={14} className="mr-1.5" />Settings</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview"><OverviewTab project={project} members={members} setTab={setTab} /></TabsContent>
@@ -184,12 +177,9 @@ export default function ProjectWorkspace() {
         <TabsContent value="scenes"><ScenesTab projectId={projectId} /></TabsContent>
         <TabsContent value="comments"><CommentsTab projectId={projectId} /></TabsContent>
         <TabsContent value="settings"><SettingsTab project={project} members={members} /></TabsContent>
-        {/* === AGENT_3 ADDITIONS (relocated inside Tabs root) === */}
         <TabsContent value="continuity"><ContinuityTab projectId={projectId} /></TabsContent>
         <TabsContent value="casting"><CastingTab projectId={projectId} /></TabsContent>
-        {/* === APPROVAL ADDITIONS START === */}
         <TabsContent value="signoff"><SignOffPanel projectId={projectId} /></TabsContent>
-        {/* === APPROVAL ADDITIONS END === */}
       </Tabs>
 
       {/* v5 quick-action toolbar — relocated from inside TabsList where they crashed layout */}
@@ -532,10 +522,14 @@ function ScriptTab({ projectId }: { projectId: number }) {
               )}
 
               {/* v4: AI shot suggest */}
-              {current.sourceType !== "upload" && <V4ScriptAiButton projectId={projectId} scriptContent={draft.content} />}
-              {/* === AGENT_3 ADDITIONS START === */}
+              {current.sourceType !== "upload" && (
+                <V4ScriptAiButton 
+                  projectId={projectId} 
+                  scriptContent={draft.content || ""} 
+                  onApplyScriptEdit={(newContent) => setDraft({ ...draft, content: newContent })}
+                />
+              )}
               {current.sourceType !== "upload" && <LoreSafeChecklist projectId={projectId} scriptContent={draft.content} />}
-              {/* === AGENT_3 ADDITIONS END === */}
             </div>
             
             {current.sourceType !== "upload" && (
@@ -1628,7 +1622,6 @@ function SettingsTab({ project, members }: { project: Project; members: ProjectD
     },
   });
 
-  // === AGENT_5 ADDITIONS START ===
   const [discordWebhook, setDiscordWebhook] = useState((project as any).dltDiscordWebhookUrl || "");
   const testDiscord = useMutation({
     mutationFn: async () => {
@@ -1637,7 +1630,6 @@ function SettingsTab({ project, members }: { project: Project; members: ProjectD
     onSuccess: () => toast({ title: "Test message sent to Discord" }),
     onError: (err) => toast({ title: "Failed to send", description: String(err), variant: "destructive" }),
   });
-  // === AGENT_5 ADDITIONS END ===
   const del = useMutation({
     mutationFn: async () => (await apiRequest("DELETE", `/api/projects/${project.id}`)).json(),
     onSuccess: () => {
@@ -1688,9 +1680,7 @@ function SettingsTab({ project, members }: { project: Project; members: ProjectD
         </div>
       </SettingsSection>
 
-      {/* === AGENT_1 ADDITIONS START === */}
       <CliBrandSettings project={project} />
-      {/* === AGENT_1 ADDITIONS END === */}
 
       <SettingsSection title="Members">
         <div className="space-y-3">
@@ -1721,7 +1711,6 @@ function SettingsTab({ project, members }: { project: Project; members: ProjectD
         </div>
       </SettingsSection>
 
-      {/* === AGENT_5 ADDITIONS START === */}
       <SettingsSection title="Discord Webhooks">
         <div className="space-y-3">
           <div className="text-sm text-muted-foreground mb-2">Send event notifications to a Discord channel.</div>
@@ -1748,7 +1737,6 @@ function SettingsTab({ project, members }: { project: Project; members: ProjectD
           </div>
         </div>
       </SettingsSection>
-      {/* === AGENT_5 ADDITIONS END === */}
 
       <SettingsSection title="Public share link">
         <div className="space-y-3">
@@ -1784,9 +1772,7 @@ function SettingsTab({ project, members }: { project: Project; members: ProjectD
       <AiKeySettings projectId={project.id} />
       <TagsSettings projectId={project.id} />
 
-      {/* === AGENT_4 ADDITIONS START === */}
       <BakSettingsExports projectId={project.id} />
-      {/* === AGENT_4 ADDITIONS END === */}
 
       <SettingsSection title="Danger zone" tone="destructive">
         <AlertDialog>
@@ -1844,99 +1830,181 @@ function EmptyTabState({ icon, title, body, ctaLabel, onCta }: { icon: React.Rea
 // v4: SortablePanel with pin mode (replaces original above via re-export is not possible,
 // so we do direct edits in the functions below via the "v4 pin" inline integration approach).
 
-// ===== v4 AI Shot Suggest =====
-// Drawer that calls POST /api/projects/:id/shot-suggest with script content.
-function AiShotSuggestSheet({ projectId, scriptContent, open, onOpenChange }: {
+// ===== v4 AI Agent Chat (Replaces Shot Suggest) =====
+function AiAgentPanel({ projectId, scriptContent, open, onOpenChange, onApplyScriptEdit }: {
   projectId: number;
   scriptContent: string;
   open: boolean;
   onOpenChange: (v: boolean) => void;
+  onApplyScriptEdit: (newText: string) => void;
 }) {
-  const [suggestions, setSuggestions] = useState<string>("");
-  const [loading, setLoading] = useState(false);
+  const [sessionId, setSessionId] = useState<number | null>(null);
+  const [input, setInput] = useState("");
+  const [resolvedEdits, setResolvedEdits] = useState<Record<string, 'approved' | 'declined'>>({});
   const { toast } = useToast();
 
-  const suggest = async () => {
-    if (!scriptContent.trim()) {
-      toast({ title: "Write some script content first", variant: "destructive" });
-      return;
+  // Load latest session or create one when opened
+  const { data: sessions, refetch: refetchSessions } = useQuery<any[]>({
+    queryKey: ["/api/projects", projectId, "ai", "sessions"],
+    enabled: open,
+  });
+
+  useEffect(() => {
+    if (open && sessions && sessions.length > 0 && !sessionId) {
+      setSessionId(sessions[0].id);
+    } else if (open && sessions?.length === 0 && !sessionId) {
+      // Create initial session
+      apiRequest("POST", `/api/projects/${projectId}/ai/sessions`, { title: "Script Assistant" })
+        .then(r => r.json())
+        .then(s => setSessionId(s.id));
     }
-    setLoading(true);
-    setSuggestions("");
+  }, [open, sessions, sessionId, projectId]);
+
+  const { data: messages, refetch: refetchMessages } = useQuery<any[]>({
+    queryKey: ["/api/projects", projectId, "ai", "sessions", sessionId, "messages"],
+    enabled: !!sessionId && open,
+  });
+
+  const chatMutation = useMutation({
+    mutationFn: async (content: string) => {
+      if (!sessionId) throw new Error("No active session");
+      const res = await apiRequest("POST", `/api/projects/${projectId}/ai/chat`, {
+        sessionId,
+        content,
+        scriptContent
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      setInput("");
+      refetchMessages();
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" })
+  });
+
+  const handleSend = (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!input.trim() || chatMutation.isPending) return;
+    // Optimistic user message rendering could be added here, but relying on refetch is safer for now.
+    chatMutation.mutate(input);
+  };
+
+  const handleApproveEdit = (toolCall: any, tcId: string) => {
     try {
-      const res = await apiRequest("POST", `/api/projects/${projectId}/ai/shot-suggest`, { scriptText: scriptContent });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Failed to generate suggestions");
-      
-      let formatted = "";
-      if (data.shots && data.shots.length > 0) {
-        formatted = data.shots.map((s: any) => `${s.shotNumber}. ${s.shotType} - ${s.cameraMove}\n${s.actionDescription}`).join("\n\n");
-      } else if (data.raw) {
-        formatted = data.raw;
+      const args = JSON.parse(toolCall.function.arguments);
+      if (args.original_text && args.replacement_text) {
+        const newScript = scriptContent.replace(args.original_text, args.replacement_text);
+        if (newScript === scriptContent) {
+           toast({ title: "Text not found", description: "The original text couldn't be located in the script.", variant: "destructive" });
+        } else {
+           onApplyScriptEdit(newScript);
+           toast({ title: "Edit Applied", description: "The script was updated successfully." });
+           setResolvedEdits(prev => ({ ...prev, [tcId]: 'approved' }));
+        }
       }
-      setSuggestions(formatted || "No suggestions returned.");
-    } catch (e: any) {
-      toast({ title: "Error", description: e.message, variant: "destructive" });
-    } finally {
-      setLoading(false);
+    } catch (e) {
+      toast({ title: "Error parsing tool call", variant: "destructive" });
     }
   };
 
-  // Auto-suggest when opened
-  useEffect(() => {
-    if (open && !suggestions && !loading) suggest();
-  }, [open]);
+  const handleDeclineEdit = (tcId: string) => {
+    setResolvedEdits(prev => ({ ...prev, [tcId]: 'declined' }));
+  };
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full sm:max-w-lg">
-        <SheetHeader>
+      <SheetContent side="right" className="w-full sm:max-w-[400px] flex flex-col p-0">
+        <SheetHeader className="p-4 border-b border-border shrink-0">
           <SheetTitle className="flex items-center gap-2">
-            <Sparkles size={16} className="text-primary" /> AI Shot Suggestions
+            <Sparkles size={16} className="text-primary" /> Cel Assistant
           </SheetTitle>
         </SheetHeader>
-        <div className="mt-4 space-y-4">
-          <p className="text-xs text-muted-foreground">
-            AI analyzes your script and suggests shot compositions, camera angles, and staging notes.
-          </p>
-          {loading && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 size={14} className="animate-spin" /> Analyzing script…
+        
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {messages?.length === 0 && (
+            <div className="text-sm text-muted-foreground text-center mt-10">
+              Ask me to rewrite a sentence, suggest shots, or leave a comment!
             </div>
           )}
-          {!loading && suggestions && (
-            <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm prose-cel max-h-[60vh] overflow-auto">
-              <ReactMarkdown>{suggestions}</ReactMarkdown>
-            </div>
-          )}
-          {!loading && suggestions && (
-            <div className="flex gap-2">
-              <GlassButton variant="primary" size="sm" onClick={suggest} data-testid="button-ai-suggest-retry">
-                <Sparkles size={13} className="mr-1.5" /> Regenerate
-              </GlassButton>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={async () => {
-                  const lines = suggestions.split("\n").filter(l => l.trim().match(/^\d+\./));
-                  for (const line of lines) {
-                    const title = line.replace(/^\d+\.\s*/, "").trim();
-                    await apiRequest("POST", `/api/projects/${projectId}/scenes`, {
-                      number: line.match(/^\d+/)?.[0] || "1",
-                      title: title.slice(0, 50),
-                      status: "script"
+          {messages?.map((m: any) => (
+            <div key={m.id} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
+              <div className={`px-3 py-2 rounded-lg text-sm max-w-[85%] ${m.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted border border-border'}`}>
+                {m.content && <ReactMarkdown className="prose-cel prose-sm max-w-none">{m.content}</ReactMarkdown>}
+                
+                {/* Render Tool Calls (Approvals) */}
+                {m.toolCalls && (() => {
+                  try {
+                    return JSON.parse(m.toolCalls).map((tc: any, idx: number) => {
+                      if (tc.function.name === 'edit_script_passage') {
+                        let args;
+                        try { args = JSON.parse(tc.function.arguments); } catch { return null; }
+                        const tcId = tc.id || `${m.id}-${idx}`;
+                        const status = resolvedEdits[tcId];
+                        return (
+                          <div key={idx} className="mt-2 border border-primary/20 bg-background/50 rounded p-2 text-xs">
+                            <div className="font-semibold text-primary mb-1 flex items-center justify-between">
+                              Proposed Edit
+                              {status === 'approved' && <span className="text-[10px] bg-green-500/20 text-green-500 px-1.5 py-0.5 rounded">Approved</span>}
+                              {status === 'declined' && <span className="text-[10px] bg-destructive/20 text-destructive px-1.5 py-0.5 rounded">Declined</span>}
+                            </div>
+                            <div className="line-through text-muted-foreground mb-1">{args.original_text}</div>
+                            <div className="text-green-500 mb-2">{args.replacement_text}</div>
+                            {!status && (
+                              <div className="flex gap-2">
+                                <Button size="sm" onClick={() => handleApproveEdit(tc, tcId)}>Approve</Button>
+                                <Button size="sm" variant="ghost" className="text-destructive hover:bg-destructive/10" onClick={() => handleDeclineEdit(tcId)}>Decline</Button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      }
+                      if (tc.function.name === 'suggest_shots') {
+                        let args;
+                        try { args = JSON.parse(tc.function.arguments); } catch { return null; }
+                        return (
+                          <div key={idx} className="mt-2 border border-primary/20 bg-background/50 rounded p-2 text-xs">
+                            <div className="font-semibold text-primary mb-1">Suggested Shots</div>
+                            {args.shots?.map((s: any, i: number) => (
+                               <div key={i} className="mb-1">
+                                 <span className="font-medium">{s.shotNumber}. {s.shotType}</span>: {s.actionDescription}
+                               </div>
+                            ))}
+                          </div>
+                        );
+                      }
+                      return null;
                     });
-                  }
-                  queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId, "scenes"] });
-                  toast({ title: "Shots created", description: `Added ${lines.length} shots to your list.` });
-                  onOpenChange(false);
-                }}
-                data-testid="button-ai-insert-shots"
-              >
-                Insert as Shot List
-              </Button>
+                  } catch { return null; }
+                })()}
+              </div>
             </div>
+          ))}
+          {chatMutation.isPending && (
+             <div className="flex items-center gap-2 text-xs text-muted-foreground">
+               <Loader2 size={12} className="animate-spin" /> Thinking...
+             </div>
           )}
+        </div>
+
+        <div className="p-3 border-t border-border shrink-0 bg-card">
+          <form onSubmit={handleSend} className="flex gap-2">
+            <Input 
+              placeholder="Ask the assistant..." 
+              value={input} 
+              onChange={e => setInput(e.target.value)}
+              disabled={chatMutation.isPending}
+            />
+            <Button type="submit" size="icon" disabled={!input.trim() || chatMutation.isPending}>
+              <Send size={14} />
+            </Button>
+          </form>
+          <div className="flex justify-between items-center mt-2 px-1">
+            <Button variant="ghost" size="sm" className="h-6 text-[10px]" onClick={() => {
+              apiRequest("POST", `/api/projects/${projectId}/ai/sessions`, { title: "New Chat" })
+                .then(r => r.json())
+                .then(s => setSessionId(s.id));
+            }}>New Chat</Button>
+          </div>
         </div>
       </SheetContent>
     </Sheet>
@@ -2142,7 +2210,6 @@ export function V4PanelPinLayer({ panelId }: { panelId: number }) {
   );
 }
 
-// === AGENT_4 ADDITIONS START ===
 export function BakSceneGltfExport({ sceneId }: { sceneId: number }) {
   const { toast } = useToast();
   
@@ -2170,7 +2237,6 @@ export function BakSceneGltfExport({ sceneId }: { sceneId: number }) {
     </Button>
   );
 }
-// === AGENT_4 ADDITIONS END ===
 
 // ===== v4 Scene expanded row extras =====
 export function V4SceneExtras({ scene }: { scene: Scene }) {
@@ -2183,11 +2249,9 @@ export function V4SceneExtras({ scene }: { scene: Scene }) {
         </p>
         <InlineTagSelector entityKind="scene" entityId={scene.id} />
       </div>
-      {/* === AGENT_4 ADDITIONS START === */}
       <div className="mt-2">
         <BakSceneGltfExport sceneId={scene.id} />
       </div>
-      {/* === AGENT_4 ADDITIONS END === */}
     </div>
   );
 }
