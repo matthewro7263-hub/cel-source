@@ -79,32 +79,45 @@
     --shadow-pop: 0 1px 2px rgba(20,24,40,0.05), 0 20px 48px rgba(20,24,40,0.10);
 
     /* Liquid Glass Neumorphic tokens */
-    --neu-glass-bg: rgba(255, 255, 255, 0.55);
-    --neu-glass-bg-hover: rgba(255, 255, 255, 0.70);
-    --neu-glass-bg-active: rgba(255, 255, 255, 0.45);
-    --neu-glass-border: rgba(255, 255, 255, 0.60);
-    --neu-glass-border-hover: rgba(255, 255, 255, 0.80);
+    --neu-glass-bg: rgba(255, 255, 255, 0.66);
+    --neu-glass-bg-hover: rgba(255, 255, 255, 0.82);
+    --neu-glass-bg-active: rgba(255, 255, 255, 0.52);
+    --neu-glass-border: rgba(255, 255, 255, 0.74);
+    --neu-glass-border-hover: rgba(255, 255, 255, 0.92);
+    --neu-glass-material:
+      radial-gradient(circle at 50% 48%, rgba(255,255,255,0.86) 0%, rgba(255,255,255,0.52) 38%, rgba(255,255,255,0.20) 68%, rgba(255,255,255,0.04) 100%),
+      linear-gradient(145deg, rgba(255,255,255,0.86) 0%, rgba(255,255,255,0.46) 42%, rgba(245,248,255,0.34) 100%);
+    --neu-glass-caustic:
+      radial-gradient(circle at 50% 50%, rgba(255,255,255,0.58) 0%, rgba(255,255,255,0.34) 34%, rgba(255,255,255,0.06) 68%, transparent 100%);
+    --neu-glass-refraction:
+      conic-gradient(from 215deg at 50% 50%, rgba(157,208,255,0.28), rgba(196,181,253,0.18) 25%, rgba(255,205,225,0.18) 48%, rgba(173,216,230,0.24) 72%, rgba(157,208,255,0.28));
+    --neu-glass-rim:
+      linear-gradient(145deg, rgba(255,255,255,0.96), rgba(255,255,255,0.16) 44%, rgba(99,116,145,0.16) 100%);
+    --neu-accent-glass-material:
+      radial-gradient(circle at 50% 46%, rgba(255,255,255,0.72) 0%, rgba(157,225,255,0.34) 32%, rgba(47,184,235,0.58) 72%, rgba(40,172,224,0.68) 100%),
+      linear-gradient(145deg, rgba(255,255,255,0.82) 0%, rgba(157,225,255,0.54) 38%, rgba(30,169,225,0.70) 100%);
     --neu-icon-color: #1D1D1F;
     --neu-icon-muted: #8E8E93;
     --neu-shadow-raised:
-      0 1px 2px rgba(0,0,0,0.06),
-      0 3px 6px rgba(0,0,0,0.10),
-      0 6px 14px rgba(0,0,0,0.08),
-      0 2px 8px rgba(255,255,255,0.50),
-      inset 0 1px 0 rgba(255,255,255,0.95),
-      inset 0 -1px 0 rgba(0,0,0,0.04);
+      0 1px 1px rgba(16,24,40,0.05),
+      0 5px 12px rgba(16,24,40,0.10),
+      0 18px 32px rgba(16,24,40,0.12),
+      -10px -8px 24px rgba(255,255,255,0.74),
+      inset 0 1px 1px rgba(255,255,255,0.98),
+      inset 0 -1px 1px rgba(88,96,120,0.08);
     --neu-shadow-raised-hover:
-      0 2px 3px rgba(0,0,0,0.08),
-      0 4px 10px rgba(0,0,0,0.12),
-      0 10px 20px rgba(0,0,0,0.08),
-      0 3px 12px rgba(255,255,255,0.60),
+      0 1px 2px rgba(16,24,40,0.06),
+      0 7px 16px rgba(16,24,40,0.12),
+      0 24px 42px rgba(16,24,40,0.14),
+      -12px -10px 28px rgba(255,255,255,0.82),
       inset 0 1px 0 rgba(255,255,255,1),
-      inset 0 -1px 0 rgba(0,0,0,0.05);
+      inset 0 -1px 1px rgba(88,96,120,0.09);
     --neu-shadow-pressed:
-      0 1px 2px rgba(0,0,0,0.04),
-      0 1px 4px rgba(255,255,255,0.30),
-      inset 0 2px 4px rgba(0,0,0,0.08),
-      inset 0 1px 2px rgba(0,0,0,0.06);
+      0 1px 2px rgba(16,24,40,0.05),
+      0 4px 10px rgba(16,24,40,0.08),
+      inset 0 2px 5px rgba(16,24,40,0.12),
+      inset 0 -1px 0 rgba(255,255,255,0.62);
+    --neu-shadow-caustic-raised: var(--neu-shadow-raised);
     --neu-shadow-elevated:
       0 2px 3px rgba(0,0,0,0.06),
       0 6px 14px rgba(0,0,0,0.12),
@@ -176,11 +189,23 @@
     --shadow-pop: 0 2px 4px rgba(0,0,0,0.40), 0 30px 60px rgba(0,0,0,0.55);
 
     /* Liquid Glass Neumorphic tokens — dark */
-    --neu-glass-bg: rgba(255, 255, 255, 0.06);
-    --neu-glass-bg-hover: rgba(255, 255, 255, 0.10);
-    --neu-glass-bg-active: rgba(255, 255, 255, 0.04);
-    --neu-glass-border: rgba(255, 255, 255, 0.10);
-    --neu-glass-border-hover: rgba(255, 255, 255, 0.16);
+    --neu-glass-bg: rgba(255, 255, 255, 0.09);
+    --neu-glass-bg-hover: rgba(255, 255, 255, 0.14);
+    --neu-glass-bg-active: rgba(255, 255, 255, 0.06);
+    --neu-glass-border: rgba(255, 255, 255, 0.16);
+    --neu-glass-border-hover: rgba(255, 255, 255, 0.24);
+    --neu-glass-material:
+      radial-gradient(circle at 50% 48%, rgba(255,255,255,0.20) 0%, rgba(255,255,255,0.10) 38%, rgba(255,255,255,0.04) 68%, rgba(255,255,255,0.01) 100%),
+      linear-gradient(145deg, rgba(255,255,255,0.16) 0%, rgba(255,255,255,0.07) 46%, rgba(255,255,255,0.03) 100%);
+    --neu-glass-caustic:
+      radial-gradient(circle at 50% 50%, rgba(255,255,255,0.24) 0%, rgba(255,255,255,0.12) 38%, rgba(255,255,255,0.03) 70%, transparent 100%);
+    --neu-glass-refraction:
+      conic-gradient(from 215deg at 50% 50%, rgba(157,208,255,0.20), rgba(196,181,253,0.14) 25%, rgba(255,205,225,0.10) 48%, rgba(173,216,230,0.18) 72%, rgba(157,208,255,0.20));
+    --neu-glass-rim:
+      linear-gradient(145deg, rgba(255,255,255,0.32), rgba(255,255,255,0.06) 48%, rgba(0,0,0,0.20) 100%);
+    --neu-accent-glass-material:
+      radial-gradient(circle at 50% 46%, rgba(255,255,255,0.42) 0%, rgba(157,225,255,0.24) 32%, rgba(47,184,235,0.28) 72%, rgba(40,172,224,0.34) 100%),
+      linear-gradient(145deg, rgba(255,255,255,0.24) 0%, rgba(157,225,255,0.18) 38%, rgba(30,169,225,0.30) 100%);
     --neu-icon-color: #E5E5EA;
     --neu-icon-muted: #8E8E93;
     --neu-shadow-raised:
@@ -202,6 +227,7 @@
       0 1px 4px rgba(255,255,255,0.04),
       inset 0 2px 4px rgba(0,0,0,0.28),
       inset 0 1px 2px rgba(0,0,0,0.20);
+    --neu-shadow-caustic-raised: var(--neu-shadow-raised);
     --neu-shadow-elevated:
       0 2px 3px rgba(0,0,0,0.18),
       0 6px 14px rgba(0,0,0,0.28),
@@ -376,13 +402,14 @@
 
   /* ── Liquid Glass Neumorphic Button ── */
   .cel-soft-button {
+    isolation: isolate;
     overflow: visible;
     border-radius: 1rem;
-    background: var(--neu-glass-bg);
-    backdrop-filter: blur(20px) saturate(160%);
-    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    background: var(--neu-glass-material), var(--neu-glass-bg);
+    backdrop-filter: blur(26px) saturate(175%);
+    -webkit-backdrop-filter: blur(26px) saturate(175%);
     border: 1px solid var(--neu-glass-border);
-    box-shadow: var(--neu-shadow-raised);
+    box-shadow: var(--neu-shadow-caustic-raised);
     transition:
       background 180ms ease,
       box-shadow 180ms ease,
@@ -390,8 +417,39 @@
       transform 180ms ease;
   }
 
+  .cel-soft-button::before,
   .cel-soft-button::after {
-    content: none; /* Remove the old rainbow halo */
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    transition: opacity 180ms ease, transform 180ms ease;
+  }
+
+  .cel-soft-button::before {
+    background: var(--neu-glass-caustic);
+    filter: blur(8px);
+    opacity: 0.58;
+    transform: scale(0.82);
+    z-index: 0;
+  }
+
+  .cel-soft-button::after {
+    background:
+      linear-gradient(var(--neu-glass-rim), var(--neu-glass-rim)) padding-box,
+      var(--neu-glass-refraction) border-box;
+    border: 1px solid transparent;
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.85),
+      inset 0 -1px 1px rgba(84,94,118,0.08);
+    opacity: 0.72;
+    z-index: 0;
+  }
+
+  .cel-soft-button > * {
+    position: relative;
+    z-index: 2;
   }
 
   .btn-sky::after,
@@ -402,43 +460,23 @@
   .cel-soft-button[data-variant="default"] {
     color: hsl(var(--foreground));
     border-color: var(--neu-glass-border);
-    background: var(--neu-glass-bg);
-  }
-
-  /* Iridescent sheen for default/primary buttons */
-  .cel-soft-button[data-variant="default"]::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    background: conic-gradient(
-      from 220deg at 50% 50%,
-      rgba(157,208,255,0.10),
-      rgba(196,181,253,0.08) 25%,
-      rgba(255,182,193,0.06) 50%,
-      rgba(173,216,230,0.08) 75%,
-      rgba(157,208,255,0.10)
-    );
-    pointer-events: none;
-    z-index: 0;
-    opacity: 0.7;
-    mix-blend-mode: normal;
-    transition: opacity 180ms ease;
+    background: var(--neu-glass-material), var(--neu-glass-bg);
   }
 
   .cel-soft-button[data-variant="default"]:hover::before {
-    opacity: 1;
+    opacity: 0.7;
+    transform: scale(0.9);
   }
 
   .cel-soft-button[data-variant="secondary"] {
     color: hsl(var(--foreground));
     border-color: var(--neu-glass-border);
-    background: var(--neu-glass-bg);
+    background: var(--neu-glass-material), var(--neu-glass-bg);
   }
 
   .cel-soft-button[data-variant="outline"] {
-    background: var(--neu-glass-bg);
-    border: 1px solid rgba(0,0,0,0.06);
+    background: var(--neu-glass-material), var(--neu-glass-bg);
+    border: 1px solid var(--neu-glass-border);
   }
 
   .cel-soft-button[data-variant="ghost"] {
@@ -450,11 +488,11 @@
   }
 
   .cel-soft-button[data-variant="ghost"]:hover {
-    background: var(--neu-glass-bg);
-    backdrop-filter: blur(20px) saturate(160%);
-    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    background: var(--neu-glass-material), var(--neu-glass-bg);
+    backdrop-filter: blur(26px) saturate(175%);
+    -webkit-backdrop-filter: blur(26px) saturate(175%);
     border-color: var(--neu-glass-border);
-    box-shadow: var(--neu-shadow-raised);
+    box-shadow: var(--neu-shadow-caustic-raised);
   }
 
   .cel-soft-button[data-variant="destructive"] {
@@ -466,16 +504,25 @@
   }
 
   .cel-soft-button:hover {
-    background: var(--neu-glass-bg-hover);
+    background: var(--neu-glass-material), var(--neu-glass-bg-hover);
     border-color: var(--neu-glass-border-hover);
     box-shadow: var(--neu-shadow-raised-hover);
     transform: translateY(-0.5px);
   }
 
+  .cel-soft-button:hover::after {
+    opacity: 0.9;
+  }
+
   .cel-soft-button:active {
-    background: var(--neu-glass-bg-active);
+    background: var(--neu-glass-material), var(--neu-glass-bg-active);
     box-shadow: var(--neu-shadow-pressed);
-    transform: translateY(0);
+    transform: translateY(0) scale(0.985);
+  }
+
+  .cel-soft-button:active::before {
+    opacity: 0.42;
+    transform: scale(0.72);
   }
 
   /* Dark mode overrides */
@@ -486,16 +533,16 @@
 
   .dark .cel-soft-button[data-variant="default"] {
     color: hsl(var(--foreground));
-    background: var(--neu-glass-bg);
+    background: var(--neu-glass-material), var(--neu-glass-bg);
   }
 
   .dark .cel-soft-button[data-variant="default"]::before {
-    opacity: 0.4;
+    opacity: 0.36;
   }
 
   .dark .cel-soft-button[data-variant="secondary"] {
     color: hsl(var(--foreground));
-    background: var(--neu-glass-bg);
+    background: var(--neu-glass-material), var(--neu-glass-bg);
   }
 
   .dark .cel-soft-button[data-variant="outline"] {

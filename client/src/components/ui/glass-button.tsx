@@ -25,12 +25,12 @@ import { cn } from "@/lib/utils";
 const glassButtonVariants = cva(
   [
     "relative inline-flex items-center justify-center gap-2",
+    "isolate overflow-hidden",
     "font-semibold select-none cursor-pointer",
     "transition-all duration-200 ease-[cubic-bezier(0.4,0,0.2,1)]",
     "active:scale-[0.97]",
     "disabled:pointer-events-none disabled:opacity-50",
     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
-    "overflow-visible",
   ],
   {
     variants: {
@@ -42,23 +42,16 @@ const glassButtonVariants = cva(
          */
         primary: [
           "text-foreground tracking-wide",
-          // Frosted glass surface
-          "bg-[rgba(255,255,255,0.60)] dark:bg-[rgba(255,255,255,0.08)]",
-          "backdrop-blur-[20px] backdrop-saturate-[160%]",
-          // Glass rim border
-          "border border-[rgba(255,255,255,0.65)] dark:border-[rgba(255,255,255,0.12)]",
-          // Neumorphic shadow stack — raised feel with caustic white core
-          "shadow-[0_1px_2px_rgba(0,0,0,0.06),0_3px_6px_rgba(0,0,0,0.10),0_6px_14px_rgba(0,0,0,0.08),0_2px_8px_rgba(255,255,255,0.50),inset_0_1px_0_rgba(255,255,255,0.95),inset_0_-1px_0_rgba(0,0,0,0.04)]",
-          // Dark mode shadow
-          "dark:shadow-[0_1px_2px_rgba(0,0,0,0.18),0_3px_6px_rgba(0,0,0,0.24),0_6px_14px_rgba(0,0,0,0.18),0_2px_8px_rgba(255,255,255,0.06),inset_0_1px_0_rgba(255,255,255,0.16),inset_0_-1px_0_rgba(0,0,0,0.22)]",
-          // Hover — glass brightens, shadow deepens with stronger caustic
-          "hover:bg-[rgba(255,255,255,0.75)] dark:hover:bg-[rgba(255,255,255,0.12)]",
-          "hover:border-[rgba(255,255,255,0.85)] dark:hover:border-[rgba(255,255,255,0.18)]",
-          "hover:shadow-[0_2px_3px_rgba(0,0,0,0.08),0_4px_10px_rgba(0,0,0,0.12),0_10px_20px_rgba(0,0,0,0.08),0_3px_12px_rgba(255,255,255,0.60),inset_0_1px_0_rgba(255,255,255,1),inset_0_-1px_0_rgba(0,0,0,0.05)]",
+          "bg-[var(--neu-glass-bg)]",
+          "backdrop-blur-[26px] backdrop-saturate-[175%]",
+          "border border-[var(--neu-glass-border)]",
+          "shadow-[var(--neu-shadow-caustic-raised)]",
+          "hover:bg-[var(--neu-glass-bg-hover)]",
+          "hover:border-[var(--neu-glass-border-hover)]",
+          "hover:shadow-[var(--neu-shadow-raised-hover)]",
           "hover:translate-y-[-0.5px]",
-          // Active — pressed in
-          "active:bg-[rgba(255,255,255,0.50)] dark:active:bg-[rgba(255,255,255,0.05)]",
-          "active:shadow-[0_1px_2px_rgba(0,0,0,0.04),0_1px_4px_rgba(255,255,255,0.30),inset_0_2px_4px_rgba(0,0,0,0.08),inset_0_1px_2px_rgba(0,0,0,0.06)]",
+          "active:bg-[var(--neu-glass-bg-active)]",
+          "active:shadow-[var(--neu-shadow-pressed)]",
           "active:translate-y-0",
         ],
         /**
@@ -68,13 +61,12 @@ const glassButtonVariants = cva(
           "text-muted-foreground",
           "bg-transparent",
           "border border-transparent",
-          // Hover: glass materializes
-          "hover:bg-[rgba(255,255,255,0.55)] dark:hover:bg-[rgba(255,255,255,0.06)]",
-          "hover:backdrop-blur-[20px] hover:backdrop-saturate-[160%]",
-          "hover:border-[rgba(255,255,255,0.60)] dark:hover:border-[rgba(255,255,255,0.10)]",
-          "hover:shadow-[0_1px_2px_rgba(0,0,0,0.06),0_3px_6px_rgba(0,0,0,0.10),0_6px_14px_rgba(0,0,0,0.08),0_2px_8px_rgba(255,255,255,0.50),inset_0_1px_0_rgba(255,255,255,0.95)]",
+          "hover:bg-[var(--neu-glass-bg)]",
+          "hover:backdrop-blur-[26px] hover:backdrop-saturate-[175%]",
+          "hover:border-[var(--neu-glass-border)]",
+          "hover:shadow-[var(--neu-shadow-caustic-raised)]",
           "hover:text-foreground",
-          "active:shadow-[0_1px_2px_rgba(0,0,0,0.04),0_1px_4px_rgba(255,255,255,0.30),inset_0_2px_4px_rgba(0,0,0,0.08)]",
+          "active:shadow-[var(--neu-shadow-pressed)]",
         ],
         /**
          * Toolbar icon button — minimal, used inside GlassToolbar
@@ -89,7 +81,7 @@ const glassButtonVariants = cva(
       },
       size: {
         pill: "rounded-full px-7 py-2.5 text-sm",
-        round: "rounded-full w-12 h-12 text-base",
+        round: "rounded-full w-14 h-14 text-base shadow-[0_1px_1px_rgba(16,24,40,0.05),0_8px_18px_rgba(16,24,40,0.12),0_24px_40px_rgba(16,24,40,0.14),-10px_-8px_26px_rgba(255,255,255,0.82),inset_0_1px_1px_rgba(255,255,255,0.98),inset_0_-1px_1px_rgba(88,96,120,0.08)]",
         sm: "rounded-xl px-4 py-1.5 text-xs",
         md: "rounded-xl px-5 py-2 text-sm",
       },
@@ -107,24 +99,46 @@ export interface GlassButtonProps
 
 export const GlassButton = forwardRef<HTMLButtonElement, GlassButtonProps>(
   ({ className, variant, size, children, ...props }, ref) => {
+    const resolvedVariant = variant ?? "primary";
+    const resolvedSize = size ?? "md";
+    const showOptics = resolvedVariant !== "toolbar";
+
     return (
       <button
         ref={ref}
         className={cn(glassButtonVariants({ variant, size }), className)}
         data-variant={variant ?? "default"}
+        data-caustic-glass={showOptics ? "" : undefined}
+        data-glass-size={size ?? "md"}
         {...props}
       >
-        {/* Iridescent holographic sheen overlay — only on primary */}
-        {variant === "primary" && (
-          <span
-            className="pointer-events-none absolute inset-0 rounded-[inherit] z-[1] opacity-60 hover:opacity-80 transition-opacity duration-200"
-            style={{
-              background: "conic-gradient(from 220deg at 50% 50%, rgba(157,208,255,0.12), rgba(196,181,253,0.10) 25%, rgba(255,182,193,0.08) 50%, rgba(173,216,230,0.10) 75%, rgba(157,208,255,0.12))",
-              mixBlendMode: "normal",
-            }}
-          />
+        {showOptics && (
+          <>
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 z-0 rounded-[inherit] opacity-95"
+              style={{
+                background: resolvedVariant === "primary" ? "var(--neu-glass-material), var(--neu-glass-bg)" : "var(--neu-glass-bg)",
+              }}
+            />
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 z-0 rounded-[inherit] opacity-60 blur-[8px] transition-opacity duration-200"
+              style={{
+                background: "var(--neu-glass-caustic)",
+                transform: resolvedSize === "round" ? "scale(0.72)" : "scale(0.82)",
+              }}
+            />
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 z-0 rounded-[inherit] border border-transparent opacity-75 transition-opacity duration-200"
+              style={{
+                background: "linear-gradient(var(--neu-glass-rim), var(--neu-glass-rim)) padding-box, var(--neu-glass-refraction) border-box",
+                boxShadow: "inset 0 1px 0 rgba(255,255,255,0.86), inset 0 -1px 1px rgba(84,94,118,0.08)",
+              }}
+            />
+          </>
         )}
-        {/* Content sits above the sheen */}
         <span className="relative z-[2] inline-flex items-center gap-2">
           {children}
         </span>
