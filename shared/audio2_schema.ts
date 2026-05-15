@@ -7,7 +7,7 @@ export const audio2_lipsync = pgTable("audio2_lipsync", {
   projectId: integer("project_id").notNull(),
   transcript: text("transcript").notNull(),
   timelineJson: text("timeline_json").notNull(), // JSON array of {viseme, startMs, endMs}
-  createdAt: text("created_at").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 export const insertAudio2LipsyncSchema = createInsertSchema(audio2_lipsync).omit({
   id: true,
@@ -24,7 +24,7 @@ export const audio2_cues = pgTable("audio2_cues", {
   timestampMs: integer("timestamp_ms").notNull(),
   label: text("label").notNull(),
   color: text("color").notNull().default("#9DD0FF"),
-  createdAt: text("created_at").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 export const insertAudio2CueSchema = createInsertSchema(audio2_cues).omit({
   id: true,

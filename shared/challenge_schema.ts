@@ -1,4 +1,4 @@
-import { pgTable, text, integer , serial} from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, integer , serial} from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -7,7 +7,7 @@ export const challenge_prompts = pgTable("challenge_prompts", {
   weekNumber: integer("week_number").notNull(),
   title: text("title").notNull(),
   body: text("body").notNull(),
-  createdAt: text("created_at").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
 export const challenge_submissions = pgTable("challenge_submissions", {
@@ -16,7 +16,7 @@ export const challenge_submissions = pgTable("challenge_submissions", {
   userId: integer("user_id").notNull(),
   imageUrl: text("image_url"),
   notes: text("notes"),
-  createdAt: text("created_at").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
 export const challenge_reactions = pgTable("challenge_reactions", {
@@ -24,7 +24,7 @@ export const challenge_reactions = pgTable("challenge_reactions", {
   submissionId: integer("submission_id").notNull(),
   userId: integer("user_id").notNull(),
   sticker: text("sticker").notNull(),
-  createdAt: text("created_at").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
 export const insertChallengeSubmissionSchema = createInsertSchema(challenge_submissions).omit({

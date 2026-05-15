@@ -11,8 +11,8 @@ export const approval_signoffs = pgTable("approval_signoffs", {
   signature: text("signature"),
   signatureHash: text("signature_hash"),
   notes: text("notes"),
-  approvedAt: text("approved_at"),
-  createdAt: text("created_at").notNull(),
+  approvedAt: timestamp("approved_at", { withTimezone: true }).defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
 export const insertApprovalSignoffSchema = createInsertSchema(approval_signoffs).omit({

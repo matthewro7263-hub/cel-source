@@ -1,4 +1,4 @@
-import { pgTable, text, integer , serial, boolean} from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, integer , serial, boolean} from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -10,7 +10,7 @@ export const lor_continuity_facts = pgTable("lor_continuity_facts", {
   title: text("title").notNull(),
   body: text("body").notNull().default(""),
   imageData: text("image_data"), // optional base64
-  createdAt: text("created_at").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 export const insertLorContinuityFactSchema = createInsertSchema(lor_continuity_facts).omit({ id: true, createdAt: true });
 export type InsertLorContinuityFact = z.infer<typeof insertLorContinuityFactSchema>;
@@ -23,7 +23,7 @@ export const lor_palettes = pgTable("lor_palettes", {
   projectId: integer("project_id").notNull(),
   name: text("name").notNull().default("Palette"),
   colors: text("colors").notNull(), // JSON array of hex strings
-  createdAt: text("created_at").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 export const insertLorPaletteSchema = createInsertSchema(lor_palettes).omit({ id: true, createdAt: true });
 export type InsertLorPalette = z.infer<typeof insertLorPaletteSchema>;
@@ -36,7 +36,7 @@ export const lor_asset_versions = pgTable("lor_asset_versions", {
   versionNum: integer("version_num").notNull(),
   fileData: text("file_data").notNull(),
   approved: boolean("approved").notNull().default(false),
-  uploadedAt: text("uploaded_at").notNull().default(""),
+  uploadedAt: timestamp("uploaded_at", { withTimezone: true }).defaultNow().notNull(),
 });
 export const insertLorAssetVersionSchema = createInsertSchema(lor_asset_versions).omit({ id: true, uploadedAt: true });
 export type InsertLorAssetVersion = z.infer<typeof insertLorAssetVersionSchema>;

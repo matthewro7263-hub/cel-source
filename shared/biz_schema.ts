@@ -12,7 +12,7 @@ export const biz_festivals = pgTable("biz_festivals", {
   fee: real("fee").default(0),
   notes: text("notes"),
   projectId: integer("project_id"),
-  createdAt: text("created_at").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 export const insertBizFestivalSchema = createInsertSchema(biz_festivals).omit({ id: true, createdAt: true });
 export type InsertBizFestival = z.infer<typeof insertBizFestivalSchema>;
@@ -25,7 +25,7 @@ export const biz_contracts = pgTable("biz_contracts", {
   name: text("name").notNull(),
   kind: text("kind").notNull(), // commission|nda|model_release
   body: text("body").notNull(),
-  createdAt: text("created_at").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 export const insertBizContractSchema = createInsertSchema(biz_contracts).omit({ id: true, createdAt: true });
 export type InsertBizContract = z.infer<typeof insertBizContractSchema>;
@@ -41,7 +41,7 @@ export const biz_expenses = pgTable("biz_expenses", {
   amount: real("amount").notNull(),
   notes: text("notes"),
   receiptUrl: text("receipt_url"),
-  createdAt: text("created_at").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 export const insertBizExpenseSchema = createInsertSchema(biz_expenses).omit({ id: true, createdAt: true });
 export type InsertBizExpense = z.infer<typeof insertBizExpenseSchema>;

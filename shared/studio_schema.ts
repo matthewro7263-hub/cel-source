@@ -9,7 +9,7 @@ export const studio_render_events = pgTable("studio_render_events", {
   label: text("label").notNull(),
   minutes: real("minutes").notNull(),
   cost: real("cost").default(0),
-  createdAt: text("created_at").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
 export const insertStudioRenderEventSchema = createInsertSchema(studio_render_events).omit({
@@ -23,7 +23,7 @@ export type StudioRenderEvent = typeof studio_render_events.$inferSelect;
 export const studio_render_budget = pgTable("studio_render_budget", {
   projectId: integer("project_id").primaryKey(),
   totalMinutes: real("total_minutes").notNull().default(600),
-  updatedAt: text("updated_at").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
 export type StudioRenderBudget = typeof studio_render_budget.$inferSelect;
@@ -36,7 +36,7 @@ export const studio_snapshots = pgTable("studio_snapshots", {
   parentId: integer("parent_id"),
   notes: text("notes"),
   restoredFromId: integer("restored_from_id"),
-  createdAt: text("created_at").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
 export const insertStudioSnapshotSchema = createInsertSchema(studio_snapshots).omit({
@@ -54,7 +54,7 @@ export const studio_credit_entries = pgTable("studio_credit_entries", {
   role: text("role").notNull(),
   name: text("name").notNull(),
   orderIdx: integer("order_idx").notNull().default(0),
-  createdAt: text("created_at").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
 export const insertStudioCreditEntrySchema = createInsertSchema(studio_credit_entries).omit({

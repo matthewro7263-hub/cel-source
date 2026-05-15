@@ -1,4 +1,4 @@
-import { pgTable, text, integer , serial, boolean} from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, integer , serial, boolean} from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -25,7 +25,7 @@ export const projects = pgTable("projects", {
   status: text("status").notNull().default("active"),
   shareToken: text("share_token").notNull(),
   shareEnabled: boolean("share_enabled").notNull().default(false),
-  createdAt: text("created_at").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   cli_brandLogo: text("cli_brand_logo"), // base64
   cli_brandColor: text("cli_brand_color").notNull().default("#9DD0FF"),
   cli_brandWelcome: text("cli_brand_welcome"),
@@ -55,8 +55,8 @@ export const scripts = pgTable("scripts", {
   sourceType: text("source_type").notNull().default("editor"),
   sourceFormat: text("source_format").default(""),
   originalKey: text("original_key").default(""),
-  updatedAt: text("updated_at").notNull().default(""),
-  deletedAt: text("deleted_at"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }).defaultNow(),
 });
 export const insertScriptSchema = createInsertSchema(scripts).omit({ id: true, updatedAt: true });
 export type InsertScript = z.infer<typeof insertScriptSchema>;
@@ -67,7 +67,7 @@ export const storyboards = pgTable("storyboards", {
   id: serial("id").primaryKey(),
   projectId: integer("project_id").notNull(),
   title: text("title").notNull().default("Storyboard"),
-  createdAt: text("created_at").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 export const insertStoryboardSchema = createInsertSchema(storyboards).omit({ id: true, createdAt: true });
 export type InsertStoryboard = z.infer<typeof insertStoryboardSchema>;
@@ -81,7 +81,7 @@ export const storyboardPanels = pgTable("storyboard_panels", {
   imageData: text("image_data").notNull(),
   caption: text("caption").notNull().default(""),
   dialogue: text("dialogue").notNull().default(""),
-  deletedAt: text("deleted_at"),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }).defaultNow(),
 });
 export const insertPanelSchema = createInsertSchema(storyboardPanels).omit({ id: true });
 export type InsertPanel = z.infer<typeof insertPanelSchema>;
@@ -94,7 +94,7 @@ export const animatics = pgTable("animatics", {
   title: text("title").notNull().default("Animatic"),
   videoData: text("video_data").notNull(),
   notes: text("notes").notNull().default(""),
-  createdAt: text("created_at").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 export const insertAnimaticSchema = createInsertSchema(animatics).omit({ id: true, createdAt: true });
 export type InsertAnimatic = z.infer<typeof insertAnimaticSchema>;
@@ -110,7 +110,7 @@ export const scenes = pgTable("scenes", {
   status: text("status").notNull().default("script"),
   deadline: text("deadline"),
   assigneeId: integer("assignee_id"),
-  deletedAt: text("deleted_at"),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }).defaultNow(),
 });
 export const insertSceneSchema = createInsertSchema(scenes).omit({ id: true });
 export type InsertScene = z.infer<typeof insertSceneSchema>;
@@ -123,7 +123,7 @@ export const comments = pgTable("comments", {
   sceneId: integer("scene_id"),
   authorId: integer("author_id").notNull(),
   body: text("body").notNull(),
-  createdAt: text("created_at").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 export const insertCommentSchema = createInsertSchema(comments).omit({ id: true, createdAt: true });
 export type InsertComment = z.infer<typeof insertCommentSchema>;
@@ -141,8 +141,8 @@ export const assets = pgTable("assets", {
   notes: text("notes").notNull().default(""),
   tags: text("tags").notNull().default(""), // comma-separated
   uploaderId: integer("uploader_id").notNull(),
-  createdAt: text("created_at").notNull().default(""),
-  deletedAt: text("deleted_at"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }).defaultNow(),
 });
 export const insertAssetSchema = createInsertSchema(assets).omit({ id: true, createdAt: true });
 export type InsertAsset = z.infer<typeof insertAssetSchema>;
@@ -162,7 +162,7 @@ export const commissions = pgTable("commissions", {
   status: text("status").notNull().default("new"), // new | quoted | accepted | in-progress | delivered | declined
   notes: text("notes").notNull().default(""), // artist's private notes
   linkedProjectId: integer("linked_project_id"), // set when converted to project
-  createdAt: text("created_at").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 export const insertCommissionSchema = createInsertSchema(commissions).omit({ id: true, createdAt: true, linkedProjectId: true });
 export type InsertCommission = z.infer<typeof insertCommissionSchema>;
@@ -175,8 +175,8 @@ export const animaticProjects = pgTable("animatic_projects", {
   title: text("title").notNull().default("Untitled Animatic"),
   fps: integer("fps").notNull().default(24),
   totalDurationMs: integer("total_duration_ms").notNull().default(8000),
-  createdAt: text("created_at").notNull().default(""),
-  updatedAt: text("updated_at").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 export const insertAnimaticProjectSchema = createInsertSchema(animaticProjects).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertAnimaticProject = z.infer<typeof insertAnimaticProjectSchema>;
@@ -224,7 +224,7 @@ export const renders = pgTable("renders", {
   durationSeconds: integer("duration_seconds"), // nullable
   fileUrl: text("file_url").notNull().default(""), // external link to MP4/folder
   notes: text("notes").notNull().default(""),
-  createdAt: text("created_at").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 export const insertRenderSchema = createInsertSchema(renders).omit({ id: true, createdAt: true });
 export type InsertRender = z.infer<typeof insertRenderSchema>;
@@ -238,7 +238,7 @@ export const projectAiKeys = pgTable("project_ai_keys", {
   projectId: integer("project_id").notNull(),
   encryptedKey: text("encrypted_key").notNull(), // base64 obfuscation (NOT real encryption - see build notes)
   model: text("model"), // Optional model preference
-  createdAt: text("created_at").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 export const insertProjectAiKeySchema = createInsertSchema(projectAiKeys).omit({ id: true, createdAt: true });
 export type InsertProjectAiKey = z.infer<typeof insertProjectAiKeySchema>;
@@ -249,7 +249,7 @@ export const aiChatSessions = pgTable("ai_chat_sessions", {
   projectId: integer("project_id").notNull(),
   scriptId: integer("script_id"), // Optional: lock session to a specific script
   title: text("title").notNull().default("AI Assistant"),
-  createdAt: text("created_at").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 export const insertAiChatSessionSchema = createInsertSchema(aiChatSessions).omit({ id: true, createdAt: true });
 export type InsertAiChatSession = z.infer<typeof insertAiChatSessionSchema>;
@@ -262,7 +262,7 @@ export const aiChatMessages = pgTable("ai_chat_messages", {
   content: text("content").notNull(),
   toolCalls: text("tool_calls"), // JSON stringified tool_calls array
   toolCallId: text("tool_call_id"), // For 'tool' role responses
-  createdAt: text("created_at").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 export const insertAiChatMessageSchema = createInsertSchema(aiChatMessages).omit({ id: true, createdAt: true });
 export type InsertAiChatMessage = z.infer<typeof insertAiChatMessageSchema>;
@@ -276,7 +276,7 @@ export const achievements = pgTable("achievements", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull(),
   code: text("code").notNull(),
-  unlockedAt: text("unlocked_at").notNull().default(""),
+  unlockedAt: timestamp("unlocked_at", { withTimezone: true }).defaultNow().notNull(),
 });
 export const insertAchievementSchema = createInsertSchema(achievements).omit({ id: true });
 export type InsertAchievement = z.infer<typeof insertAchievementSchema>;
@@ -292,7 +292,7 @@ export const panelPins = pgTable("panel_pins", {
   yPercent: integer("y_percent").notNull().default(0),
   body: text("body").notNull(),
   authorId: integer("author_id").notNull(),
-  createdAt: text("created_at").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 export const insertPanelPinSchema = createInsertSchema(panelPins).omit({ id: true, createdAt: true });
 export type InsertPanelPin = z.infer<typeof insertPanelPinSchema>;
@@ -307,7 +307,7 @@ export const commissionLineItems = pgTable("commission_line_items", {
   description: text("description").notNull(),
   quantity: integer("quantity").notNull().default(1),
   unitPriceCents: integer("unit_price_cents").notNull().default(0),
-  createdAt: text("created_at").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 export const insertCommissionLineItemSchema = createInsertSchema(commissionLineItems).omit({ id: true, createdAt: true });
 export type InsertCommissionLineItem = z.infer<typeof insertCommissionLineItemSchema>;
@@ -322,7 +322,7 @@ export const inboxItems = pgTable("inbox_items", {
   body: text("body").notNull(),
   tags: text("tags").notNull().default(""), // comma-separated
   projectId: integer("project_id"), // nullable
-  createdAt: text("created_at").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 export const insertInboxItemSchema = createInsertSchema(inboxItems).omit({ id: true, createdAt: true });
 export type InsertInboxItem = z.infer<typeof insertInboxItemSchema>;
@@ -377,14 +377,14 @@ export const bakSnapshots = pgTable("bak_snapshots", {
   projectId: integer("project_id").notNull(),
   label: text("label").notNull().default("Snapshot"),
   jsonBlob: text("json_blob").notNull(),
-  createdAt: text("created_at").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
 export const bakGltfExports = pgTable("bak_gltf_exports", {
   id: serial("id").primaryKey(),
   sceneId: integer("scene_id").notNull(),
   fileData: text("file_data").notNull(), // base64 or json string
-  createdAt: text("created_at").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
 // ============================================================
@@ -394,7 +394,7 @@ export const dltCommissionHours = pgTable("dlt_commission_hours", {
   id: serial("id").primaryKey(),
   commissionId: integer("commission_id").notNull(),
   hours: integer("hours").notNull().default(0), 
-  loggedAt: text("logged_at").notNull().default(""),
+  loggedAt: timestamp("logged_at", { withTimezone: true }).defaultNow().notNull(),
 });
 export const insertDltCommissionHoursSchema = createInsertSchema(dltCommissionHours).omit({ id: true, loggedAt: true });
 export type InsertDltCommissionHours = z.infer<typeof insertDltCommissionHoursSchema>;
@@ -408,7 +408,7 @@ export const audVoiceTakes = pgTable("aud_voice_takes", {
   projectId: integer("project_id").notNull(),
   sceneId: integer("scene_id"),
   audioData: text("audio_data").notNull(), // base64 WAV
-  createdAt: text("created_at").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 export const insertAudVoiceTakeSchema = createInsertSchema(audVoiceTakes).omit({ id: true, createdAt: true });
 
@@ -421,7 +421,7 @@ export const audCaptions = pgTable("aud_captions", {
   text: text("text").notNull(),
   startMs: integer("start_ms").notNull(),
   endMs: integer("end_ms").notNull(),
-  createdAt: text("created_at").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 export const insertAudCaptionSchema = createInsertSchema(audCaptions).omit({ id: true, createdAt: true });
 export type InsertAudCaption = z.infer<typeof insertAudCaptionSchema>;
@@ -436,7 +436,7 @@ export const cli_approvals = pgTable("cli_approvals", {
   phase: text("phase").notNull(), // storyboard | animatic | final
   signedName: text("signed_name").notNull(),
   signatureData: text("signature_data").notNull(), // typed name rendered in cursive, stored as text or base64 (we'll just use the font to render it, so we can store the name or base64 of the image)
-  signedAt: text("signed_at").notNull(),
+  signedAt: timestamp("signed_at", { withTimezone: true }).defaultNow().notNull(),
 });
 export const insertCliApprovalSchema = createInsertSchema(cli_approvals).omit({ id: true });
 export type InsertCliApproval = z.infer<typeof insertCliApprovalSchema>;
@@ -448,7 +448,7 @@ export const cli_feedback = pgTable("cli_feedback", {
   projectId: integer("project_id").notNull(),
   sceneId: integer("scene_id"),
   fields: text("fields").notNull(), // JSON string representing the rubric
-  createdAt: text("created_at").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 export const insertCliFeedbackSchema = createInsertSchema(cli_feedback).omit({ id: true, createdAt: true });
 export type InsertCliFeedback = z.infer<typeof insertCliFeedbackSchema>;
@@ -467,7 +467,7 @@ export const commissionPricingPresets = pgTable("commission_pricing_presets", {
   name: text("name").notNull(),
   description: text("description").notNull().default(""),
   priceCents: integer("price_cents").notNull().default(0),
-  createdAt: text("created_at").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 export const insertCommissionPricingPresetSchema = createInsertSchema(commissionPricingPresets).omit({ id: true, createdAt: true });
 export type InsertCommissionPricingPreset = z.infer<typeof insertCommissionPricingPresetSchema>;

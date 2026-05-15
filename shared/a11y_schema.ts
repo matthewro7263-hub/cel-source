@@ -1,4 +1,4 @@
-import { pgTable, integer } from "drizzle-orm/pg-core";
+import { pgTable, integer, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 

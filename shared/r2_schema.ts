@@ -3,7 +3,7 @@
 // Merge these into your existing shared/schema.ts (or import alongside).
 // Targets Postgres (matches drizzle-orm + connect-pg-simple in package.json).
 
-import { pgTable, text, uuid, timestamp, bigint, index } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, uuid, timestamp, bigint, index } from "drizzle-orm/pg-core";
 
 export const users = pgTable(
   "users",

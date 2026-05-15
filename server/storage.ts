@@ -1,34 +1,49 @@
-import {
-  users, projects, projectMembers, scripts, storyboards, storyboardPanels,
-  animatics, scenes, comments, assets, commissions, renders,
-  animaticProjects, animaticTracks, animaticClips,
-} from "@shared/schema";
-import type {
-  User, InsertUser, Project, InsertProject, ProjectMember, InsertProjectMember,
-  Script, InsertScript, Storyboard, InsertStoryboard, Panel, InsertPanel,
-  Animatic, InsertAnimatic, Scene, InsertScene, Comment, InsertComment,
-  Asset, InsertAsset, Commission, InsertCommission, Render, InsertRender,
-  AnimaticProject, InsertAnimaticProject, AnimaticTrack, InsertAnimaticTrack,
-  AnimaticClip, InsertAnimaticClip,
-} from "@shared/schema";
+import { Pool, neonConfig } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-serverless";
-import Database from "better-sqlite3";
+import ws from "ws";
 import { eq, and, or, inArray, asc, desc, like } from "drizzle-orm";
 import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 
-import {
+import * as mainSchema from "@shared/schema";
+import * as a11ySchema from "@shared/a11y_schema";
+import * as challengeSchema from "@shared/challenge_schema";
+import * as lorSchema from "@shared/lor_schema";
+import * as studioSchema from "@shared/studio_schema";
+
+const schema = {
+  ...mainSchema,
+  ...a11ySchema,
+  ...challengeSchema,
+  ...lorSchema,
+  ...studioSchema,
+};
+
+// Re-export individual tables for convenience in methods
+const {
+  users, projects, projectMembers, scripts, storyboards, storyboardPanels,
+  animatics, scenes, comments, assets, commissions, renders,
+  animaticProjects, animaticTracks, animaticClips,
   projectAiKeys, aiChatSessions, aiChatMessages, achievements, panelPins,
   commissionLineItems, inboxItems, tags, tagAssignments,
   sceneTimeEntries, commissionPricingPresets,
   audVoiceTakes, audCaptions,
   dltCommissionHours,
   cli_approvals, cli_feedback,
-} from "@shared/schema";
-import { a11y_user_prefs } from "@shared/a11y_schema";
-import { challenge_prompts, challenge_reactions, challenge_submissions } from "@shared/challenge_schema";
-import { lor_continuity_facts, lor_palettes, lor_asset_versions, lor_casting_matrix } from "@shared/lor_schema";
+} = mainSchema;
 
-import type {
+const { a11y_user_prefs } = a11ySchema;
+const { challenge_prompts, challenge_reactions, challenge_submissions } = challengeSchema;
+const { lor_continuity_facts, lor_palettes, lor_asset_versions, lor_casting_matrix } = lorSchema;
+const { studio_render_events, studio_render_budget, studio_snapshots, studio_credit_entries } = studioSchema;
+
+// Types
+export type {
+  User, InsertUser, Project, InsertProject, ProjectMember, InsertProjectMember,
+  Script, InsertScript, Storyboard, InsertStoryboard, Panel, InsertPanel,
+  Animatic, InsertAnimatic, Scene, InsertScene, Comment, InsertComment,
+  Asset, InsertAsset, Commission, InsertCommission, Render, InsertRender,
+  AnimaticProject, InsertAnimaticProject, AnimaticTrack, InsertAnimaticTrack,
+  AnimaticClip, InsertAnimaticClip,
   ProjectAiKey, InsertProjectAiKey,
   AiChatSession, InsertAiChatSession,
   AiChatMessage, InsertAiChatMessage,
@@ -43,239 +58,27 @@ import type {
   DltCommissionHours, InsertDltCommissionHours,
   InsertAudVoiceTake, InsertAudCaption,
 } from "@shared/schema";
-import type { A11yPrefs, InsertA11yPrefs } from "@shared/a11y_schema";
-import type { ChallengePrompt, ChallengeReaction, ChallengeSubmission, InsertChallengeSubmission } from "@shared/challenge_schema";
-import type {
+export type { A11yPrefs, InsertA11yPrefs } from "@shared/a11y_schema";
+export type { ChallengePrompt, ChallengeReaction, ChallengeSubmission, InsertChallengeSubmission } from "@shared/challenge_schema";
+export type {
   LorContinuityFact, InsertLorContinuityFact,
   LorPalette, InsertLorPalette,
   LorAssetVersion, InsertLorAssetVersion,
   LorCastingMatrix, InsertLorCastingMatrix,
 } from "@shared/lor_schema";
-
-import {
-  studio_render_events, studio_render_budget, studio_snapshots, studio_credit_entries,
-} from "@shared/studio_schema";
-import type {
+export type {
   StudioRenderEvent, InsertStudioRenderEvent,
   StudioRenderBudget,
   StudioSnapshot, InsertStudioSnapshot,
   StudioCreditEntry, InsertStudioCreditEntry,
 } from "@shared/studio_schema";
 
-const sqlite = new Database("data.db");
-sqlite.pragma("journal_mode = WAL");
+neonConfig.webSocketConstructor = ws;
 
-export const db = drizzle(sqlite);
+if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required");
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
-// Create tables (idempotent via Drizzle raw exec)
-sqlite.exec(`
-CREATE TABLE IF NOT EXISTS users (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  email TEXT NOT NULL UNIQUE,
-  name TEXT NOT NULL,
-  avatar_color TEXT NOT NULL DEFAULT '#6E4FE8',
-  password_hash TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS projects (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  owner_id INTEGER NOT NULL,
-  title TEXT NOT NULL,
-  description TEXT NOT NULL DEFAULT '',
-  cover_color TEXT NOT NULL DEFAULT '#6E4FE8',
-  deadline TEXT,
-  status TEXT NOT NULL DEFAULT 'active',
-  share_token TEXT NOT NULL,
-  share_enabled INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL DEFAULT '',
-  cli_brand_logo TEXT,
-  cli_brand_color TEXT NOT NULL DEFAULT '#9DD0FF',
-  cli_brand_welcome TEXT
-);
-CREATE TABLE IF NOT EXISTS project_members (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  project_id INTEGER NOT NULL,
-  user_id INTEGER NOT NULL,
-  role TEXT NOT NULL DEFAULT 'editor'
-);
-CREATE TABLE IF NOT EXISTS scripts (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  project_id INTEGER NOT NULL,
-  title TEXT NOT NULL DEFAULT 'Untitled Script',
-  content TEXT NOT NULL DEFAULT '',
-  source_type TEXT NOT NULL DEFAULT 'editor',
-  source_format TEXT DEFAULT '',
-  original_key TEXT DEFAULT '',
-  updated_at TEXT NOT NULL DEFAULT ''
-);
-CREATE TABLE IF NOT EXISTS storyboards (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  project_id INTEGER NOT NULL,
-  title TEXT NOT NULL DEFAULT 'Storyboard',
-  created_at TEXT NOT NULL DEFAULT ''
-);
-CREATE TABLE IF NOT EXISTS storyboard_panels (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  storyboard_id INTEGER NOT NULL,
-  order_idx INTEGER NOT NULL DEFAULT 0,
-  image_data TEXT NOT NULL,
-  caption TEXT NOT NULL DEFAULT '',
-  dialogue TEXT NOT NULL DEFAULT ''
-);
-CREATE TABLE IF NOT EXISTS animatics (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  project_id INTEGER NOT NULL,
-  title TEXT NOT NULL DEFAULT 'Animatic',
-  video_data TEXT NOT NULL,
-  notes TEXT NOT NULL DEFAULT '',
-  created_at TEXT NOT NULL DEFAULT ''
-);
-CREATE TABLE IF NOT EXISTS scenes (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  project_id INTEGER NOT NULL,
-  number TEXT NOT NULL DEFAULT '1',
-  title TEXT NOT NULL DEFAULT 'Untitled Scene',
-  description TEXT NOT NULL DEFAULT '',
-  status TEXT NOT NULL DEFAULT 'script',
-  deadline TEXT,
-  assignee_id INTEGER
-);
-CREATE TABLE IF NOT EXISTS comments (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  project_id INTEGER NOT NULL,
-  scene_id INTEGER,
-  author_id INTEGER NOT NULL,
-  body TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT ''
-);
-CREATE TABLE IF NOT EXISTS assets (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  project_id INTEGER NOT NULL,
-  category TEXT NOT NULL DEFAULT 'Other',
-  filename TEXT NOT NULL,
-  mime_type TEXT NOT NULL DEFAULT '',
-  file_data TEXT NOT NULL,
-  thumbnail_data TEXT,
-  notes TEXT NOT NULL DEFAULT '',
-  tags TEXT NOT NULL DEFAULT '',
-  uploader_id INTEGER NOT NULL,
-  created_at TEXT NOT NULL DEFAULT ''
-);
-CREATE TABLE IF NOT EXISTS commissions (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  owner_user_id INTEGER NOT NULL,
-  client_name TEXT NOT NULL,
-  client_email TEXT NOT NULL,
-  type TEXT NOT NULL,
-  description TEXT NOT NULL,
-  reference_image TEXT,
-  deadline TEXT,
-  budget_range TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'new',
-  notes TEXT NOT NULL DEFAULT '',
-  linked_project_id INTEGER,
-  created_at TEXT NOT NULL DEFAULT ''
-);
-CREATE TABLE IF NOT EXISTS renders (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  scene_id INTEGER NOT NULL,
-  label TEXT NOT NULL DEFAULT 'Render',
-  status TEXT NOT NULL DEFAULT 'queued',
-  software TEXT NOT NULL DEFAULT 'Other',
-  duration_seconds INTEGER,
-  file_url TEXT NOT NULL DEFAULT '',
-  notes TEXT NOT NULL DEFAULT '',
-  created_at TEXT NOT NULL DEFAULT ''
-);
-CREATE TABLE IF NOT EXISTS animatic_projects (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  project_id INTEGER NOT NULL,
-  title TEXT NOT NULL DEFAULT 'Untitled Animatic',
-  fps INTEGER NOT NULL DEFAULT 24,
-  total_duration_ms INTEGER NOT NULL DEFAULT 8000,
-  created_at TEXT NOT NULL DEFAULT '',
-  updated_at TEXT NOT NULL DEFAULT ''
-);
-CREATE TABLE IF NOT EXISTS animatic_tracks (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  animatic_project_id INTEGER NOT NULL,
-  kind TEXT NOT NULL DEFAULT 'panel',
-  name TEXT NOT NULL DEFAULT 'Track',
-  order_idx INTEGER NOT NULL DEFAULT 0,
-  muted INTEGER NOT NULL DEFAULT 0,
-  volume TEXT NOT NULL DEFAULT '1.0'
-);
-CREATE TABLE IF NOT EXISTS animatic_clips (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  track_id INTEGER NOT NULL,
-  start_ms INTEGER NOT NULL DEFAULT 0,
-  duration_ms INTEGER NOT NULL DEFAULT 2000,
-  source_kind TEXT NOT NULL DEFAULT 'panel_ref',
-  source_id INTEGER,
-  audio_data_url TEXT,
-  label TEXT NOT NULL DEFAULT '',
-  fade_in_ms INTEGER NOT NULL DEFAULT 0,
-  fade_out_ms INTEGER NOT NULL DEFAULT 0,
-  volume TEXT NOT NULL DEFAULT '1.0'
-);
-CREATE TABLE IF NOT EXISTS lor_continuity_facts (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  project_id INTEGER NOT NULL,
-  category TEXT NOT NULL DEFAULT 'character',
-  title TEXT NOT NULL,
-  body TEXT NOT NULL DEFAULT '',
-  image_data TEXT,
-  created_at TEXT NOT NULL DEFAULT ''
-);
-CREATE TABLE IF NOT EXISTS lor_palettes (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  project_id INTEGER NOT NULL,
-  name TEXT NOT NULL DEFAULT 'Palette',
-  colors TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT ''
-);
-CREATE TABLE IF NOT EXISTS lor_asset_versions (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  asset_id INTEGER NOT NULL,
-  version_num INTEGER NOT NULL,
-  file_data TEXT NOT NULL,
-  approved INTEGER NOT NULL DEFAULT 0,
-  uploaded_at TEXT NOT NULL DEFAULT ''
-);
-CREATE TABLE IF NOT EXISTS lor_casting_matrix (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  project_id INTEGER NOT NULL,
-  scene_id INTEGER NOT NULL,
-  entity_id INTEGER NOT NULL,
-  present INTEGER NOT NULL DEFAULT 0
-);
-CREATE TABLE IF NOT EXISTS audio2_lipsync (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  project_id INTEGER NOT NULL,
-  transcript TEXT NOT NULL,
-  timeline_json TEXT NOT NULL,
-  created_at TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS audio2_cues (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  project_id INTEGER NOT NULL,
-  timestamp_ms INTEGER NOT NULL,
-  label TEXT NOT NULL,
-  color TEXT NOT NULL DEFAULT '#9DD0FF',
-  created_at TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS approval_signoffs (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  project_id INTEGER NOT NULL,
-  milestone TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'pending',
-  approver_name TEXT,
-  signature TEXT,
-  signature_hash TEXT,
-  notes TEXT,
-  approved_at TEXT,
-  created_at TEXT NOT NULL DEFAULT ''
-);
-`);
+export const db = drizzle(pool, { schema });
 
 // ===== PASSWORD UTILS =====
 const SCRYPT_PARAMS = { N: 65536, r: 8, p: 1, maxmem: 128 * 1024 * 1024 };
@@ -336,7 +139,7 @@ export const storage = {
     await db.update(users).set(patch).where(eq(users.id, id)).returning().then(r => r[0]),
 
   // ===== PROJECTS =====
-  listProjectsForUser: (userId: number): Project[] => {
+  async listProjectsForUser: (userId: number): Project[] => {
     const memberRows = db
       .select({ projectId: projectMembers.projectId })
       .from(projectMembers)
@@ -355,8 +158,8 @@ export const storage = {
   async getProject: (id: number) => await db.select().from(projects).where(eq(projects.id, id)).then(r => r[0]),
   async getProjectByToken: (token: string) =>
     await db.select().from(projects).where(eq(projects.shareToken, token)).then(r => r[0]),
-  createProject: (p: InsertProject): Project => {
-    const row = await db.insert(projects).values({ ...p, createdAt: new Date().toISOString() }).returning().then(r => r[0]);
+  async createProject: (p: InsertProject): Project => {
+    const row = await db.insert(projects).values({ ...p, createdAt: new Date() }).returning().then(r => r[0]);
     return row;
   },
   async updateProject: (id: number, patch: Partial<InsertProject>) =>
@@ -374,7 +177,7 @@ export const storage = {
   },
 
   // ===== MEMBERS =====
-  listMembers: (projectId: number): (ProjectMember & { user: User })[] => {
+  async listMembers: (projectId: number): (ProjectMember & { user: User })[] => {
     const rows = await db.select().from(projectMembers).where(eq(projectMembers.projectId, projectId));
     if (rows.length === 0) return [];
     const userIds = rows.map(r => r.userId);
@@ -388,7 +191,7 @@ export const storage = {
   async addMember: (m: InsertProjectMember) => await db.insert(projectMembers).values(m).returning().then(r => r[0]),
   async removeMember: (projectId: number, userId: number) =>
     await db.delete(projectMembers).where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId))),
-  isMember: (projectId: number, userId: number): boolean => {
+  async isMember: (projectId: number, userId: number): boolean => {
     const row = await db.select().from(projectMembers).where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId))).then(r => r[0]);
     return !!row;
   },
@@ -396,16 +199,16 @@ export const storage = {
   // ===== SCRIPTS =====
   async listScripts: (projectId: number) => await db.select().from(scripts).where(eq(scripts.projectId, projectId)),
   async getScript: (id: number) => await db.select().from(scripts).where(eq(scripts.id, id)).then(r => r[0]),
-  async createScript: (s: InsertScript) => await db.insert(scripts).values({ ...s, updatedAt: new Date().toISOString() }).returning().then(r => r[0]),
+  async createScript: (s: InsertScript) => await db.insert(scripts).values({ ...s, updatedAt: new Date() }).returning().then(r => r[0]),
   async updateScript: (id: number, patch: Partial<InsertScript>) =>
-    await db.update(scripts).set({ ...patch, updatedAt: new Date().toISOString() }).where(eq(scripts.id, id)).returning().then(r => r[0]),
+    await db.update(scripts).set({ ...patch, updatedAt: new Date() }).where(eq(scripts.id, id)).returning().then(r => r[0]),
   async deleteScript: (id: number) => await db.delete(scripts).where(eq(scripts.id, id)),
 
   // ===== STORYBOARDS =====
   async listStoryboards: (projectId: number) => await db.select().from(storyboards).where(eq(storyboards.projectId, projectId)),
   async getStoryboard: (id: number) => await db.select().from(storyboards).where(eq(storyboards.id, id)).then(r => r[0]),
   async createStoryboard: (s: InsertStoryboard) =>
-    await db.insert(storyboards).values({ ...s, createdAt: new Date().toISOString() }).returning().then(r => r[0]),
+    await db.insert(storyboards).values({ ...s, createdAt: new Date() }).returning().then(r => r[0]),
   async deleteStoryboard: (id: number) => {
     await db.delete(storyboardPanels).where(eq(storyboardPanels.storyboardId, id));
     await db.delete(storyboards).where(eq(storyboards.id, id));
@@ -423,7 +226,7 @@ export const storage = {
   // ===== ANIMATICS =====
   async listAnimatics: (projectId: number) => await db.select().from(animatics).where(eq(animatics.projectId, projectId)),
   async createAnimatic: (a: InsertAnimatic) =>
-    await db.insert(animatics).values({ ...a, createdAt: new Date().toISOString() }).returning().then(r => r[0]),
+    await db.insert(animatics).values({ ...a, createdAt: new Date() }).returning().then(r => r[0]),
   async deleteAnimatic: (id: number) => await db.delete(animatics).where(eq(animatics.id, id)),
 
   // ===== SCENES =====
@@ -438,44 +241,44 @@ export const storage = {
   async listComments: (projectId: number) =>
     await db.select().from(comments).where(eq(comments.projectId, projectId)).orderBy(desc(comments.createdAt)),
   async createComment: (c: InsertComment) =>
-    await db.insert(comments).values({ ...c, createdAt: new Date().toISOString() }).returning().then(r => r[0]),
+    await db.insert(comments).values({ ...c, createdAt: new Date() }).returning().then(r => r[0]),
   async deleteComment: (id: number) => await db.delete(comments).where(eq(comments.id, id)),
 
   // ===== ASSETS =====
-  listAssets: (projectId: number, category?: string): Asset[] => {
+  async listAssets: (projectId: number, category?: string): Asset[] => {
     if (category) {
       return await db.select().from(assets).where(and(eq(assets.projectId, projectId), eq(assets.category, category))).orderBy(desc(assets.createdAt));
     }
     return await db.select().from(assets).where(eq(assets.projectId, projectId)).orderBy(desc(assets.createdAt));
   },
   async getAsset: (id: number) => await db.select().from(assets).where(eq(assets.id, id)).then(r => r[0]),
-  createAsset: (a: InsertAsset): Asset =>
-    await db.insert(assets).values({ ...a, createdAt: new Date().toISOString() }).returning().then(r => r[0]),
+  async createAsset: (a: InsertAsset): Asset =>
+    await db.insert(assets).values({ ...a, createdAt: new Date() }).returning().then(r => r[0]),
   async updateAsset: (id: number, patch: Partial<Pick<InsertAsset, 'notes' | 'tags' | 'category'>>) =>
     await db.update(assets).set(patch).where(eq(assets.id, id)).returning().then(r => r[0]),
   async deleteAsset: (id: number) => await db.delete(assets).where(eq(assets.id, id)),
 
   // ===== COMMISSIONS =====
-  listCommissions: (ownerUserId: number): Commission[] =>
+  async listCommissions: (ownerUserId: number): Commission[] =>
     await db.select().from(commissions).where(eq(commissions.ownerUserId, ownerUserId)).orderBy(asc(commissions.status), desc(commissions.createdAt)),
   async getCommission: (id: number) => await db.select().from(commissions).where(eq(commissions.id, id)).then(r => r[0]),
-  createCommission: (c: InsertCommission): Commission =>
-    await db.insert(commissions).values({ ...c, createdAt: new Date().toISOString() }).returning().then(r => r[0]),
+  async createCommission: (c: InsertCommission): Commission =>
+    await db.insert(commissions).values({ ...c, createdAt: new Date() }).returning().then(r => r[0]),
   async updateCommission: (id: number, patch: Partial<Pick<Commission, 'status' | 'notes' | 'linkedProjectId'>>) =>
     await db.update(commissions).set(patch).where(eq(commissions.id, id)).returning().then(r => r[0]),
 
   // ===== RENDERS =====
-  listRenders: (sceneId: number): Render[] =>
+  async listRenders: (sceneId: number): Render[] =>
     await db.select().from(renders).where(eq(renders.sceneId, sceneId)).orderBy(desc(renders.createdAt)),
   async getRender: (id: number) => await db.select().from(renders).where(eq(renders.id, id)).then(r => r[0]),
-  createRender: (r: InsertRender): Render =>
-    await db.insert(renders).values({ ...r, createdAt: new Date().toISOString() }).returning().then(r => r[0]),
+  async createRender: (r: InsertRender): Render =>
+    await db.insert(renders).values({ ...r, createdAt: new Date() }).returning().then(r => r[0]),
   async updateRender: (id: number, patch: Partial<InsertRender>) =>
     await db.update(renders).set(patch).where(eq(renders.id, id)).returning().then(r => r[0]),
   async deleteRender: (id: number) => await db.delete(renders).where(eq(renders.id, id)),
 
   // ===== ANIMATIC PROJECTS (v2) =====
-  getAnimaticProjectsByProject: (projectId: number): AnimaticProject[] =>
+  async getAnimaticProjectsByProject: (projectId: number): AnimaticProject[] =>
     await db.select().from(animaticProjects).where(eq(animaticProjects.projectId, projectId)).orderBy(desc(animaticProjects.createdAt)),
 
   async getAnimaticProject: (id: number) => {
@@ -492,8 +295,8 @@ export const storage = {
     return { ...ap, tracks: tracksWithClips };
   },
 
-  createAnimaticProject: (data: InsertAnimaticProject): AnimaticProject => {
-    const now = new Date().toISOString();
+  async createAnimaticProject: (data: InsertAnimaticProject): AnimaticProject => {
+    const now = new Date();
     const ap = await db.insert(animaticProjects).values({ ...data, createdAt: now, updatedAt: now }).returning().then(r => r[0]);
     // Create 4 default tracks
     const defaultTracks: { kind: string; name: string; orderIdx: number }[] = [
@@ -509,7 +312,7 @@ export const storage = {
   },
 
   async updateAnimaticProject: (id: number, patch: Partial<InsertAnimaticProject>) =>
-    await db.update(animaticProjects).set({ ...patch, updatedAt: new Date().toISOString() }).where(eq(animaticProjects.id, id)).returning().then(r => r[0]),
+    await db.update(animaticProjects).set({ ...patch, updatedAt: new Date() }).where(eq(animaticProjects.id, id)).returning().then(r => r[0]),
 
   async deleteAnimaticProject: (id: number) => {
     const tracks = await db.select().from(animaticTracks).where(eq(animaticTracks.animaticProjectId, id));
@@ -521,7 +324,7 @@ export const storage = {
   },
 
   // ===== ANIMATIC TRACKS =====
-  createTrack: (data: InsertAnimaticTrack): AnimaticTrack =>
+  async createTrack: (data: InsertAnimaticTrack): AnimaticTrack =>
     await db.insert(animaticTracks).values(data).returning().then(r => r[0]),
 
   async updateTrack: (id: number, patch: Partial<InsertAnimaticTrack>) =>
@@ -535,7 +338,7 @@ export const storage = {
   async getTrack: (id: number) => await db.select().from(animaticTracks).where(eq(animaticTracks.id, id)).then(r => r[0]),
 
   // ===== ANIMATIC CLIPS =====
-  createClip: (data: InsertAnimaticClip): AnimaticClip =>
+  async createClip: (data: InsertAnimaticClip): AnimaticClip =>
     await db.insert(animaticClips).values(data).returning().then(r => r[0]),
 
   async updateClip: (id: number, patch: Partial<InsertAnimaticClip>) =>
@@ -859,54 +662,54 @@ Object.assign(storage, {
   // v4 AI Keys
   async getProjectAiKey: (projectId: number) =>
     await db.select().from(projectAiKeys).where(eq(projectAiKeys.projectId, projectId)).then(r => r[0]),
-  setProjectAiKey: (projectId: number, encryptedKey: string, model: string | null = null): ProjectAiKey => {
+  async setProjectAiKey: (projectId: number, encryptedKey: string, model: string | null = null): ProjectAiKey => {
     const existing = await db.select().from(projectAiKeys).where(eq(projectAiKeys.projectId, projectId)).then(r => r[0]);
     if (existing) {
       return await db.update(projectAiKeys).set({ encryptedKey, model }).where(eq(projectAiKeys.projectId, projectId)).returning().then(r => r[0])!;
     }
-    return await db.insert(projectAiKeys).values({ projectId, encryptedKey, model, createdAt: new Date().toISOString() }).returning().then(r => r[0]);
+    return await db.insert(projectAiKeys).values({ projectId, encryptedKey, model, createdAt: new Date() }).returning().then(r => r[0]);
   },
   async deleteProjectAiKey: (projectId: number) =>
     await db.delete(projectAiKeys).where(eq(projectAiKeys.projectId, projectId)),
 
   // v4 AI Agent Chat
-  listAiChatSessions: (projectId: number): AiChatSession[] =>
+  async listAiChatSessions: (projectId: number): AiChatSession[] =>
     await db.select().from(aiChatSessions).where(eq(aiChatSessions.projectId, projectId)).orderBy(desc(aiChatSessions.createdAt)),
-  getAiChatSession: (id: number): AiChatSession | undefined =>
+  async getAiChatSession: (id: number): AiChatSession | undefined =>
     await db.select().from(aiChatSessions).where(eq(aiChatSessions.id, id)).then(r => r[0]),
-  createAiChatSession: (data: InsertAiChatSession): AiChatSession =>
-    await db.insert(aiChatSessions).values({ ...data, createdAt: new Date().toISOString() }).returning().then(r => r[0]),
+  async createAiChatSession: (data: InsertAiChatSession): AiChatSession =>
+    await db.insert(aiChatSessions).values({ ...data, createdAt: new Date() }).returning().then(r => r[0]),
   async deleteAiChatSession: (id: number) => {
     await db.delete(aiChatMessages).where(eq(aiChatMessages.sessionId, id));
     await db.delete(aiChatSessions).where(eq(aiChatSessions.id, id));
   },
-  listAiChatMessages: (sessionId: number): AiChatMessage[] =>
+  async listAiChatMessages: (sessionId: number): AiChatMessage[] =>
     await db.select().from(aiChatMessages).where(eq(aiChatMessages.sessionId, sessionId)).orderBy(asc(aiChatMessages.id)),
-  createAiChatMessage: (data: InsertAiChatMessage): AiChatMessage =>
-    await db.insert(aiChatMessages).values({ ...data, createdAt: new Date().toISOString() }).returning().then(r => r[0]),
+  async createAiChatMessage: (data: InsertAiChatMessage): AiChatMessage =>
+    await db.insert(aiChatMessages).values({ ...data, createdAt: new Date() }).returning().then(r => r[0]),
 
   // v4 Achievements
-  listAchievements: (userId: number): Achievement[] =>
+  async listAchievements: (userId: number): Achievement[] =>
     await db.select().from(achievements).where(eq(achievements.userId, userId)),
-  hasAchievement: (userId: number, code: string): boolean =>
+  async hasAchievement: (userId: number, code: string): boolean =>
     !!await db.select().from(achievements).where(and(eq(achievements.userId, userId), eq(achievements.code, code))).then(r => r[0]),
-  unlockAchievement: (userId: number, code: string): Achievement =>
-    await db.insert(achievements).values({ userId, code, unlockedAt: new Date().toISOString() }).returning().then(r => r[0]),
+  async unlockAchievement: (userId: number, code: string): Achievement =>
+    await db.insert(achievements).values({ userId, code, unlockedAt: new Date() }).returning().then(r => r[0]),
 
   // v4 Panel Pins
-  listPanelPins: (panelId: number): PanelPin[] =>
+  async listPanelPins: (panelId: number): PanelPin[] =>
     await db.select().from(panelPins).where(eq(panelPins.panelId, panelId)),
-  createPanelPin: (p: InsertPanelPin): PanelPin =>
-    await db.insert(panelPins).values({ ...p, createdAt: new Date().toISOString() }).returning().then(r => r[0]),
+  async createPanelPin: (p: InsertPanelPin): PanelPin =>
+    await db.insert(panelPins).values({ ...p, createdAt: new Date() }).returning().then(r => r[0]),
   async deletePanelPin: (id: number) => await db.delete(panelPins).where(eq(panelPins.id, id)),
   async getPanelPin: (id: number) => await db.select().from(panelPins).where(eq(panelPins.id, id)).then(r => r[0]),
 
   // v4 Commission Line Items
-  listCommissionLineItems: (commissionId: number): CommissionLineItem[] =>
+  async listCommissionLineItems: (commissionId: number): CommissionLineItem[] =>
     await db.select().from(commissionLineItems).where(eq(commissionLineItems.commissionId, commissionId)),
-  createCommissionLineItem: (item: InsertCommissionLineItem): CommissionLineItem =>
-    await db.insert(commissionLineItems).values({ ...item, createdAt: new Date().toISOString() }).returning().then(r => r[0]),
-  updateCommissionLineItem: (id: number, patch: Partial<InsertCommissionLineItem>): CommissionLineItem | undefined =>
+  async createCommissionLineItem: (item: InsertCommissionLineItem): CommissionLineItem =>
+    await db.insert(commissionLineItems).values({ ...item, createdAt: new Date() }).returning().then(r => r[0]),
+  async updateCommissionLineItem: (id: number, patch: Partial<InsertCommissionLineItem>): CommissionLineItem | undefined =>
     await db.update(commissionLineItems).set(patch).where(eq(commissionLineItems.id, id)).returning().then(r => r[0]),
   async deleteCommissionLineItem: (id: number) => await db.delete(commissionLineItems).where(eq(commissionLineItems.id, id)),
   async updateCommissionQuote: (id: number, quoteCents: number | null, invoicedAt?: string | null) => {
@@ -917,21 +720,21 @@ Object.assign(storage, {
   },
 
   // v4 Inbox Items
-  listInboxItems: (userId: number): InboxItem[] =>
+  async listInboxItems: (userId: number): InboxItem[] =>
     await db.select().from(inboxItems).where(eq(inboxItems.userId, userId)).orderBy(desc(inboxItems.createdAt)),
-  createInboxItem: (item: InsertInboxItem): InboxItem =>
-    await db.insert(inboxItems).values({ ...item, createdAt: new Date().toISOString() }).returning().then(r => r[0]),
-  updateInboxItem: (id: number, patch: Partial<InsertInboxItem>): InboxItem | undefined =>
+  async createInboxItem: (item: InsertInboxItem): InboxItem =>
+    await db.insert(inboxItems).values({ ...item, createdAt: new Date() }).returning().then(r => r[0]),
+  async updateInboxItem: (id: number, patch: Partial<InsertInboxItem>): InboxItem | undefined =>
     await db.update(inboxItems).set(patch).where(eq(inboxItems.id, id)).returning().then(r => r[0]),
   async deleteInboxItem: (id: number) => await db.delete(inboxItems).where(eq(inboxItems.id, id)),
   async getInboxItem: (id: number) => await db.select().from(inboxItems).where(eq(inboxItems.id, id)).then(r => r[0]),
 
   // v4 Tags
-  listTags: (userId: number): Tag[] =>
+  async listTags: (userId: number): Tag[] =>
     await db.select().from(tags).where(eq(tags.userId, userId)),
-  createTag: (t: InsertTag): Tag =>
+  async createTag: (t: InsertTag): Tag =>
     await db.insert(tags).values(t).returning().then(r => r[0]),
-  updateTag: (id: number, patch: Partial<InsertTag>): Tag | undefined =>
+  async updateTag: (id: number, patch: Partial<InsertTag>): Tag | undefined =>
     await db.update(tags).set(patch).where(eq(tags.id, id)).returning().then(r => r[0]),
   async deleteTag: (id: number) => {
     await db.delete(tagAssignments).where(eq(tagAssignments.tagId, id));
@@ -940,24 +743,24 @@ Object.assign(storage, {
   async getTag: (id: number) => await db.select().from(tags).where(eq(tags.id, id)).then(r => r[0]),
 
   // v4 Tag Assignments
-  listTagAssignments: (entityKind: string, entityId: number): TagAssignment[] =>
+  async listTagAssignments: (entityKind: string, entityId: number): TagAssignment[] =>
     await db.select().from(tagAssignments).where(and(eq(tagAssignments.entityKind, entityKind), eq(tagAssignments.entityId, entityId))),
-  createTagAssignment: (a: InsertTagAssignment): TagAssignment =>
+  async createTagAssignment: (a: InsertTagAssignment): TagAssignment =>
     await db.insert(tagAssignments).values(a).returning().then(r => r[0]),
   async deleteTagAssignment: (id: number) => await db.delete(tagAssignments).where(eq(tagAssignments.id, id)),
   async getTagAssignment: (id: number) => await db.select().from(tagAssignments).where(eq(tagAssignments.id, id)).then(r => r[0]),
 
   // v4 Scene Time Entries
-  listSceneTimeEntries: (sceneId: number): SceneTimeEntry[] =>
+  async listSceneTimeEntries: (sceneId: number): SceneTimeEntry[] =>
     await db.select().from(sceneTimeEntries).where(eq(sceneTimeEntries.sceneId, sceneId)),
-  getActiveTimeEntry: (sceneId: number, userId: number): SceneTimeEntry | undefined =>
+  async getActiveTimeEntry: (sceneId: number, userId: number): SceneTimeEntry | undefined =>
     await db.select().from(sceneTimeEntries)
       .where(and(eq(sceneTimeEntries.sceneId, sceneId), eq(sceneTimeEntries.userId, userId)))
       
       .find(e => e.endedAt === null || e.endedAt === undefined),
-  startTimer: (sceneId: number, userId: number): SceneTimeEntry =>
+  async startTimer: (sceneId: number, userId: number): SceneTimeEntry =>
     await db.insert(sceneTimeEntries).values({ sceneId, userId, startedAt: Date.now(), endedAt: null, durationMs: null }).returning().then(r => r[0]),
-  stopTimer: (id: number): SceneTimeEntry | undefined => {
+  async stopTimer: (id: number): SceneTimeEntry | undefined => {
     const entry = await db.select().from(sceneTimeEntries).where(eq(sceneTimeEntries.id, id)).then(r => r[0]);
     if (!entry) return undefined;
     const durationMs = Date.now() - entry.startedAt;
@@ -965,11 +768,11 @@ Object.assign(storage, {
   },
 
   // v4 Commission Pricing Presets
-  listCommissionPricingPresets: (projectId: number): CommissionPricingPreset[] =>
+  async listCommissionPricingPresets: (projectId: number): CommissionPricingPreset[] =>
     await db.select().from(commissionPricingPresets).where(eq(commissionPricingPresets.projectId, projectId)),
-  createCommissionPricingPreset: (p: InsertCommissionPricingPreset): CommissionPricingPreset =>
-    await db.insert(commissionPricingPresets).values({ ...p, createdAt: new Date().toISOString() }).returning().then(r => r[0]),
-  updateCommissionPricingPreset: (id: number, patch: Partial<InsertCommissionPricingPreset>): CommissionPricingPreset | undefined =>
+  async createCommissionPricingPreset: (p: InsertCommissionPricingPreset): CommissionPricingPreset =>
+    await db.insert(commissionPricingPresets).values({ ...p, createdAt: new Date() }).returning().then(r => r[0]),
+  async updateCommissionPricingPreset: (id: number, patch: Partial<InsertCommissionPricingPreset>): CommissionPricingPreset | undefined =>
     await db.update(commissionPricingPresets).set(patch).where(eq(commissionPricingPresets.id, id)).returning().then(r => r[0]),
   async deleteCommissionPricingPreset: (id: number) =>
     await db.delete(commissionPricingPresets).where(eq(commissionPricingPresets.id, id)),
@@ -1015,10 +818,10 @@ Object.assign(storage, {
   },
 
   // v5 Agent 5
-  getCommissionHours: (commissionId: number): DltCommissionHours[] =>
+  async getCommissionHours: (commissionId: number): DltCommissionHours[] =>
     await db.select().from(dltCommissionHours).where(eq(dltCommissionHours.commissionId, commissionId)),
-  addCommissionHours: (hours: InsertDltCommissionHours): DltCommissionHours =>
-    await db.insert(dltCommissionHours).values({ ...hours, loggedAt: new Date().toISOString() }).returning().then(r => r[0]),
+  async addCommissionHours: (hours: InsertDltCommissionHours): DltCommissionHours =>
+    await db.insert(dltCommissionHours).values({ ...hours, loggedAt: new Date() }).returning().then(r => r[0]),
   async createAudVoiceTake: (take: InsertAudVoiceTake) =>
     await db.insert(audVoiceTakes).values(take).returning().then(r => r[0]),
   
@@ -1044,7 +847,7 @@ Object.assign(storage, {
     await db.select().from(cli_feedback).where(eq(cli_feedback.projectId, projectId)),
     
   async createCliFeedback: (data: Partial<typeof cli_feedback.$inferInsert>) =>
-    await db.insert(cli_feedback).values({ ...data, createdAt: new Date().toISOString() } as any).returning().then(r => r[0]),
+    await db.insert(cli_feedback).values({ ...data, createdAt: new Date() } as any).returning().then(r => r[0]),
 
   async getA11yPrefs: (userId: number) => 
     await db.select().from(a11y_user_prefs).where(eq(a11y_user_prefs.userId, userId)).then(r => r[0]),
@@ -1073,7 +876,7 @@ Object.assign(storage, {
   async listChallengeSubmissions: (userId: number) => await db.select().from(challenge_submissions).where(eq(challenge_submissions.userId, userId)),
 
   async createChallengeSubmission: (submission: InsertChallengeSubmission & { userId: number }) => 
-    await db.insert(challenge_submissions).values({ ...submission, createdAt: new Date().toISOString() }).returning().then(r => r[0]),
+    await db.insert(challenge_submissions).values({ ...submission, createdAt: new Date() }).returning().then(r => r[0]),
 
   async listChallengeFeed: (userId: number) => {
     const prompts = await db.select().from(challenge_prompts);
@@ -1095,7 +898,7 @@ Object.assign(storage, {
     });
   },
 
-  toggleChallengeReaction: (submissionId: number, userId: number, sticker: string): { active: boolean; reaction?: ChallengeReaction } => {
+  async toggleChallengeReaction: (submissionId: number, userId: number, sticker: string): { active: boolean; reaction?: ChallengeReaction } => {
     const submission = await db.select().from(challenge_submissions).where(eq(challenge_submissions.id, submissionId)).then(r => r[0]);
     if (!submission) throw new Error("Submission not found");
     const existing = await db.select().from(challenge_reactions).where(and(
@@ -1108,7 +911,7 @@ Object.assign(storage, {
     }
     if (existing) {
       const updated = await db.update(challenge_reactions)
-        .set({ sticker, createdAt: new Date().toISOString() })
+        .set({ sticker, createdAt: new Date() })
         .where(eq(challenge_reactions.id, existing.id))
         .returning()
         .then(r => r[0]);
@@ -1118,17 +921,17 @@ Object.assign(storage, {
       submissionId,
       userId,
       sticker,
-      createdAt: new Date().toISOString(),
+      createdAt: new Date(),
     }).returning().then(r => r[0]);
     return { active: true, reaction };
   },
 
   // Studio Render Budget
-  getStudioRenderBudget: (projectId: number): StudioRenderBudget | undefined =>
+  async getStudioRenderBudget: (projectId: number): StudioRenderBudget | undefined =>
     await db.select().from(studio_render_budget).where(eq(studio_render_budget.projectId, projectId)).then(r => r[0]),
-  upsertStudioRenderBudget: (projectId: number, totalMinutes: number): StudioRenderBudget => {
+  async upsertStudioRenderBudget: (projectId: number, totalMinutes: number): StudioRenderBudget => {
     const existing = await db.select().from(studio_render_budget).where(eq(studio_render_budget.projectId, projectId)).then(r => r[0]);
-    const now = new Date().toISOString();
+    const now = new Date();
     if (existing) {
       return await db.update(studio_render_budget).set({ totalMinutes, updatedAt: now }).where(eq(studio_render_budget.projectId, projectId)).returning().then(r => r[0])!;
     }
@@ -1136,43 +939,43 @@ Object.assign(storage, {
   },
 
   // Studio Render Events
-  listStudioRenderEvents: (projectId: number): StudioRenderEvent[] =>
+  async listStudioRenderEvents: (projectId: number): StudioRenderEvent[] =>
     await db.select().from(studio_render_events).where(eq(studio_render_events.projectId, projectId)).orderBy(asc(studio_render_events.createdAt)),
-  createStudioRenderEvent: (data: InsertStudioRenderEvent): StudioRenderEvent =>
-    await db.insert(studio_render_events).values({ ...data, createdAt: new Date().toISOString() }).returning().then(r => r[0]),
+  async createStudioRenderEvent: (data: InsertStudioRenderEvent): StudioRenderEvent =>
+    await db.insert(studio_render_events).values({ ...data, createdAt: new Date() }).returning().then(r => r[0]),
   async deleteStudioRenderEvent: (id: number) =>
     await db.delete(studio_render_events).where(eq(studio_render_events.id, id)),
 
   // Studio Snapshots
-  listStudioSnapshots: (projectId: number): StudioSnapshot[] =>
+  async listStudioSnapshots: (projectId: number): StudioSnapshot[] =>
     await db.select().from(studio_snapshots).where(eq(studio_snapshots.projectId, projectId)).orderBy(asc(studio_snapshots.createdAt)),
-  createStudioSnapshot: (data: InsertStudioSnapshot): StudioSnapshot =>
-    await db.insert(studio_snapshots).values({ ...data, createdAt: new Date().toISOString() }).returning().then(r => r[0]),
+  async createStudioSnapshot: (data: InsertStudioSnapshot): StudioSnapshot =>
+    await db.insert(studio_snapshots).values({ ...data, createdAt: new Date() }).returning().then(r => r[0]),
   async deleteStudioSnapshot: (id: number) =>
     await db.delete(studio_snapshots).where(eq(studio_snapshots.id, id)),
-  getStudioSnapshot: (id: number): StudioSnapshot | undefined =>
+  async getStudioSnapshot: (id: number): StudioSnapshot | undefined =>
     await db.select().from(studio_snapshots).where(eq(studio_snapshots.id, id)).then(r => r[0]),
-  restoreStudioSnapshot: (snapshotId: number, projectId: number): StudioSnapshot =>
+  async restoreStudioSnapshot: (snapshotId: number, projectId: number): StudioSnapshot =>
     await db.insert(studio_snapshots).values({
       projectId,
       label: `Restored from #${snapshotId}`,
       parentId: snapshotId,
       restoredFromId: snapshotId,
-      createdAt: new Date().toISOString(),
+      createdAt: new Date(),
     }).returning().then(r => r[0]),
 
   // Studio Credit Entries
-  listStudioCreditEntries: (projectId: number): StudioCreditEntry[] =>
+  async listStudioCreditEntries: (projectId: number): StudioCreditEntry[] =>
     await db.select().from(studio_credit_entries).where(eq(studio_credit_entries.projectId, projectId)).orderBy(asc(studio_credit_entries.orderIdx)),
-  createStudioCreditEntry: (data: InsertStudioCreditEntry): StudioCreditEntry =>
-    await db.insert(studio_credit_entries).values({ ...data, createdAt: new Date().toISOString() }).returning().then(r => r[0]),
-  updateStudioCreditEntry: (id: number, patch: Partial<InsertStudioCreditEntry>): StudioCreditEntry | undefined =>
+  async createStudioCreditEntry: (data: InsertStudioCreditEntry): StudioCreditEntry =>
+    await db.insert(studio_credit_entries).values({ ...data, createdAt: new Date() }).returning().then(r => r[0]),
+  async updateStudioCreditEntry: (id: number, patch: Partial<InsertStudioCreditEntry>): StudioCreditEntry | undefined =>
     await db.update(studio_credit_entries).set(patch).where(eq(studio_credit_entries.id, id)).returning().then(r => r[0]),
   async deleteStudioCreditEntry: (id: number) =>
     await db.delete(studio_credit_entries).where(eq(studio_credit_entries.id, id)),
-  replaceStudioCreditEntries: (projectId: number, entries: InsertStudioCreditEntry[]): StudioCreditEntry[] => {
+  async replaceStudioCreditEntries: (projectId: number, entries: InsertStudioCreditEntry[]): StudioCreditEntry[] => {
     await db.delete(studio_credit_entries).where(eq(studio_credit_entries.projectId, projectId));
-    const now = new Date().toISOString();
+    const now = new Date();
     const result: StudioCreditEntry[] = [];
     for (const e of entries) {
       result.push(await db.insert(studio_credit_entries).values({ ...e, createdAt: now }).returning().then(r => r[0]));
@@ -1181,36 +984,36 @@ Object.assign(storage, {
   },
 
   // === LORE ADDITIONS START ===
-  listLorFacts: (projectId: number): LorContinuityFact[] =>
+  async listLorFacts: (projectId: number): LorContinuityFact[] =>
     await db.select().from(lor_continuity_facts).where(eq(lor_continuity_facts.projectId, projectId)),
-  createLorFact: (f: InsertLorContinuityFact): LorContinuityFact =>
-    await db.insert(lor_continuity_facts).values({ ...f, createdAt: new Date().toISOString() }).returning().then(r => r[0]),
-  updateLorFact: (id: number, patch: Partial<InsertLorContinuityFact>): LorContinuityFact | undefined =>
+  async createLorFact: (f: InsertLorContinuityFact): LorContinuityFact =>
+    await db.insert(lor_continuity_facts).values({ ...f, createdAt: new Date() }).returning().then(r => r[0]),
+  async updateLorFact: (id: number, patch: Partial<InsertLorContinuityFact>): LorContinuityFact | undefined =>
     await db.update(lor_continuity_facts).set(patch).where(eq(lor_continuity_facts.id, id)).returning().then(r => r[0]),
   async deleteLorFact: (id: number) => await db.delete(lor_continuity_facts).where(eq(lor_continuity_facts.id, id)),
-  getLorFact: (id: number): LorContinuityFact | undefined =>
+  async getLorFact: (id: number): LorContinuityFact | undefined =>
     await db.select().from(lor_continuity_facts).where(eq(lor_continuity_facts.id, id)).then(r => r[0]),
 
-  listLorPalettes: (projectId: number): LorPalette[] =>
+  async listLorPalettes: (projectId: number): LorPalette[] =>
     await db.select().from(lor_palettes).where(eq(lor_palettes.projectId, projectId)),
-  createLorPalette: (p: InsertLorPalette): LorPalette =>
-    await db.insert(lor_palettes).values({ ...p, createdAt: new Date().toISOString() }).returning().then(r => r[0]),
+  async createLorPalette: (p: InsertLorPalette): LorPalette =>
+    await db.insert(lor_palettes).values({ ...p, createdAt: new Date() }).returning().then(r => r[0]),
   async deleteLorPalette: (id: number) => await db.delete(lor_palettes).where(eq(lor_palettes.id, id)),
-  getLorPalette: (id: number): LorPalette | undefined =>
+  async getLorPalette: (id: number): LorPalette | undefined =>
     await db.select().from(lor_palettes).where(eq(lor_palettes.id, id)).then(r => r[0]),
 
-  listLorAssetVersions: (assetId: number): LorAssetVersion[] =>
+  async listLorAssetVersions: (assetId: number): LorAssetVersion[] =>
     await db.select().from(lor_asset_versions).where(eq(lor_asset_versions.assetId, assetId)).orderBy(desc(lor_asset_versions.versionNum)),
-  createLorAssetVersion: (v: InsertLorAssetVersion): LorAssetVersion =>
-    await db.insert(lor_asset_versions).values({ ...v, uploadedAt: new Date().toISOString() }).returning().then(r => r[0]),
+  async createLorAssetVersion: (v: InsertLorAssetVersion): LorAssetVersion =>
+    await db.insert(lor_asset_versions).values({ ...v, uploadedAt: new Date() }).returning().then(r => r[0]),
   async updateLorAssetVersionsForAsset: (assetId: number, patch: Partial<LorAssetVersion>) =>
     await db.update(lor_asset_versions).set(patch).where(eq(lor_asset_versions.assetId, assetId)),
-  updateLorAssetVersion: (id: number, patch: Partial<LorAssetVersion>): LorAssetVersion | undefined =>
+  async updateLorAssetVersion: (id: number, patch: Partial<LorAssetVersion>): LorAssetVersion | undefined =>
     await db.update(lor_asset_versions).set(patch).where(eq(lor_asset_versions.id, id)).returning().then(r => r[0]),
-  getLorAssetVersion: (id: number): LorAssetVersion | undefined =>
+  async getLorAssetVersion: (id: number): LorAssetVersion | undefined =>
     await db.select().from(lor_asset_versions).where(eq(lor_asset_versions.id, id)).then(r => r[0]),
 
-  listLorCasting: (projectId: number): LorCastingMatrix[] =>
+  async listLorCasting: (projectId: number): LorCastingMatrix[] =>
     await db.select().from(lor_casting_matrix).where(eq(lor_casting_matrix.projectId, projectId)),
   async upsertLorCasting: (projectId: number, sceneId: number, entityId: number, present: boolean) => {
     const existing = await db.select().from(lor_casting_matrix).where(
