@@ -18,11 +18,11 @@ import {
 } from "@shared/studio_schema";
 import { biz_festivals, biz_expenses } from "@shared/biz_schema";
 
-function canAccessProject(projectId: number, userId: number): boolean {
-  const p = storage.getProject(projectId);
+async function canAccessProject(projectId: number, userId: number): Promise<boolean> {
+  const p = await storage.getProject(projectId);
   if (!p) return false;
   if (p.ownerId === userId) return true;
-  return storage.isMember(projectId, userId);
+  return await storage.isMember(projectId, userId);
 }
 
 function extractToken(req: Request): string | undefined {
@@ -33,11 +33,11 @@ function extractToken(req: Request): string | undefined {
   return undefined;
 }
 
-function requireAuth(req: Request, res: Response, next: NextFunction) {
+async function requireAuth(req: Request, res: Response, next: NextFunction) {
   const token = extractToken(req);
   const userId = getSessionUser(token);
   if (!userId) return res.status(401).json({ message: "Not authenticated" });
-  const user = storage.getUser(userId);
+  const user = await storage.getUser(userId);
   if (!user) return res.status(401).json({ message: "User not found" });
   (req as any).user = user;
   next();
@@ -50,7 +50,7 @@ export function registerArchiveRoutes(app: Express) {
       return res.status(403).json({ message: "No access" });
     }
 
-    const project = storage.getProject(projectId);
+    const project = await storage.getProject(projectId);
     if (!project) return res.status(404).json({ message: "Project not found" });
 
     res.setHeader("Content-Type", "application/zip");
@@ -65,7 +65,7 @@ export function registerArchiveRoutes(app: Express) {
         version: "1.0.0",
         exportedAt: new Date().toISOString(),
         project,
-        members: storage.listMembers(projectId),
+        members: await storage.listMembers(projectId),
         scripts: db.select().from(scripts).where(eq(scripts.projectId, projectId)).all(),
         storyboards: db.select().from(storyboards).where(eq(storyboards.projectId, projectId)).all(),
         animatics: db.select().from(animatics).where(eq(animatics.projectId, projectId)).all(),
@@ -279,7 +279,7 @@ export function registerArchiveRoutes(app: Express) {
         
         let y = titleHeight;
 
-        const p = storage.getProject(projectId);
+        const p = await storage.getProject(projectId);
         ctx.font = "bold 90px Arial";
         ctx.fillText(p?.title || "Project", width / 2, y);
         y += sectionGap;

@@ -5,11 +5,11 @@ import { audio2_lipsync, audio2_cues, insertAudio2LipsyncSchema, insertAudio2Cue
 import { projects } from "../shared/schema";
 import { z } from "zod";
 
-function canAccessProject(projectId: number, userId: number): boolean {
-  const p = storage.getProject(projectId);
+async function canAccessProject(projectId: number, userId: number): Promise<boolean> {
+  const p = await storage.getProject(projectId);
   if (!p) return false;
   if (p.ownerId === userId) return true;
-  return storage.isMember(projectId, userId);
+  return await storage.isMember(projectId, userId);
 }
 
 function extractToken(req: Request): string | undefined {
@@ -20,11 +20,11 @@ function extractToken(req: Request): string | undefined {
   return undefined;
 }
 
-function requireAuth(req: Request, res: Response, next: NextFunction) {
+async function requireAuth(req: Request, res: Response, next: NextFunction) {
   const token = extractToken(req);
   const userId = getSessionUser(token);
   if (!userId) return res.status(401).json({ message: "Not authenticated" });
-  const user = storage.getUser(userId);
+  const user = await storage.getUser(userId);
   if (!user) return res.status(401).json({ message: "User not found" });
   (req as any).user = user;
   next();
@@ -33,7 +33,7 @@ function requireAuth(req: Request, res: Response, next: NextFunction) {
 export function registerAudio2Routes(app: Express) {
   
   // Lipsync Routes
-  app.get("/api/projects/:id/lipsync", requireAuth, (req, res) => {
+  app.get("/api/projects/:id/lipsync", requireAuth, async (req, res) => {
     const projectId = parseInt(String(req.params.id), 10);
     const userId = (req as any).user.id;
     if (!canAccessProject(projectId, userId)) return res.status(403).json({ message: "Forbidden" });
@@ -42,7 +42,7 @@ export function registerAudio2Routes(app: Express) {
     res.json(results);
   });
 
-  app.post("/api/projects/:id/lipsync", requireAuth, (req, res) => {
+  app.post("/api/projects/:id/lipsync", requireAuth, async (req, res) => {
     const projectId = parseInt(String(req.params.id), 10);
     const userId = (req as any).user.id;
     if (!canAccessProject(projectId, userId)) return res.status(403).json({ message: "Forbidden" });
@@ -58,7 +58,7 @@ export function registerAudio2Routes(app: Express) {
     res.json(inserted);
   });
   
-  app.put("/api/lipsync/:id", requireAuth, (req, res) => {
+  app.put("/api/lipsync/:id", requireAuth, async (req, res) => {
     const lipsyncId = parseInt(String(req.params.id), 10);
     const userId = (req as any).user.id;
     
@@ -78,7 +78,7 @@ export function registerAudio2Routes(app: Express) {
     res.json(updated);
   });
 
-  app.delete("/api/lipsync/:id", requireAuth, (req, res) => {
+  app.delete("/api/lipsync/:id", requireAuth, async (req, res) => {
     const lipsyncId = parseInt(String(req.params.id), 10);
     const userId = (req as any).user.id;
     
@@ -91,7 +91,7 @@ export function registerAudio2Routes(app: Express) {
   });
 
   // Cues Routes
-  app.get("/api/projects/:id/cues", requireAuth, (req, res) => {
+  app.get("/api/projects/:id/cues", requireAuth, async (req, res) => {
     const projectId = parseInt(String(req.params.id), 10);
     const userId = (req as any).user.id;
     if (!canAccessProject(projectId, userId)) return res.status(403).json({ message: "Forbidden" });
@@ -100,7 +100,7 @@ export function registerAudio2Routes(app: Express) {
     res.json(results);
   });
 
-  app.post("/api/projects/:id/cues", requireAuth, (req, res) => {
+  app.post("/api/projects/:id/cues", requireAuth, async (req, res) => {
     const projectId = parseInt(String(req.params.id), 10);
     const userId = (req as any).user.id;
     if (!canAccessProject(projectId, userId)) return res.status(403).json({ message: "Forbidden" });
@@ -116,7 +116,7 @@ export function registerAudio2Routes(app: Express) {
     res.json(inserted);
   });
 
-  app.put("/api/cues/:id", requireAuth, (req, res) => {
+  app.put("/api/cues/:id", requireAuth, async (req, res) => {
     const cueId = parseInt(String(req.params.id), 10);
     const userId = (req as any).user.id;
     
@@ -137,7 +137,7 @@ export function registerAudio2Routes(app: Express) {
     res.json(updated);
   });
 
-  app.delete("/api/cues/:id", requireAuth, (req, res) => {
+  app.delete("/api/cues/:id", requireAuth, async (req, res) => {
     const cueId = parseInt(String(req.params.id), 10);
     const userId = (req as any).user.id;
     

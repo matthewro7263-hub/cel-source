@@ -12,11 +12,11 @@ function extractToken(req: Request): string | undefined {
   return undefined;
 }
 
-function requireAuth(req: Request, res: Response, next: NextFunction) {
+async function requireAuth(req: Request, res: Response, next: NextFunction) {
   const token = extractToken(req);
   const userId = getSessionUser(token);
   if (!userId) return res.status(401).json({ message: "Not authenticated" });
-  const user = storage.getUser(userId);
+  const user = await storage.getUser(userId);
   if (!user) return res.status(401).json({ message: "User not found" });
   (req as any).user = user;
   next();
@@ -142,13 +142,13 @@ export function registerBizRoutes(app: Express) {
     projectId: z.number().int().nullable().optional(),
   });
 
-  app.get("/api/biz/festivals", requireAuth, (req, res) => {
+  app.get("/api/biz/festivals", requireAuth, async (req, res) => {
     const userId = (req as any).user.id;
     const rows = db.select().from(biz_festivals).where(eq(biz_festivals.userId, userId)).all();
     res.json(rows);
   });
 
-  app.post("/api/biz/festivals", requireAuth, (req, res) => {
+  app.post("/api/biz/festivals", requireAuth, async (req, res) => {
     const userId = (req as any).user.id;
     let body: any;
     try { body = festivalSchema.parse(req.body); } catch (e: any) { return res.status(400).json({ message: e.message }); }
@@ -178,7 +178,7 @@ export function registerBizRoutes(app: Express) {
     res.json(updated);
   });
 
-  app.delete("/api/biz/festivals/:id", requireAuth, (req, res) => {
+  app.delete("/api/biz/festivals/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const userId = (req as any).user.id;
     const existing = db.select().from(biz_festivals).where(eq(biz_festivals.id, id)).get();
@@ -195,7 +195,7 @@ export function registerBizRoutes(app: Express) {
     body: z.string().min(1),
   });
 
-  app.get("/api/biz/contracts", requireAuth, (req, res) => {
+  app.get("/api/biz/contracts", requireAuth, async (req, res) => {
     const userId = (req as any).user.id;
     // Auto-seed 3 canonical templates on first access
     const existing = db.select().from(biz_contracts).where(eq(biz_contracts.userId, userId)).all();
@@ -215,7 +215,7 @@ export function registerBizRoutes(app: Express) {
     res.json(existing);
   });
 
-  app.post("/api/biz/contracts", requireAuth, (req, res) => {
+  app.post("/api/biz/contracts", requireAuth, async (req, res) => {
     const userId = (req as any).user.id;
     let body: any;
     try { body = contractSchema.parse(req.body); } catch (e: any) { return res.status(400).json({ message: e.message }); }
@@ -242,7 +242,7 @@ export function registerBizRoutes(app: Express) {
     res.json(updated);
   });
 
-  app.delete("/api/biz/contracts/:id", requireAuth, (req, res) => {
+  app.delete("/api/biz/contracts/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const userId = (req as any).user.id;
     const existing = db.select().from(biz_contracts).where(eq(biz_contracts.id, id)).get();
@@ -262,13 +262,13 @@ export function registerBizRoutes(app: Express) {
     receiptUrl: z.string().nullable().optional(),
   });
 
-  app.get("/api/biz/expenses", requireAuth, (req, res) => {
+  app.get("/api/biz/expenses", requireAuth, async (req, res) => {
     const userId = (req as any).user.id;
     const rows = db.select().from(biz_expenses).where(eq(biz_expenses.userId, userId)).all();
     res.json(rows);
   });
 
-  app.post("/api/biz/expenses", requireAuth, (req, res) => {
+  app.post("/api/biz/expenses", requireAuth, async (req, res) => {
     const userId = (req as any).user.id;
     let body: any;
     try { body = expenseSchema.parse(req.body); } catch (e: any) { return res.status(400).json({ message: e.message }); }
@@ -298,7 +298,7 @@ export function registerBizRoutes(app: Express) {
     res.json(updated);
   });
 
-  app.delete("/api/biz/expenses/:id", requireAuth, (req, res) => {
+  app.delete("/api/biz/expenses/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const userId = (req as any).user.id;
     const existing = db.select().from(biz_expenses).where(eq(biz_expenses.id, id)).get();

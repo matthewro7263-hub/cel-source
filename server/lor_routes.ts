@@ -33,11 +33,11 @@ type LorStorage = typeof storage & {
 
 const lorStorage = storage as LorStorage;
 
-function canAccessProject(projectId: number, userId: number): boolean {
-  const p = storage.getProject(projectId);
+async function canAccessProject(projectId: number, userId: number): Promise<boolean> {
+  const p = await storage.getProject(projectId);
   if (!p) return false;
   if (p.ownerId === userId) return true;
-  return storage.isMember(projectId, userId);
+  return await storage.isMember(projectId, userId);
 }
 
 function extractToken(req: Request): string | undefined {
@@ -48,11 +48,11 @@ function extractToken(req: Request): string | undefined {
   return undefined;
 }
 
-function requireAuth(req: Request, res: Response, next: NextFunction) {
+async function requireAuth(req: Request, res: Response, next: NextFunction) {
   const token = extractToken(req);
   const userId = getSessionUser(token);
   if (!userId) return res.status(401).json({ message: "Not authenticated" });
-  const user = storage.getUser(userId);
+  const user = await storage.getUser(userId);
   if (!user) return res.status(401).json({ message: "User not found" });
   (req as any).user = user;
   next();
@@ -68,14 +68,14 @@ export function registerLorRoutes(app: Express) {
   });
 
   // 1. Continuity Tracker Routes
-  app.get("/api/projects/:id/lor_facts", requireAuth, (req, res) => {
+  app.get("/api/projects/:id/lor_facts", requireAuth, async (req, res) => {
     const projectId = parseInt(String(req.params.id), 10);
     if (!canAccessProject(projectId, (req as any).user.id)) return res.status(403).json({ message: "No access" });
     const facts = lorStorage.listLorFacts(projectId);
     res.json(facts);
   });
 
-  app.post("/api/projects/:id/lor_facts", requireAuth, (req, res) => {
+  app.post("/api/projects/:id/lor_facts", requireAuth, async (req, res) => {
     const projectId = parseInt(String(req.params.id), 10);
     if (!canAccessProject(projectId, (req as any).user.id)) return res.status(403).json({ message: "No access" });
     const fact = lorStorage.createLorFact({
@@ -88,7 +88,7 @@ export function registerLorRoutes(app: Express) {
     res.json(fact);
   });
 
-  app.put("/api/lor_facts/:id", requireAuth, (req, res) => {
+  app.put("/api/lor_facts/:id", requireAuth, async (req, res) => {
     const factId = parseInt(String(req.params.id), 10);
     const row = lorStorage.getLorFact(factId);
     if (!row) return res.status(404).json({ message: "Not found" });
@@ -99,7 +99,7 @@ export function registerLorRoutes(app: Express) {
     res.json(fact);
   });
 
-  app.delete("/api/lor_facts/:id", requireAuth, (req, res) => {
+  app.delete("/api/lor_facts/:id", requireAuth, async (req, res) => {
     const factId = parseInt(String(req.params.id), 10);
     const row = lorStorage.getLorFact(factId);
     if (!row) return res.status(404).json({ message: "Not found" });
@@ -109,7 +109,7 @@ export function registerLorRoutes(app: Express) {
   });
 
   // 2. Episode Bible Template route
-  app.post("/api/projects/:id/lor_seed_bible", requireAuth, (req, res) => {
+  app.post("/api/projects/:id/lor_seed_bible", requireAuth, async (req, res) => {
     const projectId = parseInt(String(req.params.id), 10);
     if (!canAccessProject(projectId, (req as any).user.id)) return res.status(403).json({ message: "No access" });
     for (const item of LOR_EPISODE_BIBLE_SEED) {
@@ -122,14 +122,14 @@ export function registerLorRoutes(app: Express) {
   });
 
   // 3. Color Palette Matcher routes
-  app.get("/api/projects/:id/lor_palettes", requireAuth, (req, res) => {
+  app.get("/api/projects/:id/lor_palettes", requireAuth, async (req, res) => {
     const projectId = parseInt(String(req.params.id), 10);
     if (!canAccessProject(projectId, (req as any).user.id)) return res.status(403).json({ message: "No access" });
     const palettes = lorStorage.listLorPalettes(projectId);
     res.json(palettes);
   });
 
-  app.post("/api/projects/:id/lor_palettes", requireAuth, (req, res) => {
+  app.post("/api/projects/:id/lor_palettes", requireAuth, async (req, res) => {
     const projectId = parseInt(String(req.params.id), 10);
     if (!canAccessProject(projectId, (req as any).user.id)) return res.status(403).json({ message: "No access" });
     const palette = lorStorage.createLorPalette({
@@ -140,7 +140,7 @@ export function registerLorRoutes(app: Express) {
     res.json(palette);
   });
 
-  app.delete("/api/lor_palettes/:id", requireAuth, (req, res) => {
+  app.delete("/api/lor_palettes/:id", requireAuth, async (req, res) => {
     const paletteId = parseInt(String(req.params.id), 10);
     const row = lorStorage.getLorPalette(paletteId);
     if (!row) return res.status(404).json({ message: "Not found" });
@@ -150,18 +150,18 @@ export function registerLorRoutes(app: Express) {
   });
 
   // 4. Asset Revision Tree routes
-  app.get("/api/assets/:id/lor_versions", requireAuth, (req, res) => {
+  app.get("/api/assets/:id/lor_versions", requireAuth, async (req, res) => {
     const assetId = parseInt(String(req.params.id), 10);
-    const asset = storage.getAsset(assetId);
+    const asset = await storage.getAsset(assetId);
     if (!asset) return res.status(404).json({ message: "Not found" });
     if (!canAccessProject(asset.projectId, (req as any).user.id)) return res.status(403).json({ message: "No access" });
     const versions = lorStorage.listLorAssetVersions(assetId);
     res.json(versions);
   });
 
-  app.post("/api/assets/:id/lor_versions", requireAuth, (req, res) => {
+  app.post("/api/assets/:id/lor_versions", requireAuth, async (req, res) => {
     const assetId = parseInt(String(req.params.id), 10);
-    const asset = storage.getAsset(assetId);
+    const asset = await storage.getAsset(assetId);
     if (!asset) return res.status(404).json({ message: "Not found" });
     if (!canAccessProject(asset.projectId, (req as any).user.id)) return res.status(403).json({ message: "No access" });
     // find max version
@@ -181,17 +181,17 @@ export function registerLorRoutes(app: Express) {
     });
 
     // UPDATE the base asset with this fileData so that the rest of the app sees the latest approved
-    storage.updateAsset(assetId, { fileData: req.body.fileData } as any);
+    await storage.updateAsset(assetId, { fileData: req.body.fileData } as any);
 
     notifyDiscord(asset.projectId, `New Asset Version Uploaded`, `A new version of asset "${asset.filename}" has been uploaded and auto-approved.`);
 
     res.json(newVersion);
   });
 
-  app.post("/api/assets/:id/lor_versions/:versionId/approve", requireAuth, (req, res) => {
+  app.post("/api/assets/:id/lor_versions/:versionId/approve", requireAuth, async (req, res) => {
     const assetId = parseInt(String(req.params.id), 10);
     const versionId = parseInt(String(req.params.versionId), 10);
-    const asset = storage.getAsset(assetId);
+    const asset = await storage.getAsset(assetId);
     if (!asset) return res.status(404).json({ message: "Not found" });
     if (!canAccessProject(asset.projectId, (req as any).user.id)) return res.status(403).json({ message: "No access" });
     
@@ -200,7 +200,7 @@ export function registerLorRoutes(app: Express) {
     
     // update base asset
     if (approvedVer) {
-      storage.updateAsset(assetId, { fileData: approvedVer.fileData } as any);
+      await storage.updateAsset(assetId, { fileData: approvedVer.fileData } as any);
       notifyDiscord(asset.projectId, `Asset Version Approved`, `Version ${approvedVer.versionNum} of asset "${asset.filename}" has been approved.`);
     }
     
@@ -208,14 +208,14 @@ export function registerLorRoutes(app: Express) {
   });
 
   // 5. Casting Matrix routes
-  app.get("/api/projects/:id/lor_casting", requireAuth, (req, res) => {
+  app.get("/api/projects/:id/lor_casting", requireAuth, async (req, res) => {
     const projectId = parseInt(String(req.params.id), 10);
     if (!canAccessProject(projectId, (req as any).user.id)) return res.status(403).json({ message: "No access" });
     const matrix = lorStorage.listLorCasting(projectId);
     res.json(matrix);
   });
 
-  app.post("/api/projects/:id/lor_casting/toggle", requireAuth, (req, res) => {
+  app.post("/api/projects/:id/lor_casting/toggle", requireAuth, async (req, res) => {
     const { sceneId, entityId, present } = req.body;
     const projectId = parseInt(String(req.params.id), 10);
     if (!canAccessProject(projectId, (req as any).user.id)) return res.status(403).json({ message: "No access" });
@@ -226,7 +226,7 @@ export function registerLorRoutes(app: Express) {
   });
 
   // 6. Lore-Safe Checklist route (run NLP against script + facts)
-  app.post("/api/projects/:id/lor_check_script", requireAuth, (req, res) => {
+  app.post("/api/projects/:id/lor_check_script", requireAuth, async (req, res) => {
     const projectId = parseInt(String(req.params.id), 10);
     if (!canAccessProject(projectId, (req as any).user.id)) return res.status(403).json({ message: "No access" });
     const { scriptContent } = req.body;

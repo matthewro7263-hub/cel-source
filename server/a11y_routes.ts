@@ -19,7 +19,7 @@ async function attachOptionalUser(req: Request, _res: Response, next: NextFuncti
   next();
 }
 
-function requireAuth(req: Request, res: Response, next: NextFunction) {
+async function requireAuth(req: Request, res: Response, next: NextFunction) {
   attachOptionalUser(req, res, () => {
     if (!(req as any).user) return res.status(401).json({ error: "unauthorized" });
     next();

@@ -6,11 +6,11 @@ import { z } from "zod";
 import archiver from "archiver";
 import { createCanvas, loadImage } from "canvas";
 
-function canAccessProject(projectId: number, userId: number): boolean {
-  const p = storage.getProject(projectId);
+async function canAccessProject(projectId: number, userId: number): Promise<boolean> {
+  const p = await storage.getProject(projectId);
   if (!p) return false;
   if (p.ownerId === userId) return true;
-  return storage.isMember(projectId, userId);
+  return await storage.isMember(projectId, userId);
 }
 
 function extractToken(req: Request): string | undefined {
@@ -21,11 +21,11 @@ function extractToken(req: Request): string | undefined {
   return undefined;
 }
 
-function requireAuth(req: Request, res: Response, next: NextFunction) {
+async function requireAuth(req: Request, res: Response, next: NextFunction) {
   const token = extractToken(req);
   const userId = getSessionUser(token);
   if (!userId) return res.status(401).json({ message: "Not authenticated" });
-  const user = storage.getUser(userId);
+  const user = await storage.getUser(userId);
   if (!user) return res.status(401).json({ message: "User not found" });
   (req as any).user = user;
   next();

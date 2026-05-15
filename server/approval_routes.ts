@@ -6,11 +6,11 @@ import { z } from "zod";
 import { createHash } from "node:crypto";
 import { notifyDiscord } from "./discord";
 
-function canAccessProject(projectId: number, userId: number): boolean {
-  const p = storage.getProject(projectId);
+async function canAccessProject(projectId: number, userId: number): Promise<boolean> {
+  const p = await storage.getProject(projectId);
   if (!p) return false;
   if (p.ownerId === userId) return true;
-  return storage.isMember(projectId, userId);
+  return await storage.isMember(projectId, userId);
 }
 
 function extractToken(req: Request): string | undefined {
@@ -21,11 +21,11 @@ function extractToken(req: Request): string | undefined {
   return undefined;
 }
 
-function requireAuth(req: Request, res: Response, next: NextFunction) {
+async function requireAuth(req: Request, res: Response, next: NextFunction) {
   const token = extractToken(req);
   const userId = getSessionUser(token);
   if (!userId) return res.status(401).json({ message: "Not authenticated" });
-  const user = storage.getUser(userId);
+  const user = await storage.getUser(userId);
   if (!user) return res.status(401).json({ message: "User not found" });
   (req as any).user = user;
   next();
@@ -89,7 +89,7 @@ function buildSignatureHash(args: {
 
 export function registerApprovalRoutes(app: Express) {
   // GET /api/projects/:id/approvals — list, auto-create 3 defaults if none
-  app.get("/api/projects/:id/approvals", requireAuth, (req, res) => {
+  app.get("/api/projects/:id/approvals", requireAuth, async (req, res) => {
     const projectId = parseInt(String(req.params.id), 10);
     if (!canAccessProject(projectId, (req as any).user.id)) {
       return res.status(403).json({ message: "No access" });
@@ -104,7 +104,7 @@ export function registerApprovalRoutes(app: Express) {
   });
 
   // PUT /api/approvals/:id — update status/signature/notes/approverName/approvedAt
-  app.put("/api/approvals/:id", requireAuth, (req, res) => {
+  app.put("/api/approvals/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const row = db
       .select()

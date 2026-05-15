@@ -37,21 +37,21 @@ function extractToken(req: Request): string | undefined {
   return undefined;
 }
 
-function requireAuth(req: Request, res: Response, next: NextFunction) {
+async function requireAuth(req: Request, res: Response, next: NextFunction) {
   const token = extractToken(req);
   const userId = getSessionUser(token);
   if (!userId) return res.status(401).json({ message: "Not authenticated" });
-  const user = storage.getUser(userId);
+  const user = await storage.getUser(userId);
   if (!user) return res.status(401).json({ message: "User not found" });
   req.user = user;
   next();
 }
 
-function canAccessProject(projectId: number, userId: number): boolean {
-  const p = storage.getProject(projectId);
+async function canAccessProject(projectId: number, userId: number): Promise<boolean> {
+  const p = await storage.getProject(projectId);
   if (!p) return false;
   if (p.ownerId === userId) return true;
-  return storage.isMember(projectId, userId);
+  return await storage.isMember(projectId, userId);
 }
 
 import { bakRouter } from "./routes/bak/index.js";
@@ -84,17 +84,17 @@ const upload = multer({
   // No cookie-parser — we use Authorization: Bearer <token> only
 
   // ===== AUTH =====
-  app.post("/api/auth/signup", (req, res) => {
+  app.post("/api/auth/signup", async (req, res) => {
     const schema = z.object({
       email: z.string().email(),
       name: z.string().min(1).max(80),
       password: z.string().min(8).max(200),
     });
     const body = schema.parse(req.body);
-    const existing = storage.getUserByEmail(body.email);
+    const existing = await storage.getUserByEmail(body.email);
     if (existing) return res.status(400).json({ message: "Email already in use" });
     const colors = ["#6E4FE8", "#E8744F", "#4FBFE8", "#E84F9F", "#4FE89A", "#E8C44F"];
-    const user = storage.createUser({
+    const user = await storage.createUser({
       email: body.email,
       name: body.name,
       passwordHash: hashPassword(body.password),
@@ -105,10 +105,10 @@ const upload = multer({
     res.json({ user: safe, token });
   });
 
-  app.post("/api/auth/login", (req, res) => {
+  app.post("/api/auth/login", async (req, res) => {
     const schema = z.object({ email: z.string().email(), password: z.string() });
     const body = schema.parse(req.body);
-    const user = storage.getUserByEmail(body.email);
+    const user = await storage.getUserByEmail(body.email);
     if (!user || !verifyPassword(body.password, user.passwordHash)) {
       return res.status(401).json({ message: "Invalid email or password" });
     }
@@ -117,17 +117,17 @@ const upload = multer({
     res.json({ user: safe, token });
   });
 
-  app.post("/api/auth/logout", (req, res) => {
+  app.post("/api/auth/logout", async (req, res) => {
     const token = extractToken(req);
     if (token) destroySession(token);
     res.json({ ok: true });
   });
 
-  app.get("/api/auth/me", (req, res) => {
+  app.get("/api/auth/me", async (req, res) => {
     const token = extractToken(req);
     const userId = getSessionUser(token);
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
-    const user = storage.getUser(userId);
+    const user = await storage.getUser(userId);
     if (!user) return res.status(401).json({ message: "User not found" });
     const { passwordHash, ...safe } = user;
     res.json(safe);
@@ -136,18 +136,18 @@ const upload = multer({
   app.patch("/api/auth/me", requireAuth, (req, res) => {
     const schema = z.object({ name: z.string().min(1).optional(), avatarColor: z.string().optional() });
     const patch = schema.parse(req.body);
-    const updated = storage.updateUser(req.user!.id, patch);
+    const updated = await storage.updateUser(req.user!.id, patch);
     const { passwordHash, ...safe } = updated!;
     res.json(safe);
   });
 
   // ===== PROJECTS =====
-  app.get("/api/projects", requireAuth, (req, res) => {
-    const list = storage.listProjectsForUser(req.user!.id);
+  app.get("/api/projects", requireAuth, async (req, res) => {
+    const list = await storage.listProjectsForUser(req.user!.id);
     res.json(list);
   });
 
-  app.post("/api/projects", requireAuth, (req, res) => {
+  app.post("/api/projects", requireAuth, async (req, res) => {
     const schema = z.object({
       title: z.string().min(1),
       description: z.string().optional().default(""),
@@ -155,7 +155,7 @@ const upload = multer({
       deadline: z.string().nullable().optional(),
     });
     const body = schema.parse(req.body);
-    const p = storage.createProject({
+    const p = await storage.createProject({
       ownerId: req.user!.id,
       title: body.title,
       description: body.description || "",
@@ -165,15 +165,15 @@ const upload = multer({
       shareToken: genToken(16),
       shareEnabled: false,
     });
-    storage.addMember({ projectId: p.id, userId: req.user!.id, role: "owner" });
+    await storage.addMember({ projectId: p.id, userId: req.user!.id, role: "owner" });
     res.json(p);
   });
 
-  app.get("/api/projects/:id", requireAuth, (req, res) => {
+  app.get("/api/projects/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
-    const p = storage.getProject(id);
-    const members = storage.listMembers(id).map((m) => ({
+    const p = await storage.getProject(id);
+    const members = await storage.listMembers(id).map((m) => ({
       ...m,
       user: m.user ? { id: m.user.id, name: m.user.name, email: m.user.email, avatarColor: m.user.avatarColor } : null,
     }));
@@ -196,48 +196,48 @@ const upload = multer({
       dltDiscordWebhookUrl: z.string().url().nullable().optional(),
     });
     const patch = schema.parse(req.body);
-    const updated = storage.updateProject(id, patch as any);
+    const updated = await storage.updateProject(id, patch as any);
     res.json(updated);
   });
 
-  app.delete("/api/projects/:id", requireAuth, (req, res) => {
+  app.delete("/api/projects/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    const p = storage.getProject(id);
+    const p = await storage.getProject(id);
     if (!p) return res.status(404).json({ message: "Not found" });
     if (p.ownerId !== req.user!.id) return res.status(403).json({ message: "Only the owner can delete" });
-    storage.deleteProject(id);
+    await storage.deleteProject(id);
     res.json({ ok: true });
   });
 
   // ===== MEMBERS =====
-  app.post("/api/projects/:id/members", requireAuth, (req, res) => {
+  app.post("/api/projects/:id/members", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
     const schema = z.object({ email: z.string().email(), role: z.string().optional() });
     const body = schema.parse(req.body);
-    let user = storage.getUserByEmail(body.email);
+    let user = await storage.getUserByEmail(body.email);
     let tempPassword: string | undefined;
     if (!user) {
       tempPassword = "changeme";
       const colors = ["#6E4FE8", "#E8744F", "#4FBFE8", "#E84F9F", "#4FE89A"];
-      user = storage.createUser({
+      user = await storage.createUser({
         email: body.email,
         name: body.email.split("@")[0],
         passwordHash: hashPassword(tempPassword),
         avatarColor: colors[Math.floor(Math.random() * colors.length)],
       });
     }
-    if (!storage.isMember(id, user.id)) {
-      storage.addMember({ projectId: id, userId: user.id, role: body.role || "editor" });
+    if (!await storage.isMember(id, user.id)) {
+      await storage.addMember({ projectId: id, userId: user.id, role: body.role || "editor" });
     }
     res.json({ user: { id: user.id, email: user.email, name: user.name, avatarColor: user.avatarColor }, tempPassword });
   });
 
-  app.delete("/api/projects/:id/members/:userId", requireAuth, (req, res) => {
+  app.delete("/api/projects/:id/members/:userId", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const userId = parseInt(String(req.params.userId), 10);
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
-    storage.removeMember(id, userId);
+    await storage.removeMember(id, userId);
     res.json({ ok: true });
   });
 
@@ -325,7 +325,7 @@ const upload = multer({
 
       const title = originalname.replace(/\.[^/.]+$/, "");
 
-      const newScript = (storage as any).createScript({
+      const newScript = await (storage as any).createScript({
         projectId,
         title,
         content: extractedText,
@@ -340,7 +340,7 @@ const upload = multer({
         originalKey
       }).where(eq(scripts.id, newScript.id)).run();
       
-      const updatedScript = (storage as any).getScript(newScript.id);
+      const updatedScript = await (storage as any).getScript(newScript.id);
 
       res.json(updatedScript);
     } catch (e: any) {
@@ -355,7 +355,7 @@ const upload = multer({
     
     if (!canAccessProject(projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
 
-    const script = (storage as any).getScript(scriptId);
+    const script = await (storage as any).getScript(scriptId);
     if (!script) return res.status(404).json({ message: "Script not found" });
     if (script.projectId !== projectId) return res.status(403).json({ message: "Script belongs to another project" });
     if (script.sourceType !== "upload" || !script.originalKey) {
@@ -389,17 +389,17 @@ const upload = multer({
     }
   });
 
-  app.get("/api/projects/:id/scripts", requireAuth, (req, res) => {
+  app.get("/api/projects/:id/scripts", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
-    res.json(storage.listScripts(id));
+    res.json(await storage.listScripts(id));
   });
-  app.post("/api/projects/:id/scripts", requireAuth, (req, res) => {
+  app.post("/api/projects/:id/scripts", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
     const schema = z.object({ title: z.string().optional(), content: z.string().optional() });
     const body = schema.parse(req.body);
-    res.json(storage.createScript({ projectId: id, title: body.title || "Untitled Script", content: body.content || "" }));
+    res.json(await storage.createScript({ projectId: id, title: body.title || "Untitled Script", content: body.content || "" }));
   });
   app.patch("/api/projects/:id/scripts/:scriptId", requireAuth, (req, res) => {
     const id = parseInt(String(req.params.id), 10);
@@ -407,43 +407,43 @@ const upload = multer({
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
     const schema = z.object({ title: z.string().optional(), content: z.string().optional() });
     const patch = schema.parse(req.body);
-    res.json(storage.updateScript(sid, patch));
+    res.json(await storage.updateScript(sid, patch));
   });
-  app.delete("/api/projects/:id/scripts/:scriptId", requireAuth, (req, res) => {
+  app.delete("/api/projects/:id/scripts/:scriptId", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const sid = parseInt(String(req.params.scriptId), 10);
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
-    storage.deleteScript(sid);
+    await storage.deleteScript(sid);
     res.json({ ok: true });
   });
 
   // ===== STORYBOARDS =====
-  app.get("/api/projects/:id/storyboards", requireAuth, (req, res) => {
+  app.get("/api/projects/:id/storyboards", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
-    const sbs = storage.listStoryboards(id);
-    const out = sbs.map((sb) => ({ ...sb, panels: storage.listPanels(sb.id) }));
+    const sbs = await storage.listStoryboards(id);
+    const out = sbs.map((sb) => ({ ...sb, panels: await storage.listPanels(sb.id) }));
     res.json(out);
   });
-  app.post("/api/projects/:id/storyboards", requireAuth, (req, res) => {
+  app.post("/api/projects/:id/storyboards", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
     const schema = z.object({ title: z.string().optional() });
     const body = schema.parse(req.body);
-    res.json(storage.createStoryboard({ projectId: id, title: body.title || "Untitled Storyboard" }));
+    res.json(await storage.createStoryboard({ projectId: id, title: body.title || "Untitled Storyboard" }));
   });
-  app.delete("/api/projects/:id/storyboards/:sbId", requireAuth, (req, res) => {
+  app.delete("/api/projects/:id/storyboards/:sbId", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const sb = parseInt(String(req.params.sbId), 10);
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
-    storage.deleteStoryboard(sb);
+    await storage.deleteStoryboard(sb);
     res.json({ ok: true });
   });
 
   // ===== PANELS =====
-  app.post("/api/storyboards/:sbId/panels", requireAuth, (req, res) => {
+  app.post("/api/storyboards/:sbId/panels", requireAuth, async (req, res) => {
     const sbId = parseInt(String(req.params.sbId), 10);
-    const sb = storage.getStoryboard(sbId);
+    const sb = await storage.getStoryboard(sbId);
     if (!sb) return res.status(404).json({ message: "Storyboard not found" });
     if (!canAccessProject(sb.projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
     const schema = z.object({
@@ -455,9 +455,9 @@ const upload = multer({
     if (body.imageData.length > 14 * 1024 * 1024) {
       return res.status(413).json({ message: "Image too large (max 10MB)" });
     }
-    const panels = storage.listPanels(sbId);
+    const panels = await storage.listPanels(sbId);
     const orderIdx = panels.length;
-    const panel = storage.createPanel({
+    const panel = await storage.createPanel({
       storyboardId: sbId,
       orderIdx,
       imageData: body.imageData,
@@ -468,9 +468,9 @@ const upload = multer({
   });
   app.patch("/api/panels/:id", requireAuth, (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    const panel = storage.getPanel(id);
+    const panel = await storage.getPanel(id);
     if (!panel) return res.status(404).json({ message: "Not found" });
-    const sb = storage.getStoryboard(panel.storyboardId);
+    const sb = await storage.getStoryboard(panel.storyboardId);
     if (!sb || !canAccessProject(sb.projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
     const schema = z.object({
       orderIdx: z.number().int().optional(),
@@ -478,25 +478,25 @@ const upload = multer({
       dialogue: z.string().optional(),
     });
     const patch = schema.parse(req.body);
-    res.json(storage.updatePanel(id, patch));
+    res.json(await storage.updatePanel(id, patch));
   });
-  app.delete("/api/panels/:id", requireAuth, (req, res) => {
+  app.delete("/api/panels/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    const panel = storage.getPanel(id);
+    const panel = await storage.getPanel(id);
     if (!panel) return res.status(404).json({ message: "Not found" });
-    const sb = storage.getStoryboard(panel.storyboardId);
+    const sb = await storage.getStoryboard(panel.storyboardId);
     if (!sb || !canAccessProject(sb.projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
-    storage.deletePanel(id);
+    await storage.deletePanel(id);
     res.json({ ok: true });
   });
 
   // ===== ANIMATICS =====
-  app.get("/api/projects/:id/animatics", requireAuth, (req, res) => {
+  app.get("/api/projects/:id/animatics", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
-    res.json(storage.listAnimatics(id));
+    res.json(await storage.listAnimatics(id));
   });
-  app.post("/api/projects/:id/animatics", requireAuth, (req, res) => {
+  app.post("/api/projects/:id/animatics", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
     const schema = z.object({
@@ -508,27 +508,27 @@ const upload = multer({
     if (body.videoData.length > 14 * 1024 * 1024) {
       return res.status(413).json({ message: "Video too large (max 10MB). Try a YouTube/Vimeo URL instead." });
     }
-    const created = storage.createAnimatic({
+    const created = await storage.createAnimatic({
       projectId: id, title: body.title || "Animatic", videoData: body.videoData, notes: body.notes || "",
     });
     notifyDiscord(id, `Animatic Published`, `Animatic "${created.title}" has been published.`);
     res.json(created);
   });
-  app.delete("/api/projects/:id/animatics/:aId", requireAuth, (req, res) => {
+  app.delete("/api/projects/:id/animatics/:aId", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const aId = parseInt(String(req.params.aId), 10);
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
-    storage.deleteAnimatic(aId);
+    await storage.deleteAnimatic(aId);
     res.json({ ok: true });
   });
 
   // ===== SCENES =====
-  app.get("/api/projects/:id/scenes", requireAuth, (req, res) => {
+  app.get("/api/projects/:id/scenes", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
-    res.json(storage.listScenes(id));
+    res.json(await storage.listScenes(id));
   });
-  app.post("/api/projects/:id/scenes", requireAuth, (req, res) => {
+  app.post("/api/projects/:id/scenes", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
     const schema = z.object({
@@ -540,7 +540,7 @@ const upload = multer({
       assigneeId: z.number().nullable().optional(),
     });
     const body = schema.parse(req.body);
-    res.json(storage.createScene({
+    res.json(await storage.createScene({
       projectId: id,
       number: body.number || "1",
       title: body.title || "Untitled Scene",
@@ -563,7 +563,7 @@ const upload = multer({
       assigneeId: z.number().nullable().optional(),
     });
     const patch = schema.parse(req.body);
-    const updated = storage.updateScene(sceneId, patch as any);
+    const updated = await storage.updateScene(sceneId, patch as any);
     
     if (patch.status && updated) {
       notifyDiscord(id, `Scene Status Updated`, `Scene "${updated.title}" is now **${patch.status}**`);
@@ -571,31 +571,31 @@ const upload = multer({
     
     res.json(updated);
   });
-  app.delete("/api/projects/:id/scenes/:sceneId", requireAuth, (req, res) => {
+  app.delete("/api/projects/:id/scenes/:sceneId", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const sceneId = parseInt(String(req.params.sceneId), 10);
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
-    storage.deleteScene(sceneId);
+    await storage.deleteScene(sceneId);
     res.json({ ok: true });
   });
 
   // ===== COMMENTS =====
-  app.get("/api/projects/:id/comments", requireAuth, (req, res) => {
+  app.get("/api/projects/:id/comments", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
-    const list = storage.listComments(id);
-    const enriched = list.map((c) => ({ ...c, author: storage.getUser(c.authorId) || null }));
+    const list = await storage.listComments(id);
+    const enriched = list.map((c) => ({ ...c, author: await storage.getUser(c.authorId) || null }));
     res.json(enriched.map((c) => ({
       ...c,
       author: c.author ? { id: c.author.id, name: c.author.name, avatarColor: c.author.avatarColor } : null,
     })));
   });
-  app.post("/api/projects/:id/comments", requireAuth, (req, res) => {
+  app.post("/api/projects/:id/comments", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
     const schema = z.object({ body: z.string().min(1), sceneId: z.number().nullable().optional() });
     const body = schema.parse(req.body);
-    const comment = storage.createComment({
+    const comment = await storage.createComment({
       projectId: id, authorId: req.user!.id, body: body.body, sceneId: body.sceneId ?? null,
     });
     
@@ -603,26 +603,26 @@ const upload = multer({
     
     res.json(comment);
   });
-  app.delete("/api/projects/:id/comments/:commentId", requireAuth, (req, res) => {
+  app.delete("/api/projects/:id/comments/:commentId", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const cid = parseInt(String(req.params.commentId), 10);
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
-    storage.deleteComment(cid);
+    await storage.deleteComment(cid);
     res.json({ ok: true });
   });
 
   // ===== ASSETS =====
-  app.get("/api/projects/:id/assets", requireAuth, (req, res) => {
+  app.get("/api/projects/:id/assets", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
     const category = req.query.category as string | undefined;
     // Exclude fileData from listing for performance; client fetches individual for download
-    const list = storage.listAssets(id, category);
+    const list = await storage.listAssets(id, category);
     const safe = list.map(({ fileData, ...rest }) => rest);
     res.json(safe);
   });
 
-  app.post("/api/projects/:id/assets", requireAuth, (req, res) => {
+  app.post("/api/projects/:id/assets", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
     const schema = z.object({
@@ -638,7 +638,7 @@ const upload = multer({
     if (body.fileData.length > 14 * 1024 * 1024) {
       return res.status(413).json({ message: "File too large (max 10MB)" });
     }
-    const asset = storage.createAsset({
+    const asset = await storage.createAsset({
       projectId: id,
       uploaderId: req.user!.id,
       ...body,
@@ -650,7 +650,7 @@ const upload = multer({
 
   app.patch("/api/assets/:id", requireAuth, (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    const asset = storage.getAsset(id);
+    const asset = await storage.getAsset(id);
     if (!asset) return res.status(404).json({ message: "Not found" });
     if (!canAccessProject(asset.projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
     const schema = z.object({
@@ -659,24 +659,24 @@ const upload = multer({
       category: z.string().optional(),
     });
     const patch = schema.parse(req.body);
-    const updated = storage.updateAsset(id, patch);
+    const updated = await storage.updateAsset(id, patch);
     if (!updated) return res.status(404).json({ message: "Not found" });
     const { fileData, ...safe } = updated;
     res.json(safe);
   });
 
-  app.delete("/api/assets/:id", requireAuth, (req, res) => {
+  app.delete("/api/assets/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    const asset = storage.getAsset(id);
+    const asset = await storage.getAsset(id);
     if (!asset) return res.status(404).json({ message: "Not found" });
     if (!canAccessProject(asset.projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
-    storage.deleteAsset(id);
+    await storage.deleteAsset(id);
     res.json({ ok: true });
   });
 
-  app.get("/api/assets/:id/download", requireAuth, (req, res) => {
+  app.get("/api/assets/:id/download", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    const asset = storage.getAsset(id);
+    const asset = await storage.getAsset(id);
     if (!asset) return res.status(404).json({ message: "Not found" });
     if (!canAccessProject(asset.projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
     // fileData is a base64 data URL — send it as-is for client-side download
@@ -687,7 +687,7 @@ const upload = multer({
   // In-memory rate limiter: max 5 submissions per IP per hour
   const commissionRateLimit = new Map<string, { count: number; resetAt: number }>();
 
-  app.post("/api/commissions", (req, res) => {
+  app.post("/api/commissions", async (req, res) => {
     const ip = req.ip || req.socket.remoteAddress || "unknown";
     const now = Date.now();
     const entry = commissionRateLimit.get(ip);
@@ -716,10 +716,10 @@ const upload = multer({
       return res.status(413).json({ message: "Reference image too large (max 10MB)" });
     }
     // Validate that the ownerUserId refers to an existing user
-    if (!storage.getUser(body.ownerUserId)) {
+    if (!await storage.getUser(body.ownerUserId)) {
       return res.status(404).json({ message: "Unknown artist" });
     }
-    const commission = storage.createCommission({
+    const commission = await storage.createCommission({
       ownerUserId: body.ownerUserId,
       clientName: body.clientName,
       clientEmail: body.clientEmail,
@@ -734,16 +734,16 @@ const upload = multer({
     res.json(commission);
   });
 
-  app.get("/api/commissions", requireAuth, (req, res) => {
-    const list = storage.listCommissions(req.user!.id);
+  app.get("/api/commissions", requireAuth, async (req, res) => {
+    const list = await storage.listCommissions(req.user!.id);
     // Omit large reference images from list view
     const safe = list.map(({ referenceImage, ...rest }) => ({ ...rest, hasReferenceImage: !!referenceImage }));
     res.json(safe);
   });
 
-  app.get("/api/commissions/:id", requireAuth, (req, res) => {
+  app.get("/api/commissions/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    const commission = storage.getCommission(id);
+    const commission = await storage.getCommission(id);
     if (!commission) return res.status(404).json({ message: "Not found" });
     if (commission.ownerUserId !== req.user!.id) return res.status(403).json({ message: "No access" });
     res.json(commission);
@@ -751,7 +751,7 @@ const upload = multer({
 
   app.patch("/api/commissions/:id", requireAuth, (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    const commission = storage.getCommission(id);
+    const commission = await storage.getCommission(id);
     if (!commission) return res.status(404).json({ message: "Not found" });
     if (commission.ownerUserId !== req.user!.id) return res.status(403).json({ message: "No access" });
     const schema = z.object({
@@ -759,7 +759,7 @@ const upload = multer({
       notes: z.string().optional(),
     });
     const patch = schema.parse(req.body);
-    const updated = storage.updateCommission(id, patch);
+    const updated = await storage.updateCommission(id, patch);
     
     // If it's linked to a project and status changed, notify Discord
     if (patch.status && updated?.linkedProjectId) {
@@ -769,12 +769,12 @@ const upload = multer({
     res.json(updated);
   });
 
-  app.post("/api/commissions/:id/convert", requireAuth, (req, res) => {
+  app.post("/api/commissions/:id/convert", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    const commission = storage.getCommission(id);
+    const commission = await storage.getCommission(id);
     if (!commission) return res.status(404).json({ message: "Not found" });
     if (commission.ownerUserId !== req.user!.id) return res.status(403).json({ message: "No access" });
-    const project = storage.createProject({
+    const project = await storage.createProject({
       ownerId: req.user!.id,
       title: `Commission for ${commission.clientName}`,
       description: commission.description,
@@ -784,23 +784,23 @@ const upload = multer({
       shareToken: genToken(16),
       shareEnabled: false,
     });
-    storage.addMember({ projectId: project.id, userId: req.user!.id, role: "owner" });
-    storage.updateCommission(id, { status: "in-progress", linkedProjectId: project.id });
-    res.json({ project, commission: storage.getCommission(id) });
+    await storage.addMember({ projectId: project.id, userId: req.user!.id, role: "owner" });
+    await storage.updateCommission(id, { status: "in-progress", linkedProjectId: project.id });
+    res.json({ project, commission: await storage.getCommission(id) });
   });
 
   // ===== RENDERS =====
-  app.get("/api/scenes/:sceneId/renders", requireAuth, (req, res) => {
+  app.get("/api/scenes/:sceneId/renders", requireAuth, async (req, res) => {
     const sceneId = parseInt(String(req.params.sceneId), 10);
-    const scene = storage.getScene(sceneId);
+    const scene = await storage.getScene(sceneId);
     if (!scene) return res.status(404).json({ message: "Scene not found" });
     if (!canAccessProject(scene.projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
-    res.json(storage.listRenders(sceneId));
+    res.json(await storage.listRenders(sceneId));
   });
 
-  app.post("/api/scenes/:sceneId/renders", requireAuth, (req, res) => {
+  app.post("/api/scenes/:sceneId/renders", requireAuth, async (req, res) => {
     const sceneId = parseInt(String(req.params.sceneId), 10);
-    const scene = storage.getScene(sceneId);
+    const scene = await storage.getScene(sceneId);
     if (!scene) return res.status(404).json({ message: "Scene not found" });
     if (!canAccessProject(scene.projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
     const schema = z.object({
@@ -812,7 +812,7 @@ const upload = multer({
       notes: z.string().optional().default(""),
     });
     const body = schema.parse(req.body);
-    const render = storage.createRender({
+    const render = await storage.createRender({
       sceneId,
       label: body.label,
       status: body.status,
@@ -826,9 +826,9 @@ const upload = multer({
 
   app.patch("/api/renders/:id", requireAuth, (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    const render = storage.getRender(id);
+    const render = await storage.getRender(id);
     if (!render) return res.status(404).json({ message: "Not found" });
-    const scene = storage.getScene(render.sceneId);
+    const scene = await storage.getScene(render.sceneId);
     if (!scene || !canAccessProject(scene.projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
     const schema = z.object({
       label: z.string().optional(),
@@ -839,7 +839,7 @@ const upload = multer({
       notes: z.string().optional(),
     });
     const patch = schema.parse(req.body);
-    const updated = storage.updateRender(id, patch as any);
+    const updated = await storage.updateRender(id, patch as any);
     
     if (patch.status === "done" && updated && render.status !== "done") {
       notifyDiscord(scene.projectId, `Render Complete`, `Render "${updated.label}" for Scene ${scene.number} is ready.`);
@@ -848,24 +848,24 @@ const upload = multer({
     res.json(updated);
   });
 
-  app.delete("/api/renders/:id", requireAuth, (req, res) => {
+  app.delete("/api/renders/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    const render = storage.getRender(id);
+    const render = await storage.getRender(id);
     if (!render) return res.status(404).json({ message: "Not found" });
-    const scene = storage.getScene(render.sceneId);
+    const scene = await storage.getScene(render.sceneId);
     if (!scene || !canAccessProject(scene.projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
-    storage.deleteRender(id);
+    await storage.deleteRender(id);
     res.json({ ok: true });
   });
 
   // ===== ANIMATIC PROJECTS v2 =====
-  app.get("/api/projects/:projectId/animatics-v2", requireAuth, (req, res) => {
+  app.get("/api/projects/:projectId/animatics-v2", requireAuth, async (req, res) => {
     const projectId = parseInt(String(req.params.projectId), 10);
     if (!canAccessProject(projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
-    res.json(storage.getAnimaticProjectsByProject(projectId));
+    res.json(await storage.getAnimaticProjectsByProject(projectId));
   });
 
-  app.post("/api/projects/:projectId/animatics-v2", requireAuth, (req, res) => {
+  app.post("/api/projects/:projectId/animatics-v2", requireAuth, async (req, res) => {
     const projectId = parseInt(String(req.params.projectId), 10);
     if (!canAccessProject(projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
     const schema = z.object({
@@ -874,13 +874,13 @@ const upload = multer({
       totalDurationMs: z.number().int().optional().default(8000),
     });
     const body = schema.parse(req.body);
-    const ap = storage.createAnimaticProject({ projectId, title: body.title, fps: body.fps, totalDurationMs: body.totalDurationMs });
+    const ap = await storage.createAnimaticProject({ projectId, title: body.title, fps: body.fps, totalDurationMs: body.totalDurationMs });
     res.json(ap);
   });
 
-  app.get("/api/animatics-v2/:id", requireAuth, (req, res) => {
+  app.get("/api/animatics-v2/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    const ap = storage.getAnimaticProject(id);
+    const ap = await storage.getAnimaticProject(id);
     if (!ap) return res.status(404).json({ message: "Not found" });
     if (!canAccessProject(ap.projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
     res.json(ap);
@@ -888,7 +888,7 @@ const upload = multer({
 
   app.patch("/api/animatics-v2/:id", requireAuth, (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    const ap = storage.getAnimaticProject(id);
+    const ap = await storage.getAnimaticProject(id);
     if (!ap) return res.status(404).json({ message: "Not found" });
     if (!canAccessProject(ap.projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
     const schema = z.object({
@@ -897,23 +897,23 @@ const upload = multer({
       totalDurationMs: z.number().int().optional(),
     });
     const patch = schema.parse(req.body);
-    const updated = storage.updateAnimaticProject(id, patch);
+    const updated = await storage.updateAnimaticProject(id, patch);
     res.json(updated);
   });
 
-  app.delete("/api/animatics-v2/:id", requireAuth, (req, res) => {
+  app.delete("/api/animatics-v2/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    const ap = storage.getAnimaticProject(id);
+    const ap = await storage.getAnimaticProject(id);
     if (!ap) return res.status(404).json({ message: "Not found" });
     if (!canAccessProject(ap.projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
-    storage.deleteAnimaticProject(id);
+    await storage.deleteAnimaticProject(id);
     res.json({ ok: true });
   });
 
   // ===== ANIMATIC TRACKS =====
-  app.post("/api/animatics-v2/:id/tracks", requireAuth, (req, res) => {
+  app.post("/api/animatics-v2/:id/tracks", requireAuth, async (req, res) => {
     const animaticId = parseInt(String(req.params.id), 10);
-    const ap = storage.getAnimaticProject(animaticId);
+    const ap = await storage.getAnimaticProject(animaticId);
     if (!ap) return res.status(404).json({ message: "Not found" });
     if (!canAccessProject(ap.projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
     const schema = z.object({
@@ -924,15 +924,15 @@ const upload = multer({
       volume: z.string().optional().default("1.0"),
     });
     const body = schema.parse(req.body);
-    const track = storage.createTrack({ animaticProjectId: animaticId, ...body });
+    const track = await storage.createTrack({ animaticProjectId: animaticId, ...body });
     res.json(track);
   });
 
   app.patch("/api/tracks/:id", requireAuth, (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    const track = storage.getTrack(id);
+    const track = await storage.getTrack(id);
     if (!track) return res.status(404).json({ message: "Not found" });
-    const ap = storage.getAnimaticProject(track.animaticProjectId);
+    const ap = await storage.getAnimaticProject(track.animaticProjectId);
     if (!ap || !canAccessProject(ap.projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
     const schema = z.object({
       kind: z.string().optional(),
@@ -942,26 +942,26 @@ const upload = multer({
       volume: z.string().optional(),
     });
     const patch = schema.parse(req.body);
-    const updated = storage.updateTrack(id, patch);
+    const updated = await storage.updateTrack(id, patch);
     res.json(updated);
   });
 
-  app.delete("/api/tracks/:id", requireAuth, (req, res) => {
+  app.delete("/api/tracks/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    const track = storage.getTrack(id);
+    const track = await storage.getTrack(id);
     if (!track) return res.status(404).json({ message: "Not found" });
-    const ap = storage.getAnimaticProject(track.animaticProjectId);
+    const ap = await storage.getAnimaticProject(track.animaticProjectId);
     if (!ap || !canAccessProject(ap.projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
-    storage.deleteTrack(id);
+    await storage.deleteTrack(id);
     res.json({ ok: true });
   });
 
   // ===== ANIMATIC CLIPS =====
-  app.post("/api/tracks/:id/clips", requireAuth, (req, res) => {
+  app.post("/api/tracks/:id/clips", requireAuth, async (req, res) => {
     const trackId = parseInt(String(req.params.id), 10);
-    const track = storage.getTrack(trackId);
+    const track = await storage.getTrack(trackId);
     if (!track) return res.status(404).json({ message: "Not found" });
-    const ap = storage.getAnimaticProject(track.animaticProjectId);
+    const ap = await storage.getAnimaticProject(track.animaticProjectId);
     if (!ap || !canAccessProject(ap.projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
     const schema = z.object({
       startMs: z.number().int().optional().default(0),
@@ -978,7 +978,7 @@ const upload = multer({
     if (body.audioDataUrl && body.audioDataUrl.length > 14 * 1024 * 1024) {
       return res.status(413).json({ message: "Audio too large (max 10MB)" });
     }
-    const clip = storage.createClip({
+    const clip = await storage.createClip({
       trackId,
       startMs: body.startMs,
       durationMs: body.durationMs,
@@ -995,11 +995,11 @@ const upload = multer({
 
   app.patch("/api/clips/:id", requireAuth, (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    const clip = storage.getClip(id);
+    const clip = await storage.getClip(id);
     if (!clip) return res.status(404).json({ message: "Not found" });
-    const track = storage.getTrack(clip.trackId);
+    const track = await storage.getTrack(clip.trackId);
     if (!track) return res.status(404).json({ message: "Track not found" });
-    const ap = storage.getAnimaticProject(track.animaticProjectId);
+    const ap = await storage.getAnimaticProject(track.animaticProjectId);
     if (!ap || !canAccessProject(ap.projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
     const schema = z.object({
       startMs: z.number().int().optional(),
@@ -1013,19 +1013,19 @@ const upload = multer({
       volume: z.string().optional(),
     });
     const patch = schema.parse(req.body);
-    const updated = storage.updateClip(id, patch as any);
+    const updated = await storage.updateClip(id, patch as any);
     res.json(updated);
   });
 
-  app.delete("/api/clips/:id", requireAuth, (req, res) => {
+  app.delete("/api/clips/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    const clip = storage.getClip(id);
+    const clip = await storage.getClip(id);
     if (!clip) return res.status(404).json({ message: "Not found" });
-    const track = storage.getTrack(clip.trackId);
+    const track = await storage.getTrack(clip.trackId);
     if (!track) return res.status(404).json({ message: "Track not found" });
-    const ap = storage.getAnimaticProject(track.animaticProjectId);
+    const ap = await storage.getAnimaticProject(track.animaticProjectId);
     if (!ap || !canAccessProject(ap.projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
-    storage.deleteClip(id);
+    await storage.deleteClip(id);
     res.json({ ok: true });
   });
 
@@ -1077,17 +1077,17 @@ const upload = multer({
   });
 
   // ===== PUBLIC SHARE =====
-  app.get("/api/share/:token", (req, res) => {
+  app.get("/api/share/:token", async (req, res) => {
     const token = req.params.token;
-    const p = storage.getProjectByToken(token);
+    const p = await storage.getProjectByToken(token);
     if (!p || !p.shareEnabled) return res.status(404).json({ message: "Share link not found or disabled" });
-    const owner = storage.getUser(p.ownerId);
-    const scripts = storage.listScripts(p.id);
-    const storyboards = storage.listStoryboards(p.id).map((sb) => ({
-      ...sb, panels: storage.listPanels(sb.id),
+    const owner = await storage.getUser(p.ownerId);
+    const scripts = await storage.listScripts(p.id);
+    const storyboards = await storage.listStoryboards(p.id).map((sb) => ({
+      ...sb, panels: await storage.listPanels(sb.id),
     }));
-    const animatics = storage.listAnimatics(p.id);
-    const scenes = storage.listScenes(p.id);
+    const animatics = await storage.listAnimatics(p.id);
+    const scenes = await storage.listScenes(p.id);
     res.json({
       project: { ...p, shareToken: undefined },
       owner: owner ? { name: owner.name, avatarColor: owner.avatarColor } : null,
@@ -1096,44 +1096,44 @@ const upload = multer({
   });
 
   // Public share meta endpoint (for watermark)
-  app.get("/api/share/:token/meta", (req, res) => {
+  app.get("/api/share/:token/meta", async (req, res) => {
     const token = req.params.token;
-    const p = storage.getProjectByToken(token);
+    const p = await storage.getProjectByToken(token);
     if (!p || !p.shareEnabled) return res.status(404).json({ message: "Not found" });
     res.json({ status: p.status, title: p.title });
   });
 
   // Public share cli_approvals endpoint
-  app.get("/api/share/:token/cli_approvals", (req, res) => {
+  app.get("/api/share/:token/cli_approvals", async (req, res) => {
     const token = req.params.token;
-    const p = storage.getProjectByToken(token);
+    const p = await storage.getProjectByToken(token);
     if (!p || !p.shareEnabled) return res.status(404).json({ message: "Not found" });
-    const approvals = storage.getCliApprovals(p.id);
+    const approvals = await storage.getCliApprovals(p.id);
     res.json(approvals);
   });
 
   // ===== v4 AI KEY MANAGEMENT =====
   // ===== v4 AI KEY MANAGEMENT =====
-  app.get("/api/projects/:id/ai/key", requireAuth, (req, res) => {
+  app.get("/api/projects/:id/ai/key", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
-    const row = storage.getProjectAiKey(id);
+    const row = await storage.getProjectAiKey(id);
     res.json({ hasKey: !!row, model: row?.model || null });
   });
 
-  app.post("/api/projects/:id/ai/key", requireAuth, (req, res) => {
+  app.post("/api/projects/:id/ai/key", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
     const schema = z.object({ key: z.string().min(1), model: z.string().optional() });
     const body = schema.parse(req.body);
-    storage.setProjectAiKey(id, obfuscateKey(body.key), body.model);
+    await storage.setProjectAiKey(id, obfuscateKey(body.key), body.model);
     res.json({ ok: true });
   });
 
-  app.delete("/api/projects/:id/ai/key", requireAuth, (req, res) => {
+  app.delete("/api/projects/:id/ai/key", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
-    storage.deleteProjectAiKey(id);
+    await storage.deleteProjectAiKey(id);
     res.json({ ok: true });
   });
 
@@ -1144,7 +1144,7 @@ const upload = multer({
     let body: { scriptText: string };
     try { body = schema.parse(req.body); } catch (e: any) { return res.status(400).json({ message: e.message }); }
 
-    const keyRow = storage.getProjectAiKey(id);
+    const keyRow = await storage.getProjectAiKey(id);
     if (!keyRow) return res.status(400).json({ message: "No AI key set for this project" });
     const apiKey = deobfuscateKey(keyRow.encryptedKey);
 
@@ -1186,33 +1186,33 @@ const upload = multer({
   });
 
   // ===== v4 AI Agent Chat =====
-  app.get("/api/projects/:id/ai/sessions", requireAuth, (req, res) => {
+  app.get("/api/projects/:id/ai/sessions", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
-    const sessions = storage.listAiChatSessions(id);
+    const sessions = await storage.listAiChatSessions(id);
     res.json(sessions);
   });
 
-  app.post("/api/projects/:id/ai/sessions", requireAuth, (req, res) => {
+  app.post("/api/projects/:id/ai/sessions", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
     const schema = z.object({ title: z.string().optional(), scriptId: z.number().optional() });
     const body = schema.parse(req.body);
-    const session = storage.createAiChatSession({ projectId: id, ...body });
+    const session = await storage.createAiChatSession({ projectId: id, ...body });
     res.json(session);
   });
 
-  app.delete("/api/projects/:id/ai/sessions/:sessionId", requireAuth, (req, res) => {
+  app.delete("/api/projects/:id/ai/sessions/:sessionId", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
-    storage.deleteAiChatSession(parseInt(req.params.sessionId));
+    await storage.deleteAiChatSession(parseInt(req.params.sessionId));
     res.json({ ok: true });
   });
 
-  app.get("/api/projects/:id/ai/sessions/:sessionId/messages", requireAuth, (req, res) => {
+  app.get("/api/projects/:id/ai/sessions/:sessionId/messages", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
-    const messages = storage.listAiChatMessages(parseInt(req.params.sessionId));
+    const messages = await storage.listAiChatMessages(parseInt(req.params.sessionId));
     res.json(messages);
   });
 
@@ -1228,13 +1228,13 @@ const upload = multer({
     let body;
     try { body = schema.parse(req.body); } catch (e: any) { return res.status(400).json({ message: e.message }); }
 
-    const keyRow = storage.getProjectAiKey(id);
+    const keyRow = await storage.getProjectAiKey(id);
     if (!keyRow) return res.status(400).json({ message: "No AI key set for this project" });
     const apiKey = deobfuscateKey(keyRow.encryptedKey);
     // Use user's preferred model or fallback to Gemma 2 9B (which supports tools well)
     const models = keyRow.model ? [keyRow.model] : ["google/gemma-2-9b-it:free"];
 
-    const project = storage.getProject(id);
+    const project = await storage.getProject(id);
     const systemPrompt = `You are Cel Assistant, an agentic AI helper for an animation studio.
 Current Date: ${new Date().toLocaleString()}
 Project: ${project?.title} - ${project?.description || ""}
@@ -1245,13 +1245,13 @@ You have access to tools that can edit the current script directly. When a user 
 ${body.scriptContent}
 </Current_Script_Context>`;
 
-    storage.createAiChatMessage({
+    await storage.createAiChatMessage({
       sessionId: body.sessionId,
       role: "user",
       content: body.content
     });
 
-    const messages = storage.listAiChatMessages(body.sessionId).map((m: any) => {
+    const messages = await storage.listAiChatMessages(body.sessionId).map((m: any) => {
       const msg: any = { role: m.role, content: m.content };
       if (m.toolCalls) msg.tool_calls = JSON.parse(m.toolCalls);
       if (m.toolCallId) msg.tool_call_id = m.toolCallId;
@@ -1422,9 +1422,9 @@ ${body.scriptContent}
   });
 
   // ===== v4 ACHIEVEMENTS =====
-  app.get("/api/achievements", requireAuth, (req, res) => {
+  app.get("/api/achievements", requireAuth, async (req, res) => {
     const { ACHIEVEMENT_DEFS } = require("./achievements");
-    const unlocked: any[] = (storage as any).listAchievements(req.user!.id);
+    const unlocked: any[] = await (storage as any).listAchievements(req.user!.id);
     const result = ACHIEVEMENT_DEFS.map((def: any) => {
       const row = unlocked.find((u: any) => u.code === def.code);
       return { ...def, unlockedAt: row?.unlockedAt || null, locked: !row };
@@ -1433,25 +1433,25 @@ ${body.scriptContent}
   });
 
   // ===== v4 PANEL PINS =====
-  app.get("/api/panels/:id/pins", requireAuth, (req, res) => {
+  app.get("/api/panels/:id/pins", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    const panel = storage.getPanel(id);
+    const panel = await storage.getPanel(id);
     if (!panel) return res.status(404).json({ message: "Panel not found" });
-    const sb = storage.getStoryboard(panel.storyboardId);
+    const sb = await storage.getStoryboard(panel.storyboardId);
     if (!sb || !canAccessProject(sb.projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
-    const pins = (storage as any).listPanelPins(id);
+    const pins = await (storage as any).listPanelPins(id);
     const enriched = pins.map((p: any) => ({
       ...p,
-      author: (() => { const u = storage.getUser(p.authorId); return u ? { id: u.id, name: u.name, avatarColor: u.avatarColor } : null; })(),
+      author: (() => { const u = await storage.getUser(p.authorId); return u ? { id: u.id, name: u.name, avatarColor: u.avatarColor } : null; })(),
     }));
     res.json(enriched);
   });
 
-  app.post("/api/panels/:id/pins", requireAuth, (req, res) => {
+  app.post("/api/panels/:id/pins", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    const panel = storage.getPanel(id);
+    const panel = await storage.getPanel(id);
     if (!panel) return res.status(404).json({ message: "Panel not found" });
-    const sb = storage.getStoryboard(panel.storyboardId);
+    const sb = await storage.getStoryboard(panel.storyboardId);
     if (!sb || !canAccessProject(sb.projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
     const schema = z.object({
       xPercent: z.number().min(0).max(100),
@@ -1460,45 +1460,45 @@ ${body.scriptContent}
     });
     let body: any;
     try { body = schema.parse(req.body); } catch (e: any) { return res.status(400).json({ message: e.message }); }
-    const pin = (storage as any).createPanelPin({ panelId: id, ...body, authorId: req.user!.id });
+    const pin = await (storage as any).createPanelPin({ panelId: id, ...body, authorId: req.user!.id });
     res.json(pin);
   });
 
-  app.delete("/api/pins/:id", requireAuth, (req, res) => {
+  app.delete("/api/pins/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    const pin = (storage as any).getPanelPin(id);
+    const pin = await (storage as any).getPanelPin(id);
     if (!pin) return res.status(404).json({ message: "Not found" });
-    const panel = storage.getPanel(pin.panelId);
+    const panel = await storage.getPanel(pin.panelId);
     if (!panel) return res.status(404).json({ message: "Panel not found" });
-    const sb = storage.getStoryboard(panel.storyboardId);
+    const sb = await storage.getStoryboard(panel.storyboardId);
     if (!sb || !canAccessProject(sb.projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
-    (storage as any).deletePanelPin(id);
+    await (storage as any).deletePanelPin(id);
     res.json({ ok: true });
   });
 
   // Public share pins
-  app.get("/api/share/:token/panels/:panelId/pins", (req, res) => {
+  app.get("/api/share/:token/panels/:panelId/pins", async (req, res) => {
     const token = req.params.token;
     const panelId = parseInt(String(req.params.panelId), 10);
-    const p = storage.getProjectByToken(token);
+    const p = await storage.getProjectByToken(token);
     if (!p || !p.shareEnabled) return res.status(404).json({ message: "Not found" });
-    const panel = storage.getPanel(panelId);
+    const panel = await storage.getPanel(panelId);
     if (!panel) return res.status(404).json({ message: "Panel not found" });
-    res.json((storage as any).listPanelPins(panelId));
+    res.json(await (storage as any).listPanelPins(panelId));
   });
 
   // ===== v4 COMMISSION LINE ITEMS =====
-  app.get("/api/commissions/:id/line-items", requireAuth, (req, res) => {
+  app.get("/api/commissions/:id/line-items", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    const c = storage.getCommission(id);
+    const c = await storage.getCommission(id);
     if (!c) return res.status(404).json({ message: "Not found" });
     if (c.ownerUserId !== req.user!.id) return res.status(403).json({ message: "No access" });
-    res.json((storage as any).listCommissionLineItems(id));
+    res.json(await (storage as any).listCommissionLineItems(id));
   });
 
-  app.post("/api/commissions/:id/line-items", requireAuth, (req, res) => {
+  app.post("/api/commissions/:id/line-items", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    const c = storage.getCommission(id);
+    const c = await storage.getCommission(id);
     if (!c) return res.status(404).json({ message: "Not found" });
     if (c.ownerUserId !== req.user!.id) return res.status(403).json({ message: "No access" });
     const schema = z.object({
@@ -1508,14 +1508,14 @@ ${body.scriptContent}
     });
     let body: any;
     try { body = schema.parse(req.body); } catch (e: any) { return res.status(400).json({ message: e.message }); }
-    res.json((storage as any).createCommissionLineItem({ commissionId: id, ...body }));
+    res.json(await (storage as any).createCommissionLineItem({ commissionId: id, ...body }));
   });
 
   app.patch("/api/commission-line-items/:id", requireAuth, (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    const lineItem = (storage as any).getCommissionLineItem(id);
+    const lineItem = await (storage as any).getCommissionLineItem(id);
     if (!lineItem) return res.status(404).json({ message: "Not found" });
-    const c = storage.getCommission(lineItem.commissionId);
+    const c = await storage.getCommission(lineItem.commissionId);
     if (!c || c.ownerUserId !== req.user!.id) return res.status(403).json({ message: "No access" });
     const schema = z.object({
       description: z.string().min(1).optional(),
@@ -1524,22 +1524,22 @@ ${body.scriptContent}
     });
     let patch: any;
     try { patch = schema.parse(req.body); } catch (e: any) { return res.status(400).json({ message: e.message }); }
-    res.json((storage as any).updateCommissionLineItem(id, patch));
+    res.json(await (storage as any).updateCommissionLineItem(id, patch));
   });
 
-  app.delete("/api/commission-line-items/:id", requireAuth, (req, res) => {
+  app.delete("/api/commission-line-items/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    const lineItem = (storage as any).getCommissionLineItem(id);
+    const lineItem = await (storage as any).getCommissionLineItem(id);
     if (!lineItem) return res.status(404).json({ message: "Not found" });
-    const c = storage.getCommission(lineItem.commissionId);
+    const c = await storage.getCommission(lineItem.commissionId);
     if (!c || c.ownerUserId !== req.user!.id) return res.status(403).json({ message: "No access" });
-    (storage as any).deleteCommissionLineItem(id);
+    await (storage as any).deleteCommissionLineItem(id);
     res.json({ ok: true });
   });
 
   app.patch("/api/commissions/:id/quote", requireAuth, (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    const c = storage.getCommission(id);
+    const c = await storage.getCommission(id);
     if (!c) return res.status(404).json({ message: "Not found" });
     if (c.ownerUserId !== req.user!.id) return res.status(403).json({ message: "No access" });
     const schema = z.object({
@@ -1548,18 +1548,18 @@ ${body.scriptContent}
     });
     let body: any;
     try { body = schema.parse(req.body); } catch (e: any) { return res.status(400).json({ message: e.message }); }
-    (storage as any).updateCommissionQuote(id, body.quoteCents, body.invoicedAt);
-    res.json(storage.getCommission(id));
+    await (storage as any).updateCommissionQuote(id, body.quoteCents, body.invoicedAt);
+    res.json(await storage.getCommission(id));
   });
 
   // ===== v4 COMMISSION PRICING PRESETS =====
-  app.get("/api/projects/:id/pricing-presets", requireAuth, (req, res) => {
+  app.get("/api/projects/:id/pricing-presets", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
-    res.json((storage as any).listCommissionPricingPresets(id));
+    res.json(await (storage as any).listCommissionPricingPresets(id));
   });
 
-  app.post("/api/projects/:id/pricing-presets", requireAuth, (req, res) => {
+  app.post("/api/projects/:id/pricing-presets", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
     const schema = z.object({
@@ -1570,24 +1570,24 @@ ${body.scriptContent}
     });
     let body: any;
     try { body = schema.parse(req.body); } catch (e: any) { return res.status(400).json({ message: e.message }); }
-    res.json((storage as any).createCommissionPricingPreset({ projectId: id, ...body }));
+    res.json(await (storage as any).createCommissionPricingPreset({ projectId: id, ...body }));
   });
 
-  app.delete("/api/pricing-presets/:id", requireAuth, (req, res) => {
+  app.delete("/api/pricing-presets/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    const preset = (storage as any).getCommissionPricingPreset(id);
+    const preset = await (storage as any).getCommissionPricingPreset(id);
     if (!preset) return res.status(404).json({ message: "Not found" });
     if (!canAccessProject(preset.projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
-    (storage as any).deleteCommissionPricingPreset(id);
+    await (storage as any).deleteCommissionPricingPreset(id);
     res.json({ ok: true });
   });
 
   // ===== v4 INBOX =====
-  app.get("/api/inbox", requireAuth, (req, res) => {
-    res.json((storage as any).listInboxItems(req.user!.id));
+  app.get("/api/inbox", requireAuth, async (req, res) => {
+    res.json(await (storage as any).listInboxItems(req.user!.id));
   });
 
-  app.post("/api/inbox", requireAuth, (req, res) => {
+  app.post("/api/inbox", requireAuth, async (req, res) => {
     const schema = z.object({
       body: z.string().min(1),
       tags: z.string().optional().default(""),
@@ -1595,12 +1595,12 @@ ${body.scriptContent}
     });
     let item: any;
     try { item = schema.parse(req.body); } catch (e: any) { return res.status(400).json({ message: e.message }); }
-    res.json((storage as any).createInboxItem({ userId: req.user!.id, ...item }));
+    res.json(await (storage as any).createInboxItem({ userId: req.user!.id, ...item }));
   });
 
   app.patch("/api/inbox/:id", requireAuth, (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    const item = (storage as any).getInboxItem(id);
+    const item = await (storage as any).getInboxItem(id);
     if (!item || item.userId !== req.user!.id) return res.status(403).json({ message: "No access" });
     const schema = z.object({
       body: z.string().min(1).optional(),
@@ -1609,56 +1609,56 @@ ${body.scriptContent}
     });
     let patch: any;
     try { patch = schema.parse(req.body); } catch (e: any) { return res.status(400).json({ message: e.message }); }
-    res.json((storage as any).updateInboxItem(id, patch));
+    res.json(await (storage as any).updateInboxItem(id, patch));
   });
 
-  app.delete("/api/inbox/:id", requireAuth, (req, res) => {
+  app.delete("/api/inbox/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    const item = (storage as any).getInboxItem(id);
+    const item = await (storage as any).getInboxItem(id);
     if (!item || item.userId !== req.user!.id) return res.status(403).json({ message: "No access" });
-    (storage as any).deleteInboxItem(id);
+    await (storage as any).deleteInboxItem(id);
     res.json({ ok: true });
   });
 
   // ===== v4 TAGS =====
-  app.get("/api/tags", requireAuth, (req, res) => {
-    res.json((storage as any).listTags(req.user!.id));
+  app.get("/api/tags", requireAuth, async (req, res) => {
+    res.json(await (storage as any).listTags(req.user!.id));
   });
 
-  app.post("/api/tags", requireAuth, (req, res) => {
+  app.post("/api/tags", requireAuth, async (req, res) => {
     const schema = z.object({ name: z.string().min(1), color: z.string().optional().default("#6E4FE8") });
     let body: any;
     try { body = schema.parse(req.body); } catch (e: any) { return res.status(400).json({ message: e.message }); }
-    res.json((storage as any).createTag({ userId: req.user!.id, ...body }));
+    res.json(await (storage as any).createTag({ userId: req.user!.id, ...body }));
   });
 
   app.patch("/api/tags/:id", requireAuth, (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    const tag = (storage as any).getTag(id);
+    const tag = await (storage as any).getTag(id);
     if (!tag) return res.status(404).json({ message: "Not found" });
     if (tag.userId !== req.user!.id) return res.status(403).json({ message: "No access" });
     const schema = z.object({ name: z.string().min(1).optional(), color: z.string().optional() });
     let patch: any;
     try { patch = schema.parse(req.body); } catch (e: any) { return res.status(400).json({ message: e.message }); }
-    res.json((storage as any).updateTag(id, patch));
+    res.json(await (storage as any).updateTag(id, patch));
   });
 
-  app.delete("/api/tags/:id", requireAuth, (req, res) => {
+  app.delete("/api/tags/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    const tag = (storage as any).getTag(id);
+    const tag = await (storage as any).getTag(id);
     if (!tag) return res.status(404).json({ message: "Not found" });
     if (tag.userId !== req.user!.id) return res.status(403).json({ message: "No access" });
-    (storage as any).deleteTag(id);
+    await (storage as any).deleteTag(id);
     res.json({ ok: true });
   });
 
-  app.get("/api/tag-assignments", requireAuth, (req, res) => {
+  app.get("/api/tag-assignments", requireAuth, async (req, res) => {
     const { kind, entityId } = req.query as { kind: string; entityId: string };
     if (!kind || !entityId) return res.status(400).json({ message: "kind and entityId required" });
-    res.json((storage as any).listTagAssignments(kind, parseInt(entityId, 10)));
+    res.json(await (storage as any).listTagAssignments(kind, parseInt(entityId, 10)));
   });
 
-  app.post("/api/tag-assignments", requireAuth, (req, res) => {
+  app.post("/api/tag-assignments", requireAuth, async (req, res) => {
     const schema = z.object({
       tagId: z.number().int(),
       entityKind: z.enum(["scene", "asset", "panel", "inboxItem"]),
@@ -1666,144 +1666,144 @@ ${body.scriptContent}
     });
     let body: any;
     try { body = schema.parse(req.body); } catch (e: any) { return res.status(400).json({ message: e.message }); }
-    const tag = (storage as any).getTag(body.tagId);
+    const tag = await (storage as any).getTag(body.tagId);
     if (!tag || tag.userId !== req.user!.id) return res.status(403).json({ message: "No access" });
-    res.json((storage as any).createTagAssignment(body));
+    res.json(await (storage as any).createTagAssignment(body));
   });
 
-  app.delete("/api/tag-assignments/:id", requireAuth, (req, res) => {
+  app.delete("/api/tag-assignments/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    const assignment = (storage as any).getTagAssignment(id);
+    const assignment = await (storage as any).getTagAssignment(id);
     if (!assignment) return res.status(404).json({ message: "Not found" });
-    const tag = (storage as any).getTag(assignment.tagId);
+    const tag = await (storage as any).getTag(assignment.tagId);
     if (!tag || tag.userId !== req.user!.id) return res.status(403).json({ message: "No access" });
-    (storage as any).deleteTagAssignment(id);
+    await (storage as any).deleteTagAssignment(id);
     res.json({ ok: true });
   });
 
   // ===== v4 SCENE TIMER =====
-  app.get("/api/scenes/:id/time", requireAuth, (req, res) => {
+  app.get("/api/scenes/:id/time", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    const scene = storage.getScene(id);
+    const scene = await storage.getScene(id);
     if (!scene) return res.status(404).json({ message: "Scene not found" });
     if (!canAccessProject(scene.projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
-    const entries = (storage as any).listSceneTimeEntries(id);
+    const entries = await (storage as any).listSceneTimeEntries(id);
     const totalMs = entries.filter((e: any) => e.durationMs).reduce((sum: number, e: any) => sum + e.durationMs, 0);
     const active = entries.find((e: any) => !e.endedAt);
     res.json({ entries, totalMs, active: active || null });
   });
 
-  app.post("/api/scenes/:id/timer/start", requireAuth, (req, res) => {
+  app.post("/api/scenes/:id/timer/start", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    const scene = storage.getScene(id);
+    const scene = await storage.getScene(id);
     if (!scene) return res.status(404).json({ message: "Scene not found" });
     if (!canAccessProject(scene.projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
     // Stop any already-running timer first
-    const existing = (storage as any).getActiveTimeEntry(id, req.user!.id);
+    const existing = await (storage as any).getActiveTimeEntry(id, req.user!.id);
     if (existing) {
-      (storage as any).stopTimer(existing.id);
+      await (storage as any).stopTimer(existing.id);
     }
-    const entry = (storage as any).startTimer(id, req.user!.id);
+    const entry = await (storage as any).startTimer(id, req.user!.id);
     res.json(entry);
   });
 
-  app.post("/api/scenes/:id/timer/stop", requireAuth, (req, res) => {
+  app.post("/api/scenes/:id/timer/stop", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    const scene = storage.getScene(id);
+    const scene = await storage.getScene(id);
     if (!scene) return res.status(404).json({ message: "Scene not found" });
     if (!canAccessProject(scene.projectId, req.user!.id)) return res.status(403).json({ message: "No access" });
-    const active = (storage as any).getActiveTimeEntry(id, req.user!.id);
+    const active = await (storage as any).getActiveTimeEntry(id, req.user!.id);
     if (!active) return res.status(404).json({ message: "No active timer" });
-    const entry = (storage as any).stopTimer(active.id);
+    const entry = await (storage as any).stopTimer(active.id);
     res.json(entry);
   });
 
   // ===== v4 GLOBAL SEARCH =====
-  app.get("/api/search", requireAuth, (req, res) => {
+  app.get("/api/search", requireAuth, async (req, res) => {
     const q = String(req.query.q || "").trim();
     const limit = Math.min(parseInt(String(req.query.limit || "20"), 10), 50);
     if (!q || q.length < 1) return res.json({ projects: [], scenes: [], scripts: [], assets: [], comments: [] });
     try {
-      const results = (storage as any).globalSearch(req.user!.id, q, limit);
+      const results = await (storage as any).globalSearch(req.user!.id, q, limit);
       res.json(results);
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }
   });
 
-  app.post("/api/aud/voice_takes", requireAuth, (req, res) => {
+  app.post("/api/aud/voice_takes", requireAuth, async (req, res) => {
     try {
       const data = insertAudVoiceTakeSchema.parse(req.body);
       if (data.projectId && !canAccessProject(data.projectId, req.user!.id)) {
         return res.status(403).json({ message: "Forbidden" });
       }
-      const take = (storage as any).createAudVoiceTake(data);
+      const take = await (storage as any).createAudVoiceTake(data);
       res.json(take);
     } catch (e: any) {
       res.status(400).json({ error: e.message });
     }
   });
 
-  app.get("/api/projects/:id/aud/voice_takes", requireAuth, (req, res) => {
+  app.get("/api/projects/:id/aud/voice_takes", requireAuth, async (req, res) => {
     try {
       const projectId = parseInt(String(req.params.id));
       if (!canAccessProject(projectId, req.user!.id)) {
         return res.status(403).json({ message: "Forbidden" });
       }
-      const takes = (storage as any).getAudVoiceTakesByProject(projectId);
+      const takes = await (storage as any).getAudVoiceTakesByProject(projectId);
       res.json(takes);
     } catch(e:any) {
       res.status(400).json({ error: e.message });
     }
   });
 
-  app.post("/api/animatics/:id/aud/captions", requireAuth, (req, res) => {
+  app.post("/api/animatics/:id/aud/captions", requireAuth, async (req, res) => {
     try {
       const animaticProjectId = parseInt(String(req.params.id));
-      const ap = storage.getAnimaticProject(animaticProjectId);
+      const ap = await storage.getAnimaticProject(animaticProjectId);
       if (!ap || !canAccessProject(ap.projectId, req.user!.id)) {
         return res.status(403).json({ message: "Forbidden" });
       }
       const data = insertAudCaptionSchema.parse({ ...req.body, animaticProjectId });
-      const caption = (storage as any).createAudCaption(data);
+      const caption = await (storage as any).createAudCaption(data);
       res.json(caption);
     } catch (e: any) {
       res.status(400).json({ error: e.message });
     }
   });
 
-  app.get("/api/animatics/:id/aud/captions", requireAuth, (req, res) => {
+  app.get("/api/animatics/:id/aud/captions", requireAuth, async (req, res) => {
     try {
       const animaticProjectId = parseInt(String(req.params.id));
-      const ap = storage.getAnimaticProject(animaticProjectId);
+      const ap = await storage.getAnimaticProject(animaticProjectId);
       if (!ap || !canAccessProject(ap.projectId, req.user!.id)) {
         return res.status(403).json({ message: "Forbidden" });
       }
-      const captions = (storage as any).getAudCaptionsByAnimatic(animaticProjectId);
+      const captions = await (storage as any).getAudCaptionsByAnimatic(animaticProjectId);
       res.json(captions);
     } catch(e:any) {
       res.status(400).json({ error: e.message });
     }
   });
   
-  app.delete("/api/aud/captions/:id", requireAuth, (req, res) => {
+  app.delete("/api/aud/captions/:id", requireAuth, async (req, res) => {
     try {
        const id = parseInt(String(req.params.id));
-       const caption = (storage as any).getAudCaption(id);
+       const caption = await (storage as any).getAudCaption(id);
        if (caption) {
-         const ap = storage.getAnimaticProject(caption.animaticProjectId);
+         const ap = await storage.getAnimaticProject(caption.animaticProjectId);
          if (!ap || !canAccessProject(ap.projectId, req.user!.id)) {
            return res.status(403).json({ message: "Forbidden" });
          }
        }
-       (storage as any).deleteAudCaption(id);
+       await (storage as any).deleteAudCaption(id);
        res.json({ success: true });
     } catch (e: any) {
        res.status(400).json({ error: e.message });
     }
   });
 
-  app.get("/api/analytics/commission-hours", requireAuth, (req, res) => {
+  app.get("/api/analytics/commission-hours", requireAuth, async (req, res) => {
     try {
       // Scope to user's own commissions via join
       const hours = db
@@ -1827,10 +1827,10 @@ ${body.scriptContent}
     }
   });
 
-  app.post("/api/commissions/:id/hours", requireAuth, (req, res) => {
+  app.post("/api/commissions/:id/hours", requireAuth, async (req, res) => {
     try {
       const commissionId = parseInt(String(req.params.id), 10);
-      const c = storage.getCommission(commissionId);
+      const c = await storage.getCommission(commissionId);
       if (!c) return res.status(404).json({ error: "Commission not found" });
       if (c.ownerUserId !== req.user!.id) return res.status(403).json({ error: "No access" });
       const { hours } = req.body;
@@ -1840,14 +1840,14 @@ ${body.scriptContent}
         return res.status(400).json({ error: "Invalid hours" });
       }
       
-      const record = (storage as any).addCommissionHours({ commissionId, hours: parsedHours });
+      const record = await (storage as any).addCommissionHours({ commissionId, hours: parsedHours });
       res.json(record);
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
   });
 
-  app.get("/api/analytics/heatmap", requireAuth, (req, res) => {
+  app.get("/api/analytics/heatmap", requireAuth, async (req, res) => {
     try {
       // Gather scene time entries scoped to the current user's projects
       const entries = db.select({
@@ -1891,7 +1891,7 @@ ${body.scriptContent}
     }
   });
 
-  app.get("/api/analytics/task-hours", requireAuth, (req, res) => {
+  app.get("/api/analytics/task-hours", requireAuth, async (req, res) => {
     try {
       const sceneRows = db.select({
         sceneId: scenes.id,
@@ -1948,10 +1948,10 @@ ${body.scriptContent}
     }
   });
 
-  app.post("/api/projects/:id/discord/test", requireAuth, (req, res) => {
+  app.post("/api/projects/:id/discord/test", requireAuth, async (req, res) => {
     try {
       const projectId = parseInt(String(req.params.id), 10);
-      const project = storage.getProject(projectId);
+      const project = await storage.getProject(projectId);
       if (!project) return res.status(404).json({ error: "Project not found" });
       
       const webhookUrl = (project as any).dltDiscordWebhookUrl;
@@ -1984,12 +1984,12 @@ ${body.scriptContent}
   });
 
   // ===== CLI APPROVALS / FEEDBACK (token or auth) =====
-  app.get("/api/projects/:id/cli_approvals", (req, res) => {
+  app.get("/api/projects/:id/cli_approvals", async (req, res) => {
     try {
       const projectId = parseInt(req.params.id, 10);
       const token = req.query.token as string | undefined;
       if (token) {
-        const project = storage.getProjectByToken(token);
+        const project = await storage.getProjectByToken(token);
         if (!project || project.id !== projectId || !project.shareEnabled) {
           return res.status(403).json({ message: "No access" });
         }
@@ -1999,19 +1999,19 @@ ${body.scriptContent}
         if (!userId) return res.status(401).json({ message: "Not authenticated" });
         if (!canAccessProject(projectId, userId)) return res.status(403).json({ message: "No access" });
       }
-      const approvals = (storage as any).getCliApprovals(projectId);
+      const approvals = await (storage as any).getCliApprovals(projectId);
       res.json(approvals);
     } catch (e: any) {
       res.status(400).json({ error: e.message });
     }
   });
 
-  app.post("/api/projects/:id/cli_approvals", (req, res) => {
+  app.post("/api/projects/:id/cli_approvals", async (req, res) => {
     try {
       const projectId = parseInt(req.params.id, 10);
       const token = req.query.token as string | undefined;
       if (token) {
-        const project = storage.getProjectByToken(token);
+        const project = await storage.getProjectByToken(token);
         if (!project || project.id !== projectId || !project.shareEnabled) {
           return res.status(403).json({ message: "No access" });
         }
@@ -2022,19 +2022,19 @@ ${body.scriptContent}
         if (!canAccessProject(projectId, userId)) return res.status(403).json({ message: "No access" });
       }
       const { phase, signedName, signatureData, signedAt } = req.body;
-      const approval = (storage as any).createCliApproval({ projectId, phase, signedName, signatureData, signedAt });
+      const approval = await (storage as any).createCliApproval({ projectId, phase, signedName, signatureData, signedAt });
       res.json(approval);
     } catch (e: any) {
       res.status(400).json({ error: e.message });
     }
   });
 
-  app.get("/api/projects/:id/cli_feedback", (req, res) => {
+  app.get("/api/projects/:id/cli_feedback", async (req, res) => {
     try {
       const projectId = parseInt(req.params.id, 10);
       const token = req.query.token as string | undefined;
       if (token) {
-        const project = storage.getProjectByToken(token);
+        const project = await storage.getProjectByToken(token);
         if (!project || project.id !== projectId || !project.shareEnabled) {
           return res.status(403).json({ message: "No access" });
         }
@@ -2044,19 +2044,19 @@ ${body.scriptContent}
         if (!userId) return res.status(401).json({ message: "Not authenticated" });
         if (!canAccessProject(projectId, userId)) return res.status(403).json({ message: "No access" });
       }
-      const feedback = (storage as any).getCliFeedback(projectId);
+      const feedback = await (storage as any).getCliFeedback(projectId);
       res.json(feedback);
     } catch (e: any) {
       res.status(400).json({ error: e.message });
     }
   });
 
-  app.post("/api/projects/:id/cli_feedback", (req, res) => {
+  app.post("/api/projects/:id/cli_feedback", async (req, res) => {
     try {
       const projectId = parseInt(req.params.id, 10);
       const token = req.query.token as string | undefined;
       if (token) {
-        const project = storage.getProjectByToken(token);
+        const project = await storage.getProjectByToken(token);
         if (!project || project.id !== projectId || !project.shareEnabled) {
           return res.status(403).json({ message: "No access" });
         }
@@ -2067,7 +2067,7 @@ ${body.scriptContent}
         if (!canAccessProject(projectId, userId)) return res.status(403).json({ message: "No access" });
       }
       const { sceneId, fields } = req.body;
-      const feedback = (storage as any).createCliFeedback({ projectId, sceneId, fields });
+      const feedback = await (storage as any).createCliFeedback({ projectId, sceneId, fields });
       res.json(feedback);
     } catch (e: any) {
       res.status(400).json({ error: e.message });

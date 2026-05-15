@@ -12,71 +12,71 @@ function extractToken(req: Request): string | undefined {
   return undefined;
 }
 
-function requireAuth(req: Request, res: Response, next: NextFunction) {
+async function requireAuth(req: Request, res: Response, next: NextFunction) {
   const token = extractToken(req);
   const userId = getSessionUser(token);
   if (!userId) return res.status(401).json({ message: "Not authenticated" });
-  const user = storage.getUser(userId);
+  const user = await storage.getUser(userId);
   if (!user) return res.status(401).json({ message: "User not found" });
   req.user = user;
   next();
 }
 
-function canAccessProject(projectId: number, userId: number): boolean {
-  const p = storage.getProject(projectId);
+async function canAccessProject(projectId: number, userId: number): Promise<boolean> {
+  const p = await storage.getProject(projectId);
   if (!p) return false;
   if (p.ownerId === userId) return true;
-  return storage.isMember(projectId, userId);
+  return await storage.isMember(projectId, userId);
 }
 
 export function registerStudioRoutes(app: Express) {
   // ===== RENDER BUDGET =====
-  app.get("/api/projects/:id/studio/render-budget", requireAuth, (req, res) => {
+  app.get("/api/projects/:id/studio/render-budget", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
-    const budget = (storage as any).getStudioRenderBudget(id) ?? { projectId: id, totalMinutes: 600, updatedAt: "" };
-    const events = (storage as any).listStudioRenderEvents(id);
+    const budget = await (storage as any).getStudioRenderBudget(id) ?? { projectId: id, totalMinutes: 600, updatedAt: "" };
+    const events = await (storage as any).listStudioRenderEvents(id);
     res.json({ budget, events });
   });
 
-  app.put("/api/projects/:id/studio/render-budget", requireAuth, (req, res) => {
+  app.put("/api/projects/:id/studio/render-budget", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
     const schema = z.object({ totalMinutes: z.number().positive() });
     let body: { totalMinutes: number };
     try { body = schema.parse(req.body); } catch (e: any) { return res.status(400).json({ message: e.message }); }
-    const budget = (storage as any).upsertStudioRenderBudget(id, body.totalMinutes);
+    const budget = await (storage as any).upsertStudioRenderBudget(id, body.totalMinutes);
     res.json(budget);
   });
 
   // ===== RENDER EVENTS =====
-  app.post("/api/projects/:id/studio/render-events", requireAuth, (req, res) => {
+  app.post("/api/projects/:id/studio/render-events", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
     const schema = insertStudioRenderEventSchema.extend({ projectId: z.number().optional() });
     let body: any;
     try { body = schema.parse({ ...req.body, projectId: id }); } catch (e: any) { return res.status(400).json({ message: e.message }); }
-    const event = (storage as any).createStudioRenderEvent({ ...body, projectId: id });
+    const event = await (storage as any).createStudioRenderEvent({ ...body, projectId: id });
     res.json(event);
   });
 
-  app.delete("/api/projects/:id/studio/render-events/:eventId", requireAuth, (req, res) => {
+  app.delete("/api/projects/:id/studio/render-events/:eventId", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const eventId = parseInt(String(req.params.eventId), 10);
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
-    (storage as any).deleteStudioRenderEvent(eventId);
+    await (storage as any).deleteStudioRenderEvent(eventId);
     res.json({ ok: true });
   });
 
   // ===== SNAPSHOTS =====
-  app.get("/api/projects/:id/studio/snapshots", requireAuth, (req, res) => {
+  app.get("/api/projects/:id/studio/snapshots", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
-    const snapshots = (storage as any).listStudioSnapshots(id);
+    const snapshots = await (storage as any).listStudioSnapshots(id);
     res.json(snapshots);
   });
 
-  app.post("/api/projects/:id/studio/snapshots", requireAuth, (req, res) => {
+  app.post("/api/projects/:id/studio/snapshots", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
     const schema = z.object({
@@ -86,7 +86,7 @@ export function registerStudioRoutes(app: Express) {
     });
     let body: any;
     try { body = schema.parse(req.body); } catch (e: any) { return res.status(400).json({ message: e.message }); }
-    const snapshot = (storage as any).createStudioSnapshot({
+    const snapshot = await (storage as any).createStudioSnapshot({
       projectId: id,
       label: body.label,
       parentId: body.parentId ?? null,
@@ -96,33 +96,33 @@ export function registerStudioRoutes(app: Express) {
     res.json(snapshot);
   });
 
-  app.post("/api/projects/:id/studio/snapshots/:snapId/restore", requireAuth, (req, res) => {
+  app.post("/api/projects/:id/studio/snapshots/:snapId/restore", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const snapId = parseInt(String(req.params.snapId), 10);
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
-    const snap = (storage as any).getStudioSnapshot(snapId);
+    const snap = await (storage as any).getStudioSnapshot(snapId);
     if (!snap || snap.projectId !== id) return res.status(404).json({ message: "Snapshot not found" });
-    const restored = (storage as any).restoreStudioSnapshot(snapId, id);
+    const restored = await (storage as any).restoreStudioSnapshot(snapId, id);
     res.json(restored);
   });
 
-  app.delete("/api/projects/:id/studio/snapshots/:snapId", requireAuth, (req, res) => {
+  app.delete("/api/projects/:id/studio/snapshots/:snapId", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const snapId = parseInt(String(req.params.snapId), 10);
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
-    (storage as any).deleteStudioSnapshot(snapId);
+    await (storage as any).deleteStudioSnapshot(snapId);
     res.json({ ok: true });
   });
 
   // ===== CREDIT ENTRIES =====
-  app.get("/api/projects/:id/studio/credits", requireAuth, (req, res) => {
+  app.get("/api/projects/:id/studio/credits", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
-    const entries = (storage as any).listStudioCreditEntries(id);
+    const entries = await (storage as any).listStudioCreditEntries(id);
     res.json(entries);
   });
 
-  app.post("/api/projects/:id/studio/credits", requireAuth, (req, res) => {
+  app.post("/api/projects/:id/studio/credits", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
     const schema = z.object({
@@ -133,12 +133,12 @@ export function registerStudioRoutes(app: Express) {
     });
     let body: any;
     try { body = schema.parse(req.body); } catch (e: any) { return res.status(400).json({ message: e.message }); }
-    const entry = (storage as any).createStudioCreditEntry({ ...body, projectId: id });
+    const entry = await (storage as any).createStudioCreditEntry({ ...body, projectId: id });
     res.json(entry);
   });
 
   // Bulk save (replaces all entries for project)
-  app.put("/api/projects/:id/studio/credits", requireAuth, (req, res) => {
+  app.put("/api/projects/:id/studio/credits", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
     const schema = z.array(z.object({
@@ -149,15 +149,15 @@ export function registerStudioRoutes(app: Express) {
     }));
     let body: any[];
     try { body = schema.parse(req.body); } catch (e: any) { return res.status(400).json({ message: e.message }); }
-    const entries = (storage as any).replaceStudioCreditEntries(id, body.map((e: any) => ({ ...e, projectId: id })));
+    const entries = await (storage as any).replaceStudioCreditEntries(id, body.map((e: any) => ({ ...e, projectId: id })));
     res.json(entries);
   });
 
-  app.delete("/api/projects/:id/studio/credits/:entryId", requireAuth, (req, res) => {
+  app.delete("/api/projects/:id/studio/credits/:entryId", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const entryId = parseInt(String(req.params.entryId), 10);
     if (!canAccessProject(id, req.user!.id)) return res.status(403).json({ message: "No access" });
-    (storage as any).deleteStudioCreditEntry(entryId);
+    await (storage as any).deleteStudioCreditEntry(entryId);
     res.json({ ok: true });
   });
 }

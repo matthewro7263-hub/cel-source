@@ -57,8 +57,8 @@ export function checkAchievements(ctx: AchievementContext): string[] {
   const unlocked: string[] = [];
 
   function tryUnlock(code: string) {
-    if (!(storage as any).hasAchievement(userId, code)) {
-      (storage as any).unlockAchievement(userId, code);
+    if (!await (storage as any).hasAchievement(userId, code)) {
+      await (storage as any).unlockAchievement(userId, code);
       unlocked.push(code);
     }
   }
@@ -70,17 +70,17 @@ export function checkAchievements(ctx: AchievementContext): string[] {
 
   switch (event) {
     case "create_project": {
-      const projectCount = storage.listProjectsForUser(userId).length;
+      const projectCount = await storage.listProjectsForUser(userId).length;
       if (projectCount >= 1) tryUnlock("first_project");
       break;
     }
     case "create_scene": {
       // Unlock first_scene on the event itself — the event firing is the trigger.
       // Count all scenes across user’s projects to verify at least 1 exists.
-      const userProjects = storage.listProjectsForUser(userId);
+      const userProjects = await storage.listProjectsForUser(userId);
       let totalScenes = 0;
       for (const p of userProjects) {
-        totalScenes += storage.listScenes(p.id).length;
+        totalScenes += await storage.listScenes(p.id).length;
       }
       if (totalScenes >= 1) tryUnlock("first_scene");
       break;
@@ -88,12 +88,12 @@ export function checkAchievements(ctx: AchievementContext): string[] {
     case "create_panel": {
       tryUnlock("first_storyboard");
       // Count total user panels across all projects
-      const userProjects = storage.listProjectsForUser(userId);
+      const userProjects = await storage.listProjectsForUser(userId);
       let totalPanels = 0;
       for (const p of userProjects) {
-        const sbs = storage.listStoryboards(p.id);
+        const sbs = await storage.listStoryboards(p.id);
         for (const sb of sbs) {
-          totalPanels += storage.listPanels(sb.id).length;
+          totalPanels += await storage.listPanels(sb.id).length;
         }
       }
       if (totalPanels >= 10) tryUnlock("ten_panels");
@@ -122,10 +122,10 @@ export function checkAchievements(ctx: AchievementContext): string[] {
       break;
     }
     case "create_comment": {
-      const userProjects = storage.listProjectsForUser(userId);
+      const userProjects = await storage.listProjectsForUser(userId);
       let totalComments = 0;
       for (const p of userProjects) {
-        totalComments += storage.listComments(p.id).length;
+        totalComments += await storage.listComments(p.id).length;
       }
       if (totalComments >= 20) tryUnlock("polished");
       break;
@@ -135,7 +135,7 @@ export function checkAchievements(ctx: AchievementContext): string[] {
       // We approximate by checking unique dates in their unlocked achievements log.
       // A more robust impl would track a dedicated login_days table.
       const activityDays: Set<string> = new Set(
-        ((storage as any).getAchievementUnlockDates?.(userId) ?? []).map(
+        (await (storage as any).getAchievementUnlockDates?.(userId) ?? []).map(
           (d: string) => new Date(d).toDateString()
         )
       );

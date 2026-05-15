@@ -3,7 +3,7 @@ import { notifyDiscord } from "./discord";
 import { storage } from "./storage";
 
 async function runTests() {
-  const originalGetProject = storage.getProject;
+  const originalGetProject = await storage.getProject;
   const originalFetch = global.fetch;
   const originalConsoleError = console.error;
 
@@ -20,15 +20,15 @@ async function runTests() {
   };
 
   try {
-    storage.getProject = () => undefined as any;
+    await storage.getProject = () => undefined as any;
     await notifyDiscord(1, "Title", "Desc");
     assert.equal(fetchCalls.length, 0, "should not fetch when project is missing");
 
-    storage.getProject = () => ({ id: 1, title: "Test Project" } as any);
+    await storage.getProject = () => ({ id: 1, title: "Test Project" } as any);
     await notifyDiscord(1, "Title", "Desc");
     assert.equal(fetchCalls.length, 0, "should not fetch when webhook URL is missing");
 
-    storage.getProject = () => ({
+    await storage.getProject = () => ({
       id: 1,
       title: "Test Project",
       dltDiscordWebhookUrl: "not-a-url",
@@ -36,7 +36,7 @@ async function runTests() {
     await notifyDiscord(1, "Title", "Desc");
     assert.equal(fetchCalls.length, 0, "should not fetch when webhook URL is invalid");
 
-    storage.getProject = () => ({
+    await storage.getProject = () => ({
       id: 1,
       title: "Test Project",
       dltDiscordWebhookUrl: "http://[invalid",
@@ -44,7 +44,7 @@ async function runTests() {
     await notifyDiscord(1, "Title", "Desc");
     assert.equal(fetchCalls.length, 0, "should not fetch when URL parsing throws");
 
-    storage.getProject = () => ({
+    await storage.getProject = () => ({
       id: 1,
       title: "Test Project",
       dltDiscordWebhookUrl: "ftp://example.com/webhook",
@@ -52,7 +52,7 @@ async function runTests() {
     await notifyDiscord(1, "Title", "Desc");
     assert.equal(fetchCalls.length, 0, "should not fetch when protocol is unsupported");
 
-    storage.getProject = () => ({
+    await storage.getProject = () => ({
       id: 1,
       title: "Test Project",
       dltDiscordWebhookUrl: "https://discord.com/api/webhooks/123/abc",
@@ -73,7 +73,7 @@ async function runTests() {
     assert.equal(body.embeds[0].footer.text, "Cel \u00b7 Test Project");
 
     fetchCalls = [];
-    storage.getProject = () => ({
+    await storage.getProject = () => ({
       id: 1,
       title: "Test Project",
       dltDiscordWebhookUrl: "https://discord.com/api/webhooks/123/abc",
@@ -100,7 +100,7 @@ async function runTests() {
     assert.equal(errors[0][0], "Discord webhook fetch failed:");
     assert.equal((errors[0][1] as Error).message, "Network failure");
   } finally {
-    storage.getProject = originalGetProject;
+    await storage.getProject = originalGetProject;
     global.fetch = originalFetch;
     console.error = originalConsoleError;
   }

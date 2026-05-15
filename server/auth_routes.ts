@@ -18,7 +18,7 @@ import { Strategy as LocalStrategy } from "passport-local";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
 
-// db is exported from storage.ts — do NOT import from a non-existent ./db
+// db is exported from await storage.ts — do NOT import from a non-existent ./db
 import { db, hashPassword, verifyPassword } from "./storage";
 import { users, type User } from "../shared/schema";
 
