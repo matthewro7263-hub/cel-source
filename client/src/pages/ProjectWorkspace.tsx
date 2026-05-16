@@ -1,8 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { apiRequest, queryClient, getAuthToken } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -18,10 +17,14 @@ import {
   AlertDialogFooter, AlertDialogCancel, AlertDialogAction, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
+import {
   FileText, Image as ImageIcon, Film, ListChecks, Users, Settings as SettingsIcon,
   Plus, Trash2, Upload, Calendar, Share2, Copy, MessageSquare, Eye, X,
   Package, ChevronDown, ChevronRight as ChevronRightIcon, ExternalLink, Presentation,
   Monitor, Loader2, Mic, Box, GitBranch, Scroll, Columns2, Radio, Wand2,
+Download,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import ReactMarkdown from "react-markdown";
@@ -39,37 +42,40 @@ import { GlassButton } from "@/components/ui/glass-button";
 import { StoryboardReviewer } from "@/components/storyboard-reviewer";
 import { AssetsTab } from "@/pages/AssetsTab";
 import { BakSettingsExports } from "@/components/bak-settings-panel";
+import { ScriptUploadDialog } from "@/components/script-upload-dialog";
 
-// === AGENT_1 ADDITIONS START ===
 import { CliBrandSettings } from "@/components/cli-brand-settings";
-// === AGENT_1 ADDITIONS END ===
-// === AGENT_3 ADDITIONS START ===
 import ContinuityTab from "./lor/ContinuityTab";
 import CastingTab from "./lor/CastingTab";
 import LoreSafeChecklist from "./lor/LoreSafeChecklist";
-// === AGENT_3 ADDITIONS END ===
-// === APPROVAL ADDITIONS START ===
 import SignOffPanel from "./approval/SignOffPanel";
-// === APPROVAL ADDITIONS END ===
 
 // v4 feature imports
 import { SketchModal } from "@/components/storyboard-sketch";
 import { PanelPinsOverlay, PinModeToggle } from "@/components/panel-pins";
 import { TagsSettingsPanel, InlineTagSelector } from "@/components/tags-manager";
 import { SceneTimerButton, SceneTimeBreakdown } from "@/components/scene-timer";
-import { Pencil, MapPin, Sparkles, Tag, KeyRound, BookOpen, ClipboardCheck } from "lucide-react";
+import { Pencil, MapPin, Sparkles, Tag, KeyRound, BookOpen, ClipboardCheck, Send, SunMedium } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { ProjectFrame, ProjectQuickActions, type ProjectSection } from "@/components/layout/project-frame";
 
 interface ProjectDetail {
   project: Project;
   members: { id: number; userId: number; role: string; user: { id: number; name: string; email: string; avatarColor: string } | null }[];
 }
 
+
 export default function ProjectWorkspace() {
+  return <ProjectWorkspaceScaffold activeSection="overview" />;
+}
+
+export function ProjectSectionPage({ section }: { section: ProjectSection }) {
+  return <ProjectWorkspaceScaffold activeSection={section} />;
+}
+
+function ProjectWorkspaceScaffold({ activeSection }: { activeSection: ProjectSection }) {
   const params = useParams() as { id: string };
   const projectId = parseInt(params.id, 10);
-  const [tab, setTab] = useState("overview");
-  const [, setLocation] = useLocation();
 
   const { data, isLoading } = useQuery<ProjectDetail>({
     queryKey: ["/api/projects", projectId],
@@ -87,131 +93,61 @@ export default function ProjectWorkspace() {
   if (!data) return <div className="p-10 text-muted-foreground">Project not found.</div>;
 
   const { project, members } = data;
-  const d = formatDeadline(project.deadline);
 
   return (
-    <div className="px-5 sm:px-6 lg:px-10 py-7 lg:py-10 max-w-6xl mx-auto">
-      <div className="mb-7 flex items-start justify-between gap-4 flex-wrap">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: project.coverColor }} />
-            <span className="text-xs uppercase tracking-wider font-medium text-muted-foreground">Project</span>
-          </div>
-          <h1 className="font-display text-xl font-bold tracking-tight mb-2" data-testid={`text-project-title`}>{project.title}</h1>
-          <p className="text-sm text-muted-foreground max-w-2xl">{project.description || "No description yet."}</p>
-        </div>
-        <div className="flex items-center gap-3 flex-wrap">
-          <span className="text-xs flex items-center gap-1.5 text-muted-foreground">
-            <Calendar size={12} />{d.text}
-          </span>
-          <Button variant="outline" size="sm" onClick={() => { window.location.hash = `/projects/${projectId}/video-editor`; }} className="text-xs" data-testid="link-video-editor">
-            <Film size={14} className="mr-1.5" /> Video Editor
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => { window.location.hash = `/projects/${projectId}/compare`; }} className="text-xs" data-testid="link-compare">
-            <Columns2 size={14} className="mr-1.5" /> Compare
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => { window.location.hash = `/projects/${projectId}/review-room`; }} className="text-xs" data-testid="link-review-room">
-            <Radio size={14} className="mr-1.5" /> Review Room
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => { window.location.hash = `/projects/${projectId}/palette`; }} className="text-xs">
-            <ImageIcon size={14} className="mr-1.5" /> Palette Matcher
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => { window.location.hash = `/projects/${projectId}/inbetween`; }} className="text-xs" data-testid="link-inbetween">
-            <Wand2 size={14} className="mr-1.5" /> Inbetween Lab
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => { window.location.hash = `/projects/${projectId}/bible`; }} className="text-xs" data-testid="link-episode-bible">
-            <BookOpen size={14} className="mr-1.5" /> Episode Bible
-          </Button>
-          {/* === AGENT_STUDIO ADDITIONS START === */}
-          <Button variant="outline" size="sm" onClick={() => { window.location.hash = `/projects/${projectId}/render-budget`; }} className="text-xs" data-testid="link-render-budget">
-            <Film size={14} className="mr-1.5" /> Render Budget
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => { window.location.hash = `/projects/${projectId}/snapshots`; }} className="text-xs" data-testid="link-snapshots">
-            <GitBranch size={14} className="mr-1.5" /> Snapshots
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => { window.location.hash = `/projects/${projectId}/credits`; }} className="text-xs" data-testid="link-credits">
-            <Scroll size={14} className="mr-1.5" /> Credits
-          </Button>
-          {/* === AGENT_STUDIO ADDITIONS END === */}
-          <div className="flex -space-x-1.5">
-            {members.slice(0, 4).map((m) => m.user && (
-              <Avatar key={m.id} className="h-7 w-7 ring-2 ring-background">
-                <AvatarFallback style={{ backgroundColor: m.user.avatarColor, color: "white" }} className="text-[10px] font-semibold">
-                  {initials(m.user.name)}
-                </AvatarFallback>
-              </Avatar>
-
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <Tabs value={tab} onValueChange={setTab}>
-        <TabsList className="mb-6 flex flex-wrap h-auto">
-          <TabsTrigger value="overview" data-testid="tab-overview"><FileText size={14} className="mr-1.5" />Overview</TabsTrigger>
-          <TabsTrigger value="script" data-testid="tab-script"><FileText size={14} className="mr-1.5" />Script</TabsTrigger>
-          <TabsTrigger value="storyboards" data-testid="tab-storyboards"><ImageIcon size={14} className="mr-1.5" />Storyboards</TabsTrigger>
-          <TabsTrigger value="assets" data-testid="tab-assets"><Package size={14} className="mr-1.5" />Assets</TabsTrigger>
-          <TabsTrigger value="animatics" data-testid="tab-animatics"><Film size={14} className="mr-1.5" />Animatics</TabsTrigger>
-          <TabsTrigger value="scenes" data-testid="tab-scenes"><ListChecks size={14} className="mr-1.5" />Scenes</TabsTrigger>
-          <TabsTrigger value="comments" data-testid="tab-comments"><MessageSquare size={14} className="mr-1.5" />Comments</TabsTrigger>
-          <TabsTrigger value="settings" data-testid="tab-settings"><SettingsIcon size={14} className="mr-1.5" />Settings</TabsTrigger>
-          {/* === AGENT_3 ADDITIONS START === */}
-          <TabsTrigger value="continuity" data-testid="tab-continuity"><BookOpen size={14} className="mr-1.5" />Continuity</TabsTrigger>
-          <TabsTrigger value="casting" data-testid="tab-casting"><Users size={14} className="mr-1.5" />Casting</TabsTrigger>
-          {/* === AGENT_3 ADDITIONS END === */}
-          {/* === APPROVAL ADDITIONS START === */}
-          <TabsTrigger value="signoff" data-testid="tab-signoff"><ClipboardCheck size={14} className="mr-1.5" />Sign-off</TabsTrigger>
-          {/* === APPROVAL ADDITIONS END === */}
-        </TabsList>
-
-        <TabsContent value="overview"><OverviewTab project={project} members={members} setTab={setTab} /></TabsContent>
-        <TabsContent value="script"><ScriptTab projectId={projectId} /></TabsContent>
-        <TabsContent value="storyboards"><StoryboardsTab projectId={projectId} /></TabsContent>
-        <TabsContent value="assets"><AssetsTab projectId={projectId} /></TabsContent>
-        <TabsContent value="animatics"><AnimaticsTab projectId={projectId} /></TabsContent>
-        <TabsContent value="scenes"><ScenesTab projectId={projectId} /></TabsContent>
-        <TabsContent value="comments"><CommentsTab projectId={projectId} /></TabsContent>
-        <TabsContent value="settings"><SettingsTab project={project} members={members} /></TabsContent>
-        {/* === AGENT_3 ADDITIONS (relocated inside Tabs root) === */}
-        <TabsContent value="continuity"><ContinuityTab projectId={projectId} /></TabsContent>
-        <TabsContent value="casting"><CastingTab projectId={projectId} /></TabsContent>
-        {/* === APPROVAL ADDITIONS START === */}
-        <TabsContent value="signoff"><SignOffPanel projectId={projectId} /></TabsContent>
-        {/* === APPROVAL ADDITIONS END === */}
-      </Tabs>
-
-      {/* v5 quick-action toolbar — relocated from inside TabsList where they crashed layout */}
-      <div className="mt-6 flex flex-wrap items-center gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => { window.location.hash = `/projects/${projectId}/audio2`; }}
-          data-testid="button-audio-tools"
-        >
-          <Mic size={14} className="mr-1.5" /> Audio Tools
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          className="glass h-8 border border-white/20"
-          onClick={() => setLocation(`/projects/${projectId}/couch`)}
-        >
-          <Presentation size={14} className="mr-1.5" /> Couch Mode
-        </Button>
-        <GlassButton
-          className="bg-[#9DD0FF] text-black hover:bg-[#AED9FF] text-sm h-8"
-          onClick={() => setLocation(`/projects/${projectId}/voicebooth`)}
-        >
-          <Mic size={14} className="mr-1.5" /> Voice Booth
-        </GlassButton>
-      </div>
-    </div>
+    <ProjectFrame project={project} members={members} activeSection={activeSection}>
+      {renderProjectSection(activeSection, projectId, project, members)}
+    </ProjectFrame>
   );
 }
 
+function renderProjectSection(
+  activeSection: ProjectSection,
+  projectId: number,
+  project: Project,
+  members: ProjectDetail["members"],
+) {
+  if (activeSection === "overview") {
+    return (
+      <div className="space-y-6">
+        <OverviewTab project={project} members={members} onOpenSection={(section) => { window.location.hash = `/projects/${projectId}/${section}`; }} />
+        <ProjectQuickActions projectId={projectId} />
+        <div className="rounded-2xl border border-border/70 bg-background/84 p-5 shadow-[0_18px_45px_rgba(15,23,42,0.05)] backdrop-blur-[12px]">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Project assistant</div>
+              <h2 className="mt-1 font-display text-base font-semibold">Script and production help</h2>
+            </div>
+            <AiAgentStatus projectId={projectId} />
+          </div>
+          <V4ScriptAiButton projectId={projectId} scriptContent="" />
+        </div>
+      </div>
+    );
+  }
+
+  if (activeSection === "script") return <ScriptTab projectId={projectId} />;
+  if (activeSection === "storyboards") return <StoryboardsTab projectId={projectId} />;
+  if (activeSection === "assets") return <AssetsTab projectId={projectId} />;
+  if (activeSection === "animatics") return <AnimaticsTab projectId={projectId} />;
+  if (activeSection === "scenes") return <ScenesTab projectId={projectId} />;
+  if (activeSection === "comments") return <CommentsTab projectId={projectId} />;
+  if (activeSection === "continuity") return <ContinuityTab projectId={projectId} />;
+  if (activeSection === "casting") return <CastingTab projectId={projectId} />;
+  if (activeSection === "signoff") return <SignOffPanel projectId={projectId} />;
+  return <SettingsTab project={project} members={members} />;
+}
+
 // ===== OVERVIEW =====
-function OverviewTab({ project, members, setTab }: { project: Project; members: ProjectDetail["members"]; setTab: (t: string) => void }) {
+function OverviewTab({
+  project,
+  members,
+  onOpenSection,
+}: {
+  project: Project;
+  members: ProjectDetail["members"];
+  onOpenSection: (section: Exclude<ProjectSection, "overview">) => void;
+}) {
   const { data: scenes } = useQuery<Scene[]>({ queryKey: ["/api/projects", project.id, "scenes"] });
   const d = formatDeadline(project.deadline);
   const total = scenes?.length || 0;
@@ -224,10 +160,25 @@ function OverviewTab({ project, members, setTab }: { project: Project; members: 
       <Stat title="Progress" value={`${pct}%`} sub={`${done} of ${total} scenes done`} />
       <Stat title="Team" value={String(members.length)} sub="collaborators" />
 
+      <div className="md:col-span-3 rounded-2xl border border-border/70 bg-background/84 p-5 shadow-[0_18px_45px_rgba(15,23,42,0.05)] backdrop-blur-[12px]">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Workspace areas</div>
+            <h2 className="mt-1 font-display text-base font-semibold">Move into focused production and review surfaces.</h2>
+          </div>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <OverviewLinkCard title="Script" description="Draft, import, and revise the project script." onClick={() => onOpenSection("script")} />
+          <OverviewLinkCard title="Storyboards" description="Arrange boards, captions, pins, and sketch notes." onClick={() => onOpenSection("storyboards")} />
+          <OverviewLinkCard title="Scenes" description="Track status, schedule, and render follow-through." onClick={() => onOpenSection("scenes")} />
+          <OverviewLinkCard title="Review" description="Jump into comments, continuity, casting, and sign-off." onClick={() => onOpenSection("comments")} />
+        </div>
+      </div>
+
       <div className="md:col-span-3 rounded-xl border border-card-border bg-card p-5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-display font-semibold">Pipeline</h3>
-          <Button variant="ghost" size="sm" onClick={() => setTab("scenes")} data-testid="button-view-scenes">View all scenes</Button>
+          <Button variant="ghost" size="sm" onClick={() => onOpenSection("scenes")} data-testid="button-view-scenes">View all scenes</Button>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
           {STATUS_ORDER.map((s) => {
@@ -291,6 +242,19 @@ function OverviewTab({ project, members, setTab }: { project: Project; members: 
   );
 }
 
+function OverviewLinkCard({ title, description, onClick }: { title: string; description: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="rounded-xl border border-border/70 bg-background/82 p-4 text-left transition hover:border-primary/40 hover:bg-background"
+    >
+      <div className="font-display text-base font-semibold">{title}</div>
+      <div className="mt-1 text-sm text-muted-foreground">{description}</div>
+    </button>
+  );
+}
+
 function Stat({ title, value, sub }: { title: string; value: string; sub: string }) {
   return (
     <div className="rounded-xl border border-card-border bg-card p-5">
@@ -306,6 +270,7 @@ function ScriptTab({ projectId }: { projectId: number }) {
   const { data: scripts } = useQuery<Script[]>({ queryKey: ["/api/projects", projectId, "scripts"] });
   const [active, setActive] = useState<number | null>(null);
   const [draft, setDraft] = useState<{ title: string; content: string }>({ title: "", content: "" });
+  const [uploadOpen, setUploadOpen] = useState(false);
   const { toast } = useToast();
   const wsRef = useRef<WebSocket | null>(null);
   const [otherCursors, setOtherCursors] = useState<Record<number, number>>({});
@@ -316,10 +281,38 @@ function ScriptTab({ projectId }: { projectId: number }) {
     }
   }, [scripts, active]);
 
-  const current = scripts?.find((s) => s.id === active);
+  const current = scripts?.find((s) => s.id === active) as Script & { sourceType?: string, sourceFormat?: string, originalKey?: string };
   useEffect(() => {
     if (current) setDraft({ title: current.title, content: current.content });
   }, [active, current?.id]);
+
+  const { data: aiStatus } = useQuery<{ hasKey: boolean } | null>({
+    queryKey: ["/api/projects", projectId, "ai", "key"],
+  });
+
+  const [agentFeedback, setAgentFeedback] = useState<string | null>(null);
+  const [isAgentChecking, setIsAgentChecking] = useState(false);
+  const lastCheckedContent = useRef("");
+
+  useEffect(() => {
+    if (!aiStatus?.hasKey || !draft.content || draft.content === lastCheckedContent.current) return;
+
+    const timer = setTimeout(async () => {
+      setIsAgentChecking(true);
+      try {
+        const res = await apiRequest("POST", `/api/projects/${projectId}/ai/agent/check`, {
+          scriptContent: draft.content,
+          lastVersion: lastCheckedContent.current
+        });
+        const data = await res.json();
+        setAgentFeedback(data.feedback);
+        lastCheckedContent.current = draft.content;
+      } catch (e) {}
+      setIsAgentChecking(false);
+    }, 15000); // Check every 15s of inactivity
+
+    return () => clearTimeout(timer);
+  }, [draft.content, aiStatus, projectId]);
 
   useEffect(() => {
     const token = getAuthToken();
@@ -361,19 +354,40 @@ function ScriptTab({ projectId }: { projectId: number }) {
 
   if (!scripts || scripts.length === 0) {
     return (
-      <EmptyTabState
-        icon={<FileText size={20} />}
-        title="No scripts yet"
-        body="Drafts, dialog, scene notes — write in markdown with a live preview."
-        ctaLabel="New script"
-        onCta={() => create.mutate()}
-      />
+      <>
+        <div className="rounded-xl border border-dashed border-card-border bg-card p-8 text-center">
+          <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
+            <FileText size={20} />
+          </div>
+          <h3 className="font-display font-semibold mb-1">No scripts yet</h3>
+          <p className="text-sm text-muted-foreground max-w-md mx-auto mb-4">
+            Start from a blank markdown draft, or import a PDF, Word document, text file, or markdown script.
+          </p>
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <Button onClick={() => setUploadOpen(true)} data-testid="button-upload-script-empty">
+              <Upload size={14} className="mr-1.5" /> Upload script
+            </Button>
+            <Button variant="outline" onClick={() => create.mutate()} data-testid="button-new-script-empty">
+              <Plus size={14} className="mr-1.5" /> New script
+            </Button>
+          </div>
+        </div>
+        <ScriptUploadDialog
+          open={uploadOpen}
+          onOpenChange={setUploadOpen}
+          projectId={projectId}
+          onUploaded={setActive}
+        />
+      </>
     );
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[200px_1fr] gap-5">
+    <div className="grid grid-cols-1 lg:grid-cols-[220px_1fr] gap-5">
       <div className="rounded-xl border border-card-border bg-card p-3 h-fit">
+        <Button size="sm" className="w-full justify-start mb-2" onClick={() => setUploadOpen(true)} data-testid="button-upload-script">
+          <Upload size={14} className="mr-1.5" />Upload script
+        </Button>
         <Button variant="ghost" size="sm" className="w-full justify-start mb-2" onClick={() => create.mutate()} data-testid="button-new-script">
           <Plus size={14} className="mr-1.5" />New script
         </Button>
@@ -393,38 +407,94 @@ function ScriptTab({ projectId }: { projectId: number }) {
 
       {current && (
         <div className="space-y-3">
-          <Input
-            value={draft.title}
-            onChange={(e) => setDraft({ ...draft, title: e.target.value })}
-            className="font-display text-base font-semibold"
-            data-testid="input-script-title"
-          />
-            <div className="relative">
-              <Textarea
-                value={draft.content}
-                onChange={(e) => {
-                  setDraft({ ...draft, content: e.target.value });
-                  if (wsRef.current?.readyState === WebSocket.OPEN) {
-                    wsRef.current.send(JSON.stringify({ type: "script-cursor", pos: e.target.selectionStart }));
-                  }
-                }}
-                rows={22}
-                className="font-mono text-sm leading-relaxed"
-                placeholder="Write your script in markdown…"
-                data-testid="input-script-content"
-              />
-              <div className="absolute top-0 right-0 p-2 pointer-events-none">
-                {Object.entries(otherCursors).map(([uid, pos]) => (
-                  <div key={uid} className="text-[10px] bg-primary text-primary-foreground px-1 rounded animate-pulse">
-                    User {uid} is editing...
-                  </div>
-                ))}
+          <div className="flex items-center gap-3">
+            <Input
+              value={draft.title}
+              onChange={(e) => setDraft({ ...draft, title: e.target.value })}
+              className="font-display text-base font-semibold"
+              data-testid="input-script-title"
+              disabled={current.sourceType === "upload"}
+            />
+            {current.sourceType === "upload" && (
+              <span className="text-[10px] px-2 py-1 rounded bg-muted/50 text-muted-foreground font-medium uppercase tracking-wider shrink-0 flex items-center gap-1">
+                <Upload size={10} /> Uploaded
+              </span>
+            )}
+            <div className="flex items-center gap-2">
+              {isAgentChecking && (
+                <div className="text-[10px] font-medium text-primary animate-pulse flex items-center gap-1.5 shrink-0">
+                  <Sparkles size={10} /> Agent thinking...
+                </div>
+              )}
+              <Button size="sm" onClick={() => save.mutate()} disabled={save.isPending}>
+                {save.isPending ? "Saving..." : "Save Draft"}
+              </Button>
+            </div>
+          </div>
+
+          {agentFeedback && (
+            <div className="p-3 rounded-2xl bg-primary/5 border border-primary/10 text-xs text-primary relative animate-in fade-in slide-in-from-top-2">
+              <Button variant="ghost" size="icon" className="h-5 w-5 absolute top-1.5 right-1.5 rounded-full" onClick={() => setAgentFeedback(null)}>
+                <X size={12} />
+              </Button>
+              <div className="font-bold mb-1 flex items-center gap-1.5">
+                <Sparkles size={12} className="text-primary" /> Agent Suggestion
               </div>
+              <div className="pr-6 leading-relaxed opacity-90">{agentFeedback}</div>
             </div>
-            <div className="rounded-md border border-border bg-background px-4 py-3 prose-cel text-sm overflow-auto" style={{ maxHeight: "32rem" }}>
-              <ReactMarkdown>{draft.content || "*Preview will appear here.*"}</ReactMarkdown>
+          )}
+
+          {current.sourceType === "upload" ? (
+            <div className="rounded-md border border-border bg-background p-4 min-h-[32rem] max-h-[70vh] overflow-auto prose-cel">
+              {current.sourceFormat === "pdf" ? (
+                <div>
+                  <div className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    <FileText size={14} /> Extracted PDF text
+                  </div>
+                  <pre className="whitespace-pre-wrap font-sans text-sm leading-7 text-foreground">{draft.content || "No readable text was found in this PDF."}</pre>
+                </div>
+              ) : current.sourceFormat === "docx" ? (
+                <div>
+                  <div className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    <FileText size={14} /> Extracted Word document text
+                  </div>
+                  <pre className="whitespace-pre-wrap font-sans text-sm leading-7 text-foreground">{draft.content || "No readable text was found in this Word document."}</pre>
+                </div>
+              ) : (
+                <ReactMarkdown>{draft.content}</ReactMarkdown>
+              )}
             </div>
-          <div className="flex justify-between">
+          ) : (
+            <>
+              <div className="relative">
+                <Textarea
+                  value={draft.content}
+                  onChange={(e) => {
+                    setDraft({ ...draft, content: e.target.value });
+                    if (wsRef.current?.readyState === WebSocket.OPEN) {
+                      wsRef.current.send(JSON.stringify({ type: "script-cursor", pos: e.target.selectionStart }));
+                    }
+                  }}
+                  rows={22}
+                  className="font-mono text-sm leading-relaxed"
+                  placeholder="Write your script in markdown…"
+                  data-testid="input-script-content"
+                />
+                <div className="absolute top-0 right-0 p-2 pointer-events-none">
+                  {Object.entries(otherCursors).map(([uid, pos]) => (
+                    <div key={uid} className="text-[10px] bg-primary text-primary-foreground px-1 rounded animate-pulse">
+                      User {uid} is editing...
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="rounded-md border border-border bg-background px-4 py-3 prose-cel text-sm overflow-auto" style={{ maxHeight: "32rem" }}>
+                <ReactMarkdown>{draft.content || "*Preview will appear here.*"}</ReactMarkdown>
+              </div>
+            </>
+          )}
+
+          <div className="flex justify-between items-center mt-4">
             <div className="flex items-center gap-2">
               <AlertDialog>
                 <AlertDialogTrigger asChild>
@@ -432,29 +502,63 @@ function ScriptTab({ projectId }: { projectId: number }) {
                     <Trash2 size={14} className="mr-1.5" />Delete
                   </Button>
                 </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Delete this script?</AlertDialogTitle>
-                  <AlertDialogDescription>This can't be undone.</AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={() => del.mutate(active!)}>Delete</AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-            {/* v4: AI shot suggest */}
-            <V4ScriptAiButton projectId={projectId} scriptContent={draft.content} />
-            {/* === AGENT_3 ADDITIONS START === */}
-            <LoreSafeChecklist projectId={projectId} scriptContent={draft.content} />
-            {/* === AGENT_3 ADDITIONS END === */}
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Delete this script?</AlertDialogTitle>
+                    <AlertDialogDescription>This can't be undone.</AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => del.mutate(active!)}>Delete</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+
+              {current.sourceType === "upload" && current.originalKey && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={async () => {
+                    try {
+                      const res = await fetch(`/api/projects/${projectId}/scripts/${current.id}/original`, {
+                        headers: { "Authorization": `Bearer ${getAuthToken()}` }
+                      });
+                      const data = await res.json();
+                      if (data.url) window.open(data.url, '_blank');
+                    } catch (e) {
+                      toast({ title: "Failed to download", variant: "destructive" });
+                    }
+                  }}
+                >
+                  <Download size={14} className="mr-1.5" /> Download original
+                </Button>
+              )}
+
+              {/* v4: AI shot suggest */}
+              {current.sourceType !== "upload" && (
+                <V4ScriptAiButton
+                  projectId={projectId}
+                  scriptContent={draft.content || ""}
+                  onApplyScriptEdit={(newContent) => setDraft({ ...draft, content: newContent })}
+                />
+              )}
+              {current.sourceType !== "upload" && <LoreSafeChecklist projectId={projectId} scriptContent={draft.content} />}
             </div>
-            <Button onClick={() => save.mutate()} disabled={save.isPending} data-testid="button-save-script">
-              {save.isPending ? "Saving…" : "Save script"}
-            </Button>
+
+            {current.sourceType !== "upload" && (
+              <Button onClick={() => save.mutate()} disabled={save.isPending} data-testid="button-save-script">
+                {save.isPending ? "Saving…" : "Save script"}
+              </Button>
+            )}
           </div>
         </div>
       )}
+      <ScriptUploadDialog
+        open={uploadOpen}
+        onOpenChange={setUploadOpen}
+        projectId={projectId}
+        onUploaded={setActive}
+      />
     </div>
   );
 }
@@ -926,11 +1030,26 @@ function AnimaticCard({ a, onDelete }: { a: Animatic; onDelete: () => void }) {
   );
 }
 
-function AddAnimaticDialog(props: any) {
+interface AddAnimaticDialogProps {
+  open: boolean;
+  setOpen: (open: boolean) => void;
+  title: string;
+  setTitle: (title: string) => void;
+  url: string;
+  setUrl: (url: string) => void;
+  notes: string;
+  setNotes: (notes: string) => void;
+  fileRef: React.RefObject<HTMLInputElement>;
+  uploading: boolean;
+  onSubmit: () => void;
+  onFile: (file: File) => void;
+}
+
+function AddAnimaticDialog(props: AddAnimaticDialogProps) {
   const { open, setOpen, title, setTitle, url, setUrl, notes, setNotes, fileRef, uploading, onSubmit, onFile } = props;
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent>
+      <DialogContent aria-describedby={undefined}>
         <DialogHeader>
           <DialogTitle className="font-display">Add animatic</DialogTitle>
         </DialogHeader>
@@ -967,6 +1086,7 @@ function AddAnimaticDialog(props: any) {
 // ===== SCENES =====
 function ScenesTab({ projectId }: { projectId: number }) {
   const { data: scenes } = useQuery<Scene[]>({ queryKey: ["/api/projects", projectId, "scenes"] });
+  const { toast } = useToast();
   const [view, setView] = useState<"table" | "kanban" | "gantt">("table");
   const [open, setOpen] = useState(false);
 
@@ -1253,7 +1373,7 @@ function SceneRendersPanel({ sceneId }: { sceneId: number }) {
 
       {/* Add render dialog */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent>
+        <DialogContent aria-describedby={undefined}>
           <DialogHeader><DialogTitle className="font-display">Add render</DialogTitle></DialogHeader>
           <div className="space-y-3 pt-2">
             <div className="grid grid-cols-2 gap-3">
@@ -1398,7 +1518,7 @@ function NewSceneDialog({ open, setOpen, projectId }: { open: boolean; setOpen: 
   });
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent>
+      <DialogContent aria-describedby={undefined}>
         <DialogHeader><DialogTitle className="font-display">New scene</DialogTitle></DialogHeader>
         <div className="space-y-4 pt-2">
           <div className="grid grid-cols-2 gap-3">
@@ -1515,7 +1635,6 @@ function SettingsTab({ project, members }: { project: Project; members: ProjectD
     },
   });
 
-  // === AGENT_5 ADDITIONS START ===
   const [discordWebhook, setDiscordWebhook] = useState((project as any).dltDiscordWebhookUrl || "");
   const testDiscord = useMutation({
     mutationFn: async () => {
@@ -1524,7 +1643,6 @@ function SettingsTab({ project, members }: { project: Project; members: ProjectD
     onSuccess: () => toast({ title: "Test message sent to Discord" }),
     onError: (err) => toast({ title: "Failed to send", description: String(err), variant: "destructive" }),
   });
-  // === AGENT_5 ADDITIONS END ===
   const del = useMutation({
     mutationFn: async () => (await apiRequest("DELETE", `/api/projects/${project.id}`)).json(),
     onSuccess: () => {
@@ -1575,9 +1693,7 @@ function SettingsTab({ project, members }: { project: Project; members: ProjectD
         </div>
       </SettingsSection>
 
-      {/* === AGENT_1 ADDITIONS START === */}
       <CliBrandSettings project={project} />
-      {/* === AGENT_1 ADDITIONS END === */}
 
       <SettingsSection title="Members">
         <div className="space-y-3">
@@ -1608,7 +1724,6 @@ function SettingsTab({ project, members }: { project: Project; members: ProjectD
         </div>
       </SettingsSection>
 
-      {/* === AGENT_5 ADDITIONS START === */}
       <SettingsSection title="Discord Webhooks">
         <div className="space-y-3">
           <div className="text-sm text-muted-foreground mb-2">Send event notifications to a Discord channel.</div>
@@ -1635,7 +1750,6 @@ function SettingsTab({ project, members }: { project: Project; members: ProjectD
           </div>
         </div>
       </SettingsSection>
-      {/* === AGENT_5 ADDITIONS END === */}
 
       <SettingsSection title="Public share link">
         <div className="space-y-3">
@@ -1671,9 +1785,7 @@ function SettingsTab({ project, members }: { project: Project; members: ProjectD
       <AiKeySettings projectId={project.id} />
       <TagsSettings projectId={project.id} />
 
-      {/* === AGENT_4 ADDITIONS START === */}
       <BakSettingsExports projectId={project.id} />
-      {/* === AGENT_4 ADDITIONS END === */}
 
       <SettingsSection title="Danger zone" tone="destructive">
         <AlertDialog>
@@ -1728,109 +1840,245 @@ function EmptyTabState({ icon, title, body, ctaLabel, onCta }: { icon: React.Rea
 // The SketchModal integration: "Sketch" button opens a canvas that saves as a new panel.
 // This is appended here as an augmentation. To inject into StoryboardView we edit inline below.
 
-// v4: SortablePanel with pin mode (replaces original above via re-export is not possible,
-// so we do direct edits in the functions below via the "v4 pin" inline integration approach).
-
-// ===== v4 AI Shot Suggest =====
-// Drawer that calls POST /api/projects/:id/shot-suggest with script content.
-function AiShotSuggestSheet({ projectId, scriptContent, open, onOpenChange }: {
+function AiAgentPanel({ projectId, scriptContent, open, onOpenChange, onApplyScriptEdit }: {
   projectId: number;
   scriptContent: string;
   open: boolean;
   onOpenChange: (v: boolean) => void;
+  onApplyScriptEdit: (newText: string) => void;
 }) {
-  const [suggestions, setSuggestions] = useState<string>("");
-  const [loading, setLoading] = useState(false);
+  const [sessionId, setSessionId] = useState<number | null>(null);
+  const [input, setInput] = useState("");
+  const [resolvedEdits, setResolvedEdits] = useState<Record<string, 'approved' | 'declined'>>({});
   const { toast } = useToast();
 
-  const suggest = async () => {
-    if (!scriptContent.trim()) {
-      toast({ title: "Write some script content first", variant: "destructive" });
-      return;
+  const { data: sessions } = useQuery<any[]>({
+    queryKey: ["/api/projects", projectId, "ai", "sessions"],
+    enabled: open,
+  });
+
+  useEffect(() => {
+    if (open && sessions && sessions.length > 0 && !sessionId) {
+      setSessionId(sessions[0].id);
+    } else if (open && sessions?.length === 0 && !sessionId) {
+      apiRequest("POST", `/api/projects/${projectId}/ai/sessions`, { title: "Script Assistant" })
+        .then(r => r.json())
+        .then(s => setSessionId(s.id));
     }
-    setLoading(true);
-    setSuggestions("");
+  }, [open, sessions, sessionId, projectId]);
+
+  const { data: messages, refetch: refetchMessages } = useQuery<any[]>({
+    queryKey: ["/api/projects", projectId, "ai", "sessions", sessionId, "messages"],
+    enabled: !!sessionId && open,
+  });
+
+  const [streamingContent, setStreamingContent] = useState("");
+  const [isGenerating, setIsGenerating] = useState(false);
+
+  const handleSend = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!input.trim() || isGenerating || !sessionId) return;
+
+    const userMsg = input;
+    setInput("");
+    setIsGenerating(true);
+    setStreamingContent("");
+
     try {
-      const res = await apiRequest("POST", `/api/projects/${projectId}/ai/shot-suggest`, { scriptText: scriptContent });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Failed to generate suggestions");
-      
-      let formatted = "";
-      if (data.shots && data.shots.length > 0) {
-        formatted = data.shots.map((s: any) => `${s.shotNumber}. ${s.shotType} - ${s.cameraMove}\n${s.actionDescription}`).join("\n\n");
-      } else if (data.raw) {
-        formatted = data.raw;
+      const response = await fetch(`/api/projects/${projectId}/ai/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, content: userMsg, scriptContent })
+      });
+
+      if (!response.body) throw new Error("No response body");
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+
+      refetchMessages();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split("\n").filter(l => l.trim().startsWith("data: "));
+
+        for (const line of lines) {
+          try {
+            const data = JSON.parse(line.substring(6));
+            if (data.content) {
+              setStreamingContent(prev => prev + data.content);
+            }
+            if (data.done) {
+              setIsGenerating(false);
+              setStreamingContent("");
+              refetchMessages();
+            }
+          } catch (e) {}
+        }
       }
-      setSuggestions(formatted || "No suggestions returned.");
     } catch (e: any) {
       toast({ title: "Error", description: e.message, variant: "destructive" });
-    } finally {
-      setLoading(false);
+      setIsGenerating(false);
     }
   };
 
-  // Auto-suggest when opened
-  useEffect(() => {
-    if (open && !suggestions && !loading) suggest();
-  }, [open]);
+  const handleApproveEdit = (toolCall: any, tcId: string) => {
+    try {
+      const args = JSON.parse(toolCall.function.arguments);
+      if (args.original_text && args.replacement_text) {
+        const newScript = scriptContent.replace(args.original_text, args.replacement_text);
+        if (newScript === scriptContent) {
+           toast({ title: "Text not found", variant: "destructive" });
+        } else {
+           onApplyScriptEdit(newScript);
+           toast({ title: "Edit Applied" });
+           setResolvedEdits(prev => ({ ...prev, [tcId]: 'approved' }));
+        }
+      }
+    } catch (e) {}
+  };
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full sm:max-w-lg">
-        <SheetHeader>
-          <SheetTitle className="flex items-center gap-2">
-            <Sparkles size={16} className="text-primary" /> AI Shot Suggestions
-          </SheetTitle>
-        </SheetHeader>
-        <div className="mt-4 space-y-4">
-          <p className="text-xs text-muted-foreground">
-            AI analyzes your script and suggests shot compositions, camera angles, and staging notes.
-          </p>
-          {loading && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 size={14} className="animate-spin" /> Analyzing script…
-            </div>
-          )}
-          {!loading && suggestions && (
-            <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm prose-cel max-h-[60vh] overflow-auto">
-              <ReactMarkdown>{suggestions}</ReactMarkdown>
-            </div>
-          )}
-          {!loading && suggestions && (
-            <div className="flex gap-2">
-              <GlassButton variant="primary" size="sm" onClick={suggest} data-testid="button-ai-suggest-retry">
-                <Sparkles size={13} className="mr-1.5" /> Regenerate
-              </GlassButton>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={async () => {
-                  const lines = suggestions.split("\n").filter(l => l.trim().match(/^\d+\./));
-                  for (const line of lines) {
-                    const title = line.replace(/^\d+\.\s*/, "").trim();
-                    await apiRequest("POST", `/api/projects/${projectId}/scenes`, {
-                      number: line.match(/^\d+/)?.[0] || "1",
-                      title: title.slice(0, 50),
-                      status: "script"
-                    });
-                  }
-                  queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId, "scenes"] });
-                  toast({ title: "Shots created", description: `Added ${lines.length} shots to your list.` });
-                  onOpenChange(false);
-                }}
-                data-testid="button-ai-insert-shots"
-              >
-                Insert as Shot List
-              </Button>
-            </div>
-          )}
+    <div className={`fixed top-0 right-0 w-[380px] h-full bg-card border-l border-border shadow-2xl flex flex-col z-[100] transform transition-transform duration-500 ease-in-out ${open ? 'translate-x-0' : 'translate-x-full'}`}>
+      <div className="p-4 border-b border-border flex justify-between items-center bg-muted/10">
+        <div className="flex items-center gap-2.5 font-display font-bold">
+          <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+            <Sparkles size={16} className="text-primary" />
+          </div>
+          Cel Assistant
         </div>
-      </SheetContent>
-    </Sheet>
+        <Button variant="ghost" size="icon" className="rounded-full" onClick={() => onOpenChange(false)}>
+          <X size={18} />
+        </Button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-5 space-y-6 scrollbar-hide">
+        {messages?.length === 0 && !streamingContent && (
+          <div className="flex flex-col items-center justify-center h-full text-center p-8">
+            <div className="w-12 h-12 rounded-2xl bg-muted flex items-center justify-center mb-4">
+              <MessageSquare size={24} className="text-muted-foreground/50" />
+            </div>
+            <h4 className="font-semibold mb-2">How can I help?</h4>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Ask me to rewrite a sentence, suggest shots, or analyze your current script draft.
+            </p>
+          </div>
+        )}
+
+        {messages?.map((m: any) => (
+          <div key={m.id} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
+            <div className={`px-4 py-3 text-sm max-w-[90%] chat-bubble-v5 shadow-sm ${m.role === 'user' ? 'bg-primary text-primary-foreground rounded-br-none' : 'bg-muted/50 border border-border/50 rounded-bl-none'}`}>
+              {m.content && (
+                <div className="prose-cel prose-sm">
+                  <ReactMarkdown>{m.content}</ReactMarkdown>
+                </div>
+              )}
+
+              {m.toolCalls && (() => {
+                try {
+                  return JSON.parse(m.toolCalls).map((tc: any, idx: number) => {
+                    const tcId = tc.id || `${m.id}-${idx}`;
+                    const status = resolvedEdits[tcId];
+                    if (tc.function.name === 'edit_script_passage') {
+                      const args = JSON.parse(tc.function.arguments);
+                      return (
+                        <div key={idx} className="mt-3 border border-primary/20 bg-background/50 rounded-xl p-3 text-xs">
+                          <div className="font-bold text-primary mb-2 flex items-center justify-between">
+                            Proposed Change
+                            {status && <span className={`text-[10px] px-2 py-0.5 rounded-full capitalize ${status === 'approved' ? 'bg-green-500/20 text-green-500' : 'bg-destructive/20 text-destructive'}`}>{status}</span>}
+                          </div>
+                          <div className="line-through text-muted-foreground/60 mb-1">{args.original_text}</div>
+                          <div className="text-foreground font-medium mb-3 p-2 bg-primary/5 rounded-md border border-primary/10">{args.replacement_text}</div>
+                          {!status && (
+                            <div className="flex gap-2">
+                              <Button size="sm" className="h-7 px-3 text-[10px]" onClick={() => handleApproveEdit(tc, tcId)}>Apply Edit</Button>
+                              <Button size="sm" variant="ghost" className="h-7 px-3 text-[10px] text-destructive" onClick={() => setResolvedEdits(p => ({...p, [tcId]: 'declined'}))}>Dismiss</Button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    }
+                    return null;
+                  });
+                } catch { return null; }
+              })()}
+            </div>
+          </div>
+        ))}
+
+        {streamingContent && (
+          <div className="flex flex-col items-start animate-in fade-in slide-in-from-left-2">
+            <div className="px-4 py-3 rounded-2xl rounded-bl-none text-sm max-w-[90%] bg-muted/50 border border-border/50 shadow-sm">
+              <div className="prose-cel prose-sm">
+                <ReactMarkdown>{streamingContent}</ReactMarkdown>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {isGenerating && (
+           <div className="flex items-center gap-2 text-xs font-bold shimmer-text px-1">
+             <Sparkles size={12} /> Assistant is thinking...
+           </div>
+        )}
+      </div>
+
+      <div className="p-4 border-t border-border bg-card/50 backdrop-blur-md">
+        <form onSubmit={handleSend} className="flex gap-2 relative">
+          <Input
+            placeholder="Ask anything..."
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            disabled={isGenerating}
+            className="rounded-2xl bg-muted/50 border-none h-11 pr-12 focus-visible:ring-1 focus-visible:ring-primary/20"
+          />
+          <Button
+            type="submit"
+            size="icon"
+            disabled={!input.trim() || isGenerating}
+            className="absolute right-1.5 top-1.5 h-8 w-8 rounded-xl shadow-lg"
+          >
+            <Send size={14} />
+          </Button>
+        </form>
+        <div className="mt-3 flex justify-center">
+          <Button variant="ghost" className="h-7 text-[10px] text-muted-foreground hover:text-foreground" onClick={() => {
+            apiRequest("POST", `/api/projects/${projectId}/ai/sessions`, { title: "New Chat" })
+              .then(r => r.json())
+              .then(s => setSessionId(s.id));
+          }}>
+            <Plus size={10} className="mr-1" /> New Discussion
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+
+function AiAgentStatus({ projectId }: { projectId: number }) {
+  const { data: status } = useQuery<{ hasKey: boolean; model: string | null } | null>({
+    queryKey: ["/api/projects", projectId, "ai", "key"],
+  });
+
+  if (!status?.hasKey) return null;
+
+  return (
+    <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/5 border border-primary/20 text-[11px] font-medium text-primary shadow-sm">
+      <div className="relative flex h-2 w-2">
+        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+        <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
+      </div>
+      AI Agent: <span className="opacity-80 font-normal">{status.model?.split('/').pop()}</span>
+    </div>
   );
 }
 
 // v4 AI Key Settings section (for SettingsTab)
+// ... (rest of the file)
 function AiKeySettings({ projectId }: { projectId: number }) {
   const [key, setKey] = useState("");
   const [model, setModel] = useState("openai/gpt-4o-mini");
@@ -1982,7 +2230,7 @@ export function V4SettingsExtras({ project }: { project: Project }) {
 }
 
 // ===== v4 ScriptTab AI suggest button (exported for inline injection) =====
-export function V4ScriptAiButton({ projectId, scriptContent }: { projectId: number; scriptContent: string }) {
+export function V4ScriptAiButton({ projectId, scriptContent, onApplyScriptEdit }: { projectId: number; scriptContent: string; onApplyScriptEdit?: (newText: string) => void }) {
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -1992,13 +2240,14 @@ export function V4ScriptAiButton({ projectId, scriptContent }: { projectId: numb
         onClick={() => setOpen(true)}
         data-testid="button-ai-shot-suggest"
       >
-        <Sparkles size={13} className="mr-1.5" /> Suggest shots
+        <Sparkles size={13} className="mr-1.5" /> Cel Assistant
       </GlassButton>
-      <AiShotSuggestSheet
+      <AiAgentPanel
         projectId={projectId}
         scriptContent={scriptContent}
         open={open}
         onOpenChange={setOpen}
+        onApplyScriptEdit={onApplyScriptEdit || (() => {})}
       />
     </>
   );
@@ -2007,6 +2256,7 @@ export function V4ScriptAiButton({ projectId, scriptContent }: { projectId: numb
 // ===== v4 Storyboard Sketch Button =====
 export function V4SketchButton({ storyboardId, projectId }: { storyboardId: number; projectId: number }) {
   const [open, setOpen] = useState(false);
+  const { toast } = useToast();
   return (
     <>
       <Button size="sm" variant="outline" onClick={() => setOpen(true)} data-testid="button-sketch-panel">
@@ -2028,7 +2278,6 @@ export function V4PanelPinLayer({ panelId }: { panelId: number }) {
   );
 }
 
-// === AGENT_4 ADDITIONS START ===
 export function BakSceneGltfExport({ sceneId }: { sceneId: number }) {
   const { toast } = useToast();
   
@@ -2056,7 +2305,6 @@ export function BakSceneGltfExport({ sceneId }: { sceneId: number }) {
     </Button>
   );
 }
-// === AGENT_4 ADDITIONS END ===
 
 // ===== v4 Scene expanded row extras =====
 export function V4SceneExtras({ scene }: { scene: Scene }) {
@@ -2069,11 +2317,9 @@ export function V4SceneExtras({ scene }: { scene: Scene }) {
         </p>
         <InlineTagSelector entityKind="scene" entityId={scene.id} />
       </div>
-      {/* === AGENT_4 ADDITIONS START === */}
       <div className="mt-2">
         <BakSceneGltfExport sceneId={scene.id} />
       </div>
-      {/* === AGENT_4 ADDITIONS END === */}
     </div>
   );
 }

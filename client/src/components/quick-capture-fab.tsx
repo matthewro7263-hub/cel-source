@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, X, Zap } from "lucide-react";
+import { GlassButton } from "@/components/ui/glass-button";
 
 export function QuickCaptureFAB() {
   const [open, setOpen] = useState(false);
@@ -38,13 +39,14 @@ export function QuickCaptureFAB() {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <button
-          className="fixed bottom-6 right-6 z-50 w-12 h-12 rounded-full glass-button flex items-center justify-center shadow-lg ring-2 ring-primary/20 hover:ring-primary/40 transition-all active:scale-95"
+        <GlassButton
+          size="round"
+          className="fixed bottom-6 right-6 z-50 text-primary hover:text-primary"
           data-testid="button-quick-capture-fab"
           aria-label="Quick capture"
         >
           <Plus size={20} className="text-primary" />
-        </button>
+        </GlassButton>
       </PopoverTrigger>
       <PopoverContent side="top" align="end" className="w-80 p-4 glass" sideOffset={8}>
         <div className="mb-2 flex items-center gap-2 font-semibold text-sm">

@@ -18,11 +18,11 @@ function extractToken(req: Request): string | undefined {
   return undefined;
 }
 
-function requireAuth(req: Request, res: Response, next: NextFunction) {
+async function requireAuth(req: Request, res: Response, next: NextFunction) {
   const token = extractToken(req);
   const userId = getSessionUser(token);
   if (!userId) return res.status(401).json({ message: "Not authenticated" });
-  const user = storage.getUser(userId);
+  const user = await storage.getUser(userId);
   if (!user) return res.status(401).json({ message: "User not found" });
   (req as any).user = user;
   next();
@@ -30,39 +30,39 @@ function requireAuth(req: Request, res: Response, next: NextFunction) {
 
 export function registerChallengeRoutes(app: Express) {
   // Public — anyone can browse the prompt list (no user data here).
-  app.get("/api/challenges/prompts", (req, res) => {
-    const prompts = (storage as any).listChallengePrompts();
+  app.get("/api/challenges/prompts", async (req, res) => {
+    const prompts = await (storage as any).listChallengePrompts();
     res.json(prompts);
   });
 
   // Authed — only the logged-in user's own submissions.
-  app.get("/api/challenges/submissions", requireAuth, (req, res) => {
+  app.get("/api/challenges/submissions", requireAuth, async (req, res) => {
     const userId = (req as any).user.id;
-    const submissions = (storage as any).listChallengeSubmissions(userId);
+    const submissions = await (storage as any).listChallengeSubmissions(userId);
     res.json(submissions);
   });
 
-  app.get("/api/challenges/feed", requireAuth, (req, res) => {
+  app.get("/api/challenges/feed", requireAuth, async (req, res) => {
     const userId = (req as any).user.id;
-    res.json((storage as any).listChallengeFeed(userId));
+    res.json(await (storage as any).listChallengeFeed(userId));
   });
 
   // Authed — submissions are always written under the authed user.
-  app.post("/api/challenges/submissions", requireAuth, (req, res) => {
+  app.post("/api/challenges/submissions", requireAuth, async (req, res) => {
     const userId = (req as any).user.id;
     const body = insertChallengeSubmissionSchema.parse(req.body);
-    const submission = (storage as any).createChallengeSubmission({ ...body, userId });
+    const submission = await (storage as any).createChallengeSubmission({ ...body, userId });
     res.json(submission);
   });
 
-  app.post("/api/challenges/submissions/:id/reactions", requireAuth, (req, res) => {
+  app.post("/api/challenges/submissions/:id/reactions", requireAuth, async (req, res) => {
     const userId = (req as any).user.id;
     const submissionId = parseInt(String(req.params.id), 10);
     const body = z.object({
       sticker: z.enum(["spark", "heart", "study", "wow"]),
     }).parse(req.body);
     try {
-      const result = (storage as any).toggleChallengeReaction(submissionId, userId, body.sticker);
+      const result = await (storage as any).toggleChallengeReaction(submissionId, userId, body.sticker);
       res.json(result);
     } catch (error: any) {
       res.status(404).json({ message: error.message || "Submission not found" });

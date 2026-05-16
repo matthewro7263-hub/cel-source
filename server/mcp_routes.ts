@@ -11,14 +11,6 @@ import { z } from "zod";
  * project. Never trust client-supplied user IDs.
  */
 
-declare global {
-  namespace Express {
-    interface Request {
-      user?: { id: number; email: string };
-    }
-  }
-}
-
 function extractToken(req: Request): string | undefined {
   const auth = req.headers.authorization;
   if (!auth) return undefined;
@@ -27,21 +19,21 @@ function extractToken(req: Request): string | undefined {
   return undefined;
 }
 
-function requireAuth(req: Request, res: Response, next: NextFunction) {
+async function requireAuth(req: Request, res: Response, next: NextFunction) {
   const token = extractToken(req);
   const userId = token ? getSessionUser(token) : null;
   if (!userId) return res.status(401).json({ error: "Unauthorized", code: "UNAUTHORIZED" });
-  const user = storage.getUser(userId);
+  const user = await storage.getUser(userId);
   if (!user) return res.status(401).json({ error: "Unauthorized", code: "UNAUTHORIZED" });
-  req.user = { id: user.id, email: user.email };
+  req.user = user;
   next();
 }
 
-function canAccessProject(projectId: number, userId: number): boolean {
-  const p = storage.getProject(projectId);
+async function canAccessProject(projectId: number, userId: number): Promise<boolean> {
+  const p = await storage.getProject(projectId);
   if (!p) return false;
   if (p.ownerId === userId) return true;
-  return storage.isMember(projectId, userId);
+  return await storage.isMember(projectId, userId);
 }
 
 export function registerMcpRoutes(app: Express) {
@@ -59,7 +51,7 @@ export function registerMcpRoutes(app: Express) {
         return mcpError(res, "Forbidden", "FORBIDDEN", 403);
       }
 
-      const shots = storage.listScenes(projectId);
+      const shots = await storage.listScenes(projectId);
       res.json({ shots });
     } catch (e: any) {
       mcpError(res, e.message, "INVALID_REQUEST");
@@ -80,12 +72,12 @@ export function registerMcpRoutes(app: Express) {
         return mcpError(res, "Forbidden", "FORBIDDEN", 403);
       }
 
-      const shot = storage.getScene(shotId);
+      const shot = await storage.getScene(shotId);
       if (!shot || shot.projectId !== projectId) {
         return mcpError(res, "Shot not found in project", "NOT_FOUND", 404);
       }
 
-      const updated = storage.updateScene(shotId, { status });
+      const updated = await storage.updateScene(shotId, { status });
       res.json({ shot: updated });
     } catch (e: any) {
       mcpError(res, e.message, "INVALID_REQUEST");
@@ -107,7 +99,7 @@ export function registerMcpRoutes(app: Express) {
         return mcpError(res, "Forbidden", "FORBIDDEN", 403);
       }
 
-      const comment = storage.createComment({
+      const comment = await storage.createComment({
         projectId,
         authorId: req.user!.id,
         body,
@@ -139,7 +131,7 @@ export function registerMcpRoutes(app: Express) {
         return mcpError(res, "Forbidden", "FORBIDDEN", 403);
       }
 
-      const asset = storage.createAsset({
+      const asset = await storage.createAsset({
         projectId,
         uploaderId: req.user!.id,
         filename,
@@ -170,7 +162,7 @@ export function registerMcpRoutes(app: Express) {
         return mcpError(res, "Forbidden", "FORBIDDEN", 403);
       }
 
-      const assets = storage.listAssets(projectId, type);
+      const assets = await storage.listAssets(projectId, type);
       const safe = assets.map(({ fileData, ...rest }) => rest);
       res.json({ assets: safe });
     } catch (e: any) {

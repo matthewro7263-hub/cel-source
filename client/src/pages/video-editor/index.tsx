@@ -63,6 +63,7 @@ import {
   loadImageElement,
   probeVideoDurationMs,
 } from "./media";
+import { ToolSurface, ToolWorkspace } from "@/components/layout/tool-workspace";
 
 interface Panel {
   id: number;
@@ -110,7 +111,7 @@ const EXPORT_RESOLUTIONS = [
 ];
 
 function createClipId(prefix = "clip") {
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  return `${prefix}-${Date.now()}-${crypto.randomUUID()}`;
 }
 
 function isEditableTarget(target: EventTarget | null) {
@@ -634,107 +635,103 @@ export default function VideoEditor() {
   );
 
   return (
-    <div className="min-h-screen p-4 lg:p-6">
-      <div className="mx-auto max-w-[1560px] space-y-4">
-        <header className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-3">
-            <button
-              type="button"
-              onClick={() => navigate(`/projects/${pid}`)}
-              className="btn-ghost inline-flex items-center gap-2"
-            >
-              <ChevronLeft size={16} />
-              Back
-            </button>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="font-display text-2xl font-semibold">Video Editor</h1>
-                <span className="chip chip-sky">Timeline</span>
+    <ToolWorkspace
+      backAction={
+        <button
+          type="button"
+          onClick={() => navigate(`/projects/${pid}`)}
+          className="btn-ghost inline-flex items-center gap-2"
+        >
+          <ChevronLeft size={16} />
+          Back to project
+        </button>
+      }
+      title="Video Editor"
+      icon={<Film size={18} className="text-primary" />}
+      badge={<span className="chip chip-sky">Timeline</span>}
+      meta={
+        <>
+          <span>{clips.length} clip{clips.length === 1 ? "" : "s"}</span>
+          <span>•</span>
+          <span>{formatTimestamp(totalMs)}</span>
+          {selectedClip && (
+            <>
+              <span>•</span>
+              <span className="truncate">Selected: {selectedClip.label}</span>
+            </>
+          )}
+        </>
+      }
+      actions={
+        <>
+          <button
+            type="button"
+            className="btn-ghost inline-flex items-center gap-2"
+            disabled={past.length === 0}
+            onClick={undo}
+          >
+            <Undo2 size={15} />
+            Undo
+          </button>
+          <button
+            type="button"
+            className="btn-ghost inline-flex items-center gap-2"
+            disabled={future.length === 0}
+            onClick={redo}
+          >
+            <Redo2 size={15} />
+            Redo
+          </button>
+          <button
+            type="button"
+            className="btn-ghost inline-flex items-center gap-2"
+            disabled={clips.length === 0}
+            onClick={clearTimeline}
+          >
+            <RotateCcw size={15} />
+            Clear
+          </button>
+          <select
+            aria-label="Export resolution"
+            value={exportResolutionIndex}
+            onChange={(event) => setExportResolutionIndex(Number(event.target.value))}
+            className="h-10 px-3 text-sm"
+          >
+            {EXPORT_RESOLUTIONS.map((resolution, index) => (
+              <option key={resolution.label} value={index}>
+                {resolution.label}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="btn-sky"
+            disabled={clips.length === 0 || exportState !== null}
+            onClick={handleExport}
+          >
+            <Download size={16} />
+            {exportState ? `${exportState.progress}%` : "Export WebM"}
+          </button>
+        </>
+      }
+      main={
+        <>
+          {exportState && (
+            <ToolSurface className="p-3">
+              <div className="mb-2 flex items-center justify-between gap-3 text-sm">
+                <span>{exportState.status}</span>
+                <span className="font-mono text-xs text-muted-foreground">{exportState.progress}%</span>
               </div>
-              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                <span>{clips.length} clip{clips.length === 1 ? "" : "s"}</span>
-                <span>•</span>
-                <span>{formatTimestamp(totalMs)}</span>
-                {selectedClip && (
-                  <>
-                    <span>•</span>
-                    <span className="truncate">Selected: {selectedClip.label}</span>
-                  </>
-                )}
+              <div className="h-2 overflow-hidden rounded-full bg-black/10 dark:bg-white/10">
+                <div
+                  className="h-full rounded-full bg-[#9DD0FF] transition-all"
+                  style={{ width: `${exportState.progress}%` }}
+                />
               </div>
-            </div>
-          </div>
+            </ToolSurface>
+          )}
 
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              className="btn-ghost inline-flex items-center gap-2"
-              disabled={past.length === 0}
-              onClick={undo}
-            >
-              <Undo2 size={15} />
-              Undo
-            </button>
-            <button
-              type="button"
-              className="btn-ghost inline-flex items-center gap-2"
-              disabled={future.length === 0}
-              onClick={redo}
-            >
-              <Redo2 size={15} />
-              Redo
-            </button>
-            <button
-              type="button"
-              className="btn-ghost inline-flex items-center gap-2"
-              disabled={clips.length === 0}
-              onClick={clearTimeline}
-            >
-              <RotateCcw size={15} />
-              Clear
-            </button>
-            <select
-              aria-label="Export resolution"
-              value={exportResolutionIndex}
-              onChange={(event) => setExportResolutionIndex(Number(event.target.value))}
-              className="h-10 px-3 text-sm"
-            >
-              {EXPORT_RESOLUTIONS.map((resolution, index) => (
-                <option key={resolution.label} value={index}>
-                  {resolution.label}
-                </option>
-              ))}
-            </select>
-            <button
-              type="button"
-              className="btn-sky"
-              disabled={clips.length === 0 || exportState !== null}
-              onClick={handleExport}
-            >
-              <Download size={16} />
-              {exportState ? `${exportState.progress}%` : "Export WebM"}
-            </button>
-          </div>
-        </header>
-
-        {exportState && (
-          <div className="panel-soft p-3">
-            <div className="mb-2 flex items-center justify-between gap-3 text-sm">
-              <span>{exportState.status}</span>
-              <span className="font-mono text-xs text-muted-foreground">{exportState.progress}%</span>
-            </div>
-            <div className="h-2 overflow-hidden rounded-full bg-black/10 dark:bg-white/10">
-              <div
-                className="h-full rounded-full bg-[#9DD0FF] transition-all"
-                style={{ width: `${exportState.progress}%` }}
-              />
-            </div>
-          </div>
-        )}
-
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
-          <main className="min-w-0 space-y-4">
-            <section className="panel overflow-hidden">
+          <ToolSurface className="overflow-hidden">
               <canvas
                 ref={previewCanvasRef}
                 width={PREVIEW_WIDTH}
@@ -820,9 +817,9 @@ export default function VideoEditor() {
                   Safe
                 </button>
               </div>
-            </section>
+          </ToolSurface>
 
-            <section className="panel p-4">
+          <ToolSurface className="p-4">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <div className="text-xs uppercase tracking-wide text-muted-foreground">Timeline</div>
@@ -965,9 +962,9 @@ export default function VideoEditor() {
                   </div>
                 </div>
               </div>
-            </section>
+          </ToolSurface>
 
-            <section className="panel p-4">
+          <ToolSurface className="p-4">
               <div className="mb-3 flex items-center gap-2">
                 <Clock size={16} className="text-primary" />
                 <h2 className="text-sm font-semibold">Clip Inspector</h2>
@@ -1042,10 +1039,11 @@ export default function VideoEditor() {
                   </div>
                 </div>
               )}
-            </section>
-          </main>
-
-          <aside className="panel h-fit max-h-[calc(100vh-2rem)] overflow-y-auto p-4 xl:sticky xl:top-4">
+          </ToolSurface>
+        </>
+      }
+      aside={
+        <ToolSurface className="h-fit max-h-[calc(100vh-2rem)] overflow-y-auto p-4 xl:sticky xl:top-4">
             <div className="mb-4 flex items-center justify-between gap-3">
               <div>
                 <div className="text-xs uppercase tracking-wide text-muted-foreground">Media bin</div>
@@ -1159,9 +1157,8 @@ export default function VideoEditor() {
                 </div>
               </section>
             </div>
-          </aside>
-        </div>
-      </div>
-    </div>
+        </ToolSurface>
+      }
+    />
   );
 }

@@ -6,11 +6,11 @@ import { z } from "zod";
 import archiver from "archiver";
 import { createCanvas, loadImage } from "canvas";
 
-function canAccessProject(projectId: number, userId: number): boolean {
-  const p = storage.getProject(projectId);
+async function canAccessProject(projectId: number, userId: number): Promise<boolean> {
+  const p = await storage.getProject(projectId);
   if (!p) return false;
   if (p.ownerId === userId) return true;
-  return storage.isMember(projectId, userId);
+  return await storage.isMember(projectId, userId);
 }
 
 function extractToken(req: Request): string | undefined {
@@ -21,11 +21,11 @@ function extractToken(req: Request): string | undefined {
   return undefined;
 }
 
-function requireAuth(req: Request, res: Response, next: NextFunction) {
+async function requireAuth(req: Request, res: Response, next: NextFunction) {
   const token = extractToken(req);
   const userId = getSessionUser(token);
   if (!userId) return res.status(401).json({ message: "Not authenticated" });
-  const user = storage.getUser(userId);
+  const user = await storage.getUser(userId);
   if (!user) return res.status(401).json({ message: "User not found" });
   (req as any).user = user;
   next();
@@ -92,7 +92,7 @@ function generateMinimalGLTF(b64Data: string, bufferLength: number) {
 export function registerSpriteSheetRoutes(app: Express) {
   app.post("/api/projects/:id/spritesheet", requireAuth, async (req, res) => {
     const projectId = parseInt(String(req.params.id), 10);
-    if (!canAccessProject(projectId, (req as any).user.id)) {
+    if (!(await canAccessProject(projectId, (req as any).user.id))) {
       return res.status(403).json({ message: "No access" });
     }
 
@@ -110,17 +110,16 @@ export function registerSpriteSheetRoutes(app: Express) {
 
     try {
       // Verify panels belong to storyboards in this project
-      const projectSbs = db.select().from(storyboards).where(eq(storyboards.projectId, projectId)).all();
+      const projectSbs = await db.select().from(storyboards).where(eq(storyboards.projectId, projectId));
       const sbIds = projectSbs.map(s => s.id);
       if (sbIds.length === 0) {
         return res.status(400).json({ message: "No storyboards in this project" });
       }
 
-      const panels = db.select()
+      const panels = (await db.select()
         .from(storyboardPanels)
         .where(inArray(storyboardPanels.id, body.panelIds))
-        .all()
-        .filter(p => sbIds.includes(p.storyboardId)); // Only panels belonging to this project
+      ).filter(p => sbIds.includes(p.storyboardId)); // Only panels belonging to this project
 
       const images = [];
       for (const p of panels) {

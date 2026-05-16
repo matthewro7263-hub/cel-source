@@ -9,11 +9,11 @@ interface ReviewClientMeta {
 
 const rooms = new Map<number, Set<WebSocket>>();
 
-function canAccessProject(projectId: number, userId: number): boolean {
-  const project = storage.getProject(projectId);
+async function canAccessProject(projectId: number, userId: number): Promise<boolean> {
+  const project = await storage.getProject(projectId);
   if (!project) return false;
   if (project.ownerId === userId) return true;
-  return storage.isMember(projectId, userId);
+  return await storage.isMember(projectId, userId);
 }
 
 function sendJson(socket: WebSocket, payload: unknown) {

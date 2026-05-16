@@ -24,12 +24,12 @@ function svgPanel(bg: string, text: string, sub: string) {
 }
 
 export async function seedIfEmpty() {
-  const count = storage._db.select().from(users).all().length;
-  if (count > 0) return;
+  const allUsers = await storage._db.select().from(users);
+  if (allUsers.length > 0) return;
 
   console.log("[seed] creating demo data...");
 
-  const matthew = storage.createUser({
+  const matthew = await storage.createUser({
     email: "matthew@cel.app",
     name: "Matthew",
     passwordHash: hashPassword("celdemo"),
@@ -37,7 +37,7 @@ export async function seedIfEmpty() {
   });
 
   // collaborator
-  const collab = storage.createUser({
+  const collab = await storage.createUser({
     email: "sam@cel.app",
     name: "Sam Rivera",
     passwordHash: hashPassword("celdemo"),
@@ -47,7 +47,7 @@ export async function seedIfEmpty() {
   const deadline = new Date();
   deadline.setDate(deadline.getDate() + 14);
 
-  const project = storage.createProject({
+  const project = await storage.createProject({
     ownerId: matthew.id,
     title: "Bluey Fan Animation — The Lost Toy",
     description:
@@ -58,11 +58,11 @@ export async function seedIfEmpty() {
     shareToken: "demo" + genToken(12),
     shareEnabled: true,
   });
-  storage.addMember({ projectId: project.id, userId: matthew.id, role: "owner" });
-  storage.addMember({ projectId: project.id, userId: collab.id, role: "editor" });
+  await storage.addMember({ projectId: project.id, userId: matthew.id, role: "owner" });
+  await storage.addMember({ projectId: project.id, userId: collab.id, role: "editor" });
 
   // Script
-  storage.createScript({
+  await storage.createScript({
     projectId: project.id,
     title: "Episode 1 — The Lost Toy",
     content:
@@ -93,25 +93,25 @@ Right. New game. *Detectives.*
   });
 
   // Storyboard with 4 panels
-  const sb = storage.createStoryboard({ projectId: project.id, title: "Opening Scene — Lounge Search" });
+  const sb = await storage.createStoryboard({ projectId: project.id, title: "Opening Scene — Lounge Search" });
   const panels = [
     { bg: "#F4D9C7", text: "Panel 1", sub: "Wide — lounge room, Bingo mid-flip" },
     { bg: "#C7DCF4", text: "Panel 2", sub: "Close on Bingo's worried face" },
     { bg: "#D6C7F4", text: "Panel 3", sub: "Bluey appears in doorway" },
     { bg: "#C7F4D9", text: "Panel 4", sub: "Two-shot — 'New game. Detectives.'" },
   ];
-  panels.forEach((p, i) => {
-    storage.createPanel({
+  for (const [i, p] of panels.entries()) {
+    await storage.createPanel({
       storyboardId: sb.id,
       orderIdx: i,
       imageData: svgPanel(p.bg, p.text, p.sub),
       caption: p.sub,
       dialogue: i === 1 ? "I can't find Floppy!" : i === 3 ? "New game. Detectives." : "",
     });
-  });
+  }
 
   // Animatic — YouTube short
-  storage.createAnimatic({
+  await storage.createAnimatic({
     projectId: project.id,
     title: "Rough animatic v0.2",
     videoData: "https://www.youtube.com/watch?v=aqz-KE-bpKQ",
@@ -126,10 +126,10 @@ Right. New game. *Detectives.*
     { number: "2B", title: "Floppy reveal", status: "storyboard", days: 10 },
     { number: "3A", title: "Hug + button gag", status: "script", days: 13 },
   ];
-  scenesData.forEach((s) => {
+  for (const s of scenesData) {
     const d = new Date();
     d.setDate(d.getDate() + s.days);
-    storage.createScene({
+    await storage.createScene({
       projectId: project.id,
       number: s.number,
       title: s.title,
@@ -138,10 +138,10 @@ Right. New game. *Detectives.*
       deadline: d.toISOString().slice(0, 10),
       assigneeId: matthew.id,
     });
-  });
+  }
 
   // a comment
-  storage.createComment({
+  await storage.createComment({
     projectId: project.id,
     sceneId: null,
     authorId: collab.id,
@@ -154,17 +154,17 @@ Right. New game. *Detectives.*
   // Seed weekly challenge prompts (idempotent)
   try {
     const { challenge_prompts } = require("../shared/challenge_schema");
-    const existing = storage._db.select().from(challenge_prompts).all();
+    const existing = await storage._db.select().from(challenge_prompts);
     if (!existing || existing.length === 0) {
       const now = new Date().toISOString();
-      storage._db.insert(challenge_prompts).values([
+      await storage._db.insert(challenge_prompts).values([
         { weekNumber: 1, title: "Draw a character from behind", body: "Draw a character entirely from behind, conveying their mood or intent purely through posture and silhouette.", createdAt: now },
         { weekNumber: 2, title: "12-frame walk cycle in stepped 2s", body: "Animate a basic walk cycle using only 6 unique drawings, held for 2 frames each.", createdAt: now },
         { weekNumber: 3, title: "1-color silhouette study", body: "Create a composition using only one solid color and the background to define the form.", createdAt: now },
         { weekNumber: 4, title: "Hand expressions sheet", body: "Fill a page with 10 different hand poses that tell a story without seeing the face.", createdAt: now },
         { weekNumber: 5, title: "Bluey-style watercolor sky", body: "Paint a bright, optimistic sky background using watercolor techniques (digital or traditional) inspired by Bluey's art direction.", createdAt: now },
         { weekNumber: 6, title: "Tight character lineup in your style", body: "Draw a clean, tight lineup of 3-5 characters showing size relationships and distinct silhouettes.", createdAt: now },
-      ]).run();
+      ]);
     }
   } catch (e) {
     console.error("[seed] challenge_prompts seed failed:", e);
@@ -192,7 +192,7 @@ Right. New game. *Detectives.*
   </svg>`;
   const bingoDataUrl = "data:image/svg+xml;base64," + Buffer.from(bingoChrSvg).toString("base64");
 
-  storage.createAsset({
+  await storage.createAsset({
     projectId: project.id,
     category: "Characters",
     filename: "bingo-character-rig.png",
@@ -206,7 +206,7 @@ Right. New game. *Detectives.*
 
   // 2. Moho file placeholder (not an image — shows icon card)
   const mohoPlaceholder = "data:application/octet-stream;base64," + Buffer.from("MOHO_PLACEHOLDER").toString("base64");
-  storage.createAsset({
+  await storage.createAsset({
     projectId: project.id,
     category: "Characters",
     filename: "bluey-character-rig.moho",
@@ -219,7 +219,7 @@ Right. New game. *Detectives.*
   });
 
   // ===== SAMPLE COMMISSION =====
-  storage.createCommission({
+  await storage.createCommission({
     ownerUserId: matthew.id,
     clientName: "Sophie Chen",
     clientEmail: "sophie.chen@example.com",
@@ -234,9 +234,9 @@ Right. New game. *Detectives.*
 
   // ===== SAMPLE RENDER =====
   // Get first scene (1A)
-  const allScenes = storage._db.select().from(scenesTable).all();
+  const allScenes = await storage._db.select().from(scenesTable);
   if (allScenes.length > 0) {
-    storage.createRender({
+    await storage.createRender({
       sceneId: allScenes[0].id,
       label: "Preview pass v1",
       status: "done",
@@ -249,20 +249,20 @@ Right. New game. *Detectives.*
 
   // ===== ANIMATIC PROJECT v2 (seed) =====
   // Use the storyboard panels we just created
-  const allPanels = storage._db.select().from(panelsTable).all();
-  const sampleAnimatic = storage.createAnimaticProject({
+  const allPanels = await storage._db.select().from(panelsTable);
+  const sampleAnimatic = await storage.createAnimaticProject({
     projectId: project.id,
     title: "Lost Toy — Opening Sequence Cut",
     fps: 24,
     totalDurationMs: 8000,
   });
   // getAnimaticProject returns full assembly with tracks
-  const fullAnimatic = storage.getAnimaticProject(sampleAnimatic.id)!;
+  const fullAnimatic = await storage.getAnimaticProject(sampleAnimatic.id)!;
   const panelTrack = fullAnimatic.tracks.find((t) => t.kind === "panel");
   if (panelTrack && allPanels.length >= 4) {
     // Place 4 panel clips at 0, 2000, 4000, 6000ms
     for (let i = 0; i < 4; i++) {
-      storage.createClip({
+      await storage.createClip({
         trackId: panelTrack.id,
         startMs: i * 2000,
         durationMs: 2000,
@@ -279,8 +279,8 @@ Right. New game. *Detectives.*
 
   // ===== v4 seed data =====
   // v4 inbox items (3)
-  if (typeof v4storage.createInboxItem === "function") {
-    v4storage.createInboxItem({
+  if (typeof await storage.createInboxItem === "function") {
+    await storage.createInboxItem({
       userId: matthew.id,
       title: "Sketch panel for scene 2A",
       body: "Add a rough sketch of the detective montage opening shot so timing can be reviewed.",
@@ -288,7 +288,7 @@ Right. New game. *Detectives.*
       pinned: false,
       archivedAt: null,
     });
-    v4storage.createInboxItem({
+    await storage.createInboxItem({
       userId: matthew.id,
       title: "Sophie's commission — follow up on reference images",
       body: "Client said she'd send photo references for the kitchen scene. Check email.",
@@ -296,7 +296,7 @@ Right. New game. *Detectives.*
       pinned: true,
       archivedAt: null,
     });
-    v4storage.createInboxItem({
+    await storage.createInboxItem({
       userId: matthew.id,
       title: "Render 2B overnight",
       body: "Start the Blender render for scene 2B before bed. Use OptiX denoiser.",
@@ -309,24 +309,24 @@ Right. New game. *Detectives.*
   // v4 tags (2)
   let urgentTagId: number | null = null;
   let polishTagId: number | null = null;
-  if (typeof v4storage.createTag === "function") {
-    const urgentTag = v4storage.createTag({ name: "urgent", color: "#EF4444", userId: matthew.id });
+  if (typeof await storage.createTag === "function") {
+    const urgentTag = await storage.createTag({ name: "urgent", color: "#EF4444", userId: matthew.id });
     urgentTagId = urgentTag?.id ?? null;
-    const polishTag = v4storage.createTag({ name: "polish", color: "#F59E0B", userId: matthew.id });
+    const polishTag = await storage.createTag({ name: "polish", color: "#F59E0B", userId: matthew.id });
     polishTagId = polishTag?.id ?? null;
   }
 
   // v4 tag assignment — tag scene 1 as urgent
-  const allScenesSeed = storage._db.select().from(scenesTable).all();
-  if (urgentTagId && allScenesSeed.length > 0 && typeof v4storage.createTagAssignment === "function") {
-    v4storage.createTagAssignment({ tagId: urgentTagId, entityKind: "scene", entityId: allScenesSeed[0].id });
+  const allScenesSeed = await storage._db.select().from(scenesTable);
+  if (urgentTagId && allScenesSeed.length > 0 && typeof await storage.createTagAssignment === "function") {
+    await storage.createTagAssignment({ tagId: urgentTagId, entityKind: "scene", entityId: allScenesSeed[0].id });
   }
 
   // v4 panel pin (1) — pin on panel 1 (use current schema: body + authorId)
-  const allPanelsSeed = storage._db.select().from(panelsTable).all();
-  if (allPanelsSeed.length > 0 && typeof v4storage.createPanelPin === "function") {
+  const allPanelsSeed = await storage._db.select().from(panelsTable);
+  if (allPanelsSeed.length > 0 && typeof await storage.createPanelPin === "function") {
     try {
-      v4storage.createPanelPin({
+      await storage.createPanelPin({
         panelId: allPanelsSeed[0].id,
         authorId: matthew.id,
         xPercent: 30,
@@ -340,24 +340,24 @@ Right. New game. *Detectives.*
 
   // v4 achievement unlock — first_project for matthew
   try {
-    if (typeof v4storage.unlockAchievement === "function") {
-      v4storage.unlockAchievement(matthew.id, "first_project");
-      v4storage.unlockAchievement(matthew.id, "first_scene");
+    if (typeof await storage.unlockAchievement === "function") {
+      await storage.unlockAchievement(matthew.id, "first_project");
+      await storage.unlockAchievement(matthew.id, "first_scene");
     }
   } catch (e: any) { console.warn("[seed] achievements skipped:", e?.message); }
 
   // v4 commission line items (2) on Sophie's commission
-  const allCommissions = (storage as any).listCommissions ? (storage as any).listCommissions(matthew.id) : [];
+  const allCommissions = await (storage as any).listCommissions ? await (storage as any).listCommissions(matthew.id) : [];
   const sophieCommission = allCommissions[0];
   try {
-    if (sophieCommission && typeof v4storage.createCommissionLineItem === "function") {
-      v4storage.createCommissionLineItem({
+    if (sophieCommission && typeof await storage.createCommissionLineItem === "function") {
+      await storage.createCommissionLineItem({
         commissionId: sophieCommission.id,
         description: "Character design + 3 expressions",
         quantity: 1,
         unitPriceCents: 8000,
       });
-      v4storage.createCommissionLineItem({
+      await storage.createCommissionLineItem({
         commissionId: sophieCommission.id,
         description: "30-second 2D animation",
         quantity: 1,

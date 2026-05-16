@@ -1,10 +1,10 @@
-import { sqliteTable, integer, text, real } from "drizzle-orm/sqlite-core";
+import { pgTable, integer, text, real, serial, timestamp, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
 // ===== BIZ: FESTIVAL SUBMISSIONS =====
-export const biz_festivals = sqliteTable("biz_festivals", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const biz_festivals = pgTable("biz_festivals", {
+  id: serial("id").primaryKey(),
   userId: integer("user_id").notNull(),
   name: text("name").notNull(),
   deadline: text("deadline"),
@@ -12,28 +12,32 @@ export const biz_festivals = sqliteTable("biz_festivals", {
   fee: real("fee").default(0),
   notes: text("notes"),
   projectId: integer("project_id"),
-  createdAt: text("created_at").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
-export const insertBizFestivalSchema = createInsertSchema(biz_festivals).omit({ id: true, createdAt: true });
+export const insertBizFestivalSchema = createInsertSchema(biz_festivals, {
+  id: () => z.number().optional(),
+}).omit({ id: true, createdAt: true });
 export type InsertBizFestival = z.infer<typeof insertBizFestivalSchema>;
 export type BizFestival = typeof biz_festivals.$inferSelect;
 
 // ===== BIZ: CONTRACT TEMPLATES =====
-export const biz_contracts = sqliteTable("biz_contracts", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const biz_contracts = pgTable("biz_contracts", {
+  id: serial("id").primaryKey(),
   userId: integer("user_id").notNull(),
   name: text("name").notNull(),
   kind: text("kind").notNull(), // commission|nda|model_release
   body: text("body").notNull(),
-  createdAt: text("created_at").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
-export const insertBizContractSchema = createInsertSchema(biz_contracts).omit({ id: true, createdAt: true });
+export const insertBizContractSchema = createInsertSchema(biz_contracts, {
+  id: () => z.number().optional(),
+}).omit({ id: true, createdAt: true });
 export type InsertBizContract = z.infer<typeof insertBizContractSchema>;
 export type BizContract = typeof biz_contracts.$inferSelect;
 
 // ===== BIZ: EXPENSES =====
-export const biz_expenses = sqliteTable("biz_expenses", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const biz_expenses = pgTable("biz_expenses", {
+  id: serial("id").primaryKey(),
   userId: integer("user_id").notNull(),
   projectId: integer("project_id"),
   date: text("date").notNull(),
@@ -41,8 +45,10 @@ export const biz_expenses = sqliteTable("biz_expenses", {
   amount: real("amount").notNull(),
   notes: text("notes"),
   receiptUrl: text("receipt_url"),
-  createdAt: text("created_at").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
-export const insertBizExpenseSchema = createInsertSchema(biz_expenses).omit({ id: true, createdAt: true });
+export const insertBizExpenseSchema = createInsertSchema(biz_expenses, {
+  id: () => z.number().optional(),
+}).omit({ id: true, createdAt: true });
 export type InsertBizExpense = z.infer<typeof insertBizExpenseSchema>;
 export type BizExpense = typeof biz_expenses.$inferSelect;

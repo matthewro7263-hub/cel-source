@@ -10,14 +10,12 @@ import {
 } from "@/lib/utils-cel";
 import type { Project, Script, Animatic, Scene, Panel, Storyboard } from "@shared/schema";
 
-// === AGENT_1 ADDITIONS START ===
 import { CliVersionCompareModal } from "@/components/cli-version-compare";
 import { CliShareHeader } from "@/components/cli-share-header";
 import { CliFeedbackModal } from "@/components/cli-feedback-modal";
 import { CliApprovalWidget } from "@/components/cli-approval-widget";
 import { CliWatermarkOverlay } from "@/components/cli-watermark";
 import { useState } from "react";
-// === AGENT_1 ADDITIONS END ===
 
 interface ShareData {
   project: Project;
@@ -56,7 +54,6 @@ export default function Share() {
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
       {/* Header */}
-      {/* === AGENT_1 ADDITIONS START === */}
       <style>{`
         .tabs-trigger-active {
           border-bottom-color: ${brandColor} !important;
@@ -68,7 +65,6 @@ export default function Share() {
         }
       `}</style>
       <CliShareHeader project={project} />
-      {/* === AGENT_1 ADDITIONS END === */}
       {/* <header className="border-b border-border bg-sidebar">
         <div className="max-w-5xl mx-auto px-5 sm:px-8 py-4 flex items-center justify-between gap-4">
           <CelWordmark />
@@ -103,13 +99,11 @@ export default function Share() {
                 <span className="text-muted-foreground">Deadline: {d.text}</span>
               </div>
             </div>
-            {/* === AGENT_1 ADDITIONS START === */}
             <div className="flex flex-col gap-2 min-w-[200px]">
               <CliApprovalWidget projectId={project.id} phase="storyboard" brandColor={(project as any).cli_brandColor} />
               <CliApprovalWidget projectId={project.id} phase="animatic" brandColor={(project as any).cli_brandColor} />
               <CliFeedbackModal projectId={project.id} />
             </div>
-            {/* === AGENT_1 ADDITIONS END === */}
           </div>
         </div>
 
@@ -150,13 +144,10 @@ export default function Share() {
                             alt={p.caption || p.dialogue || `${sb.title} panel ${i + 1}`}
                             className="w-full h-full object-cover"
                           />
-                          {/* === AGENT_1 ADDITIONS START === */}
                           <CliWatermarkOverlay projectId={project.id} projectName={project.title} token={params.token} />
-                          {/* === AGENT_1 ADDITIONS END === */}
                           <div className="absolute top-2 left-2 text-[10px] font-mono bg-background/90 px-1.5 py-0.5 rounded z-10">
                             #{String(i + 1).padStart(2, "0")}
                           </div>
-                          {/* === AGENT_1 ADDITIONS START === */}
                           {i > 0 && (
                             <div className="absolute top-2 right-2 z-10">
                               <CliVersionCompareModal 
@@ -166,7 +157,6 @@ export default function Share() {
                               />
                             </div>
                           )}
-                          {/* === AGENT_1 ADDITIONS END === */}
                         </div>
                         {(p.caption || p.dialogue) && (
                           <div className="p-3 text-xs">
@@ -201,7 +191,6 @@ export default function Share() {
                         <div className="font-display font-semibold text-sm mb-1">{a.title}</div>
                         {a.notes && <p className="text-xs text-muted-foreground">{a.notes}</p>}
                       </div>
-                      {/* === AGENT_1 ADDITIONS START === */}
                       {idx > 0 && !yt && !vm && (
                         <CliVersionCompareModal 
                           currentUrl={a.videoData} 
@@ -209,7 +198,6 @@ export default function Share() {
                           isVideo={true} 
                         />
                       )}
-                      {/* === AGENT_1 ADDITIONS END === */}
                     </div>
                   </div>
                 );

@@ -14,15 +14,13 @@ import Login from "@/pages/Login";
 import Signup from "@/pages/Signup";
 import Landing from "@/pages/Landing";
 import Dashboard from "@/pages/Dashboard";
-import ProjectWorkspace from "@/pages/ProjectWorkspace";
+import ProjectWorkspace, { ProjectSectionPage } from "@/pages/ProjectWorkspace";
 import Share from "@/pages/Share";
 import ProfileSettings from "@/pages/ProfileSettings";
 import CommissionIntake from "@/pages/CommissionIntake";
 import CommissionsQueue from "@/pages/CommissionsQueue";
-// === AGENT_3 ADDITIONS START ===
 import PaletteMatcher from "./pages/lor/PaletteMatcher";
 import EpisodeBible from "./pages/lor/EpisodeBible";
-// === AGENT_3 ADDITIONS END ===
 import NotFound from "@/pages/not-found";
 import AnimaticEditor from "@/pages/animatic-editor";
 import VideoEditor from "@/pages/video-editor";
@@ -39,34 +37,25 @@ import { useGlobalShortcuts } from "@/hooks/use-global-shortcuts";
 
 import { A11yProvider } from "@/lib/a11y-preferences";
 
-// === AGENT_4 ADDITIONS START ===
 import BakTrashPage from "@/pages/bak/Trash";
 import BakSpriteSheetPage from "@/pages/bak/SpriteSheet";
 import A11ySettings from "@/pages/a11y";
 import ChallengeFeed from "@/pages/challenge";
 
-// === AGENT_4 ADDITIONS END ===
 
-// === AGENT_2 ADDITIONS START ===
 import AudVoiceBoothPage from "@/pages/aud_voicebooth";
 import Audio2Page from "@/pages/audio2";
-// === AGENT_2 ADDITIONS END ===
 
-// === AGENT_5 ADDITIONS START ===
 import AnalyticsPage from "@/pages/analytics";
 import ScratchpadPage from "@/pages/scratchpad";
 import CouchModePage from "@/pages/couch-mode";
-// === AGENT_5 ADDITIONS END ===
 
-// === AGENT_STUDIO ADDITIONS START ===
 import RenderBudget from "@/pages/studio/RenderBudget";
 import Snapshots from "@/pages/studio/Snapshots";
 import CreditRoll from "@/pages/studio/CreditRoll";
-// === AGENT_STUDIO ADDITIONS END ===
+import LightLab from "@/pages/studio/LightLab";
 
-// === AGENT_BIZ ADDITIONS START ===
 import BizPage from "@/pages/biz/index";
-// === AGENT_BIZ ADDITIONS END ===
 
 // ── liquidGL initializer ─────────────────────────────────────────────────────
 // liquidGL is a window-global loaded via <script> in index.html.
@@ -81,23 +70,58 @@ declare global {
   }
 }
 
-// liquidGL is DISABLED.
-//
-// The library snapshots the page and renders a WebGL refraction canvas over
-// each target element. In practice it occluded sidebar nav items and hero
-// content (children of .liquidGL-bg elements get hidden behind the WebGL
-// canvas), so the user reported "UI looks missing" on both the project page
-// (sidebar gone) and the landing page (hero gone).
-//
-// The CSS-based .glass / .landing-panel frosted backdrop already delivers a
-// polished glassmorphism look that works everywhere (no WebGL required, no
-// crash surface, no Firefox/sandbox issues). The liquidGL.js + html2canvas.min.js
-// scripts are still loaded for now — they do nothing without targets — and
-// can be removed from index.html in a follow-up cleanup.
-
 function useLiquidGL() {
-  // no-op — retained as a named hook so AppRouter doesn't change shape, but
-  // the WebGL effect is no longer initialized.
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.liquidGL !== "function") return;
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+
+    let frame = 0;
+    const initPending = () => {
+      const targets = Array.from(
+        document.querySelectorAll<HTMLElement>("[data-liquid-gl='true']:not([data-liquid-ready='true'])"),
+      );
+      if (targets.length === 0) return;
+
+      targets.forEach((target) => {
+        target.classList.add("liquidGL-pending");
+        target.setAttribute("data-liquid-ready", "true");
+      });
+
+      try {
+        window.liquidGL?.({
+          target: ".liquidGL-pending",
+          snapshot: "#root",
+          resolution: 1.2,
+          refraction: 0.006,
+          bevelDepth: 0.045,
+          bevelWidth: 0.1,
+          frost: 0.02,
+          shadow: false,
+          specular: true,
+          reveal: "fade",
+          tilt: false,
+        });
+      } catch (error) {
+        console.warn("liquidGL initialization failed; using CSS glass fallback.", error);
+      } finally {
+        targets.forEach((target) => target.classList.remove("liquidGL-pending"));
+      }
+    };
+
+    const schedule = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(initPending);
+    };
+
+    schedule();
+    const observer = new MutationObserver(schedule);
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, []);
 }
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -131,6 +155,10 @@ function ReviewRoomRoute() {
   return <ProtectedShell><ReviewRoomPage /></ProtectedShell>;
 }
 
+function ProjectSectionRoute({ section }: { section: "script" | "storyboards" | "assets" | "animatics" | "scenes" | "comments" | "continuity" | "casting" | "signoff" | "settings" }) {
+  return <ProtectedShell><ProjectSectionPage section={section} /></ProtectedShell>;
+}
+
 // Landing page handles its own auth-redirect (logged-in users go to dashboard)
 // so unauthenticated visitors see the marketing page at "/".
 
@@ -162,6 +190,36 @@ function AppRouter() {
         <Route path="/dashboard">
           <ProtectedShell><Dashboard /></ProtectedShell>
         </Route>
+        <Route path="/projects/:id/script">
+          <ProjectSectionRoute section="script" />
+        </Route>
+        <Route path="/projects/:id/storyboards">
+          <ProjectSectionRoute section="storyboards" />
+        </Route>
+        <Route path="/projects/:id/assets">
+          <ProjectSectionRoute section="assets" />
+        </Route>
+        <Route path="/projects/:id/animatics">
+          <ProjectSectionRoute section="animatics" />
+        </Route>
+        <Route path="/projects/:id/scenes">
+          <ProjectSectionRoute section="scenes" />
+        </Route>
+        <Route path="/projects/:id/comments">
+          <ProjectSectionRoute section="comments" />
+        </Route>
+        <Route path="/projects/:id/continuity">
+          <ProjectSectionRoute section="continuity" />
+        </Route>
+        <Route path="/projects/:id/casting">
+          <ProjectSectionRoute section="casting" />
+        </Route>
+        <Route path="/projects/:id/signoff">
+          <ProjectSectionRoute section="signoff" />
+        </Route>
+        <Route path="/projects/:id/settings">
+          <ProjectSectionRoute section="settings" />
+        </Route>
         <Route path="/projects/:id">
           <ProtectedShell><ProjectWorkspace /></ProtectedShell>
         </Route>
@@ -178,14 +236,12 @@ function AppRouter() {
           <ProtectedShell><CommissionsQueue /></ProtectedShell>
         </Route>
                 <Route path="/commission/:userId" component={CommissionIntake} />
-        {/* === AGENT_3 ADDITIONS START === */}
         <Route path="/projects/:id/palette">
           <ProtectedShell><PaletteMatcher /></ProtectedShell>
         </Route>
         <Route path="/projects/:id/bible">
           <ProtectedShell><EpisodeBible /></ProtectedShell>
         </Route>
-        {/* === AGENT_3 ADDITIONS END === */}
         {/* v4 routes — achievements and inbox */}
         <Route path="/achievements">
           <ProtectedShell><Achievements /></ProtectedShell>
@@ -193,7 +249,6 @@ function AppRouter() {
         <Route path="/inbox">
           <ProtectedShell><InboxPage /></ProtectedShell>
         </Route>
-        {/* === AGENT_STUDIO ADDITIONS START === */}
         <Route path="/projects/:id/render-budget">
           <ProtectedShell><RenderBudget /></ProtectedShell>
         </Route>
@@ -203,8 +258,6 @@ function AppRouter() {
         <Route path="/projects/:id/credits">
           <ProtectedShell><CreditRoll /></ProtectedShell>
         </Route>
-        {/* === AGENT_STUDIO ADDITIONS END === */}
-        {/* === AGENT_5 ADDITIONS START === */}
         <Route path="/analytics">
           <ProtectedShell><AnalyticsPage /></ProtectedShell>
         </Route>
@@ -214,30 +267,23 @@ function AppRouter() {
         <Route path="/projects/:id/couch">
           <ProtectedFullscreen><CouchModePage /></ProtectedFullscreen>
         </Route>
-        {/* === AGENT_5 ADDITIONS END === */}
 
-        {/* === AGENT_BIZ ADDITIONS START === */}
         <Route path="/business">
           <ProtectedShell><BizPage /></ProtectedShell>
         </Route>
-        {/* === AGENT_BIZ ADDITIONS END === */}
 
-        {/* === AGENT_4 ADDITIONS START === */}
         <Route path="/projects/:id/trash">
           <ProtectedShell><BakTrashPage /></ProtectedShell>
         </Route>
         <Route path="/projects/:id/spritesheet">
           <ProtectedShell><BakSpriteSheetPage /></ProtectedShell>
         </Route>
-        {/* === AGENT_4 ADDITIONS END === */}
-        {/* === AGENT_2 ADDITIONS START === */}
         <Route path="/projects/:id/voicebooth">
           <ProtectedShell><AudVoiceBoothPage /></ProtectedShell>
         </Route>
         <Route path="/projects/:id/audio2">
           {(params) => <ProtectedShell><Audio2Page params={{id: params.id}} /></ProtectedShell>}
         </Route>
-        {/* === AGENT_2 ADDITIONS END === */}
         {/* animatic editor */}
         <Route path="/projects/:projectId/animatic/:animaticId">
           <AnimaticEditor />
@@ -260,6 +306,9 @@ function AppRouter() {
         </Route>
         <Route path="/projects/:id/inbetween">
           <ProtectedShell><InbetweenColorLab /></ProtectedShell>
+        </Route>
+        <Route path="/projects/:id/light-lab">
+          <ProtectedShell><LightLab /></ProtectedShell>
         </Route>
         <Route component={NotFound} />
       </Switch>

@@ -52,87 +52,87 @@ interface AchievementContext {
   projectId?: number;
 }
 
-export function checkAchievements(ctx: AchievementContext): string[] {
+export async function checkAchievements(ctx: AchievementContext): Promise<string[]> {
   const { userId, event } = ctx;
   const unlocked: string[] = [];
 
-  function tryUnlock(code: string) {
-    if (!(storage as any).hasAchievement(userId, code)) {
-      (storage as any).unlockAchievement(userId, code);
+  async function tryUnlock(code: string) {
+    if (!await (storage as any).hasAchievement(userId, code)) {
+      await (storage as any).unlockAchievement(userId, code);
       unlocked.push(code);
     }
   }
 
   // Time-based achievements
   const hour = new Date().getHours();
-  if (hour >= 0 && hour < 5) tryUnlock("night_owl");
-  if (hour >= 5 && hour < 7) tryUnlock("early_bird");
+  if (hour >= 0 && hour < 5) await tryUnlock("night_owl");
+  if (hour >= 5 && hour < 7) await tryUnlock("early_bird");
 
   switch (event) {
     case "create_project": {
-      const projectCount = storage.listProjectsForUser(userId).length;
-      if (projectCount >= 1) tryUnlock("first_project");
+      const projectsList = await storage.listProjectsForUser(userId);
+      if (projectsList.length >= 1) await tryUnlock("first_project");
       break;
     }
     case "create_scene": {
-      // first_scene
-      const sceneCount = storage._db
-        .select()
-        .from((storage as any)._db.$client ? (null as any) : (null as any))
-        .all?.()?.length ?? 0;
-      tryUnlock("first_scene");
+      const userProjects = await storage.listProjectsForUser(userId);
+      let totalScenes = 0;
+      for (const p of userProjects) {
+        totalScenes += (await storage.listScenes(p.id)).length;
+      }
+      if (totalScenes >= 1) await tryUnlock("first_scene");
       break;
     }
     case "create_panel": {
-      // Count all panels for this user's projects
-      tryUnlock("first_storyboard");
-      // Count total user panels across all projects
-      const userProjects = storage.listProjectsForUser(userId);
+      await tryUnlock("first_storyboard");
+      const userProjects = await storage.listProjectsForUser(userId);
       let totalPanels = 0;
       for (const p of userProjects) {
-        const sbs = storage.listStoryboards(p.id);
+        const sbs = await storage.listStoryboards(p.id);
         for (const sb of sbs) {
-          totalPanels += storage.listPanels(sb.id).length;
+          totalPanels += (await storage.listPanels(sb.id)).length;
         }
       }
-      if (totalPanels >= 10) tryUnlock("ten_panels");
-      if (totalPanels >= 50) tryUnlock("fifty_panels");
-      if (totalPanels >= 100) tryUnlock("hundred_panels");
+      if (totalPanels >= 10) await tryUnlock("ten_panels");
+      if (totalPanels >= 50) await tryUnlock("fifty_panels");
+      if (totalPanels >= 100) await tryUnlock("hundred_panels");
       break;
     }
     case "create_animatic": {
-      tryUnlock("first_animatic");
+      await tryUnlock("first_animatic");
       break;
     }
     case "create_commission": {
-      tryUnlock("first_commission");
+      await tryUnlock("first_commission");
       break;
     }
     case "deliver_commission": {
-      tryUnlock("first_delivered");
+      await tryUnlock("first_delivered");
       break;
     }
     case "enable_share_link": {
-      tryUnlock("share_link");
+      await tryUnlock("share_link");
       break;
     }
     case "add_member": {
-      tryUnlock("team_player");
+      await tryUnlock("team_player");
       break;
     }
     case "create_comment": {
-      // Count all user comments
-      const userProjects = storage.listProjectsForUser(userId);
+      const userProjects = await storage.listProjectsForUser(userId);
       let totalComments = 0;
       for (const p of userProjects) {
-        totalComments += storage.listComments(p.id).length;
+        totalComments += (await storage.listComments(p.id)).length;
       }
-      if (totalComments >= 20) tryUnlock("polished");
+      if (totalComments >= 20) await tryUnlock("polished");
       break;
     }
     case "login": {
-      // Week streak check — simplified: just check if used 7 different days
-      // For now just try to unlock based on count of unique days in achievements (simplified impl)
+      const dates = await (storage as any).getAchievementUnlockDates?.(userId) ?? [];
+      const activityDays: Set<string> = new Set(
+        dates.map((d: string) => new Date(d).toDateString())
+      );
+      if (activityDays.size >= 7) await tryUnlock("week_streak");
       break;
     }
   }

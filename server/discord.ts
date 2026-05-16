@@ -1,7 +1,7 @@
 import { storage } from "./storage";
 
 export async function notifyDiscord(projectId: number, title: string, description: string) {
-  const project = storage.getProject(projectId);
+  const project = await storage.getProject(projectId);
   if (!project) return;
   const webhookUrl = (project as any).dltDiscordWebhookUrl;
   if (!webhookUrl || typeof webhookUrl !== "string") return;
@@ -22,7 +22,7 @@ export async function notifyDiscord(projectId: number, title: string, descriptio
   }
 
   // Truncate description to Discord's 4096-char embed limit
-  const safeDesc = description.length > 4000 ? description.slice(0, 4000) + "…" : description;
+  const safeDesc = description.length > 4000 ? description.slice(0, 4000) + "\u2026" : description;
 
   try {
     const resp = await fetch(webhookUrl, {
@@ -34,7 +34,7 @@ export async function notifyDiscord(projectId: number, title: string, descriptio
           description: safeDesc,
           color: colorInt,
           timestamp: new Date().toISOString(),
-          footer: { text: `Cel · ${project.title}` }
+          footer: { text: `Cel \u00b7 ${project.title}` }
         }]
       })
     });

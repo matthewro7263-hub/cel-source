@@ -5,7 +5,7 @@ import {
   scripts, storyboardPanels, scenes, assets, bakSnapshots, bakGltfExports,
   projects, comments, projectMembers, storyboards
 } from "@shared/schema";
-import { eq, isNull, lt, inArray } from "drizzle-orm";
+import { eq, isNull, lt, inArray, isNotNull, and } from "drizzle-orm";
 import archiver from "archiver";
 import jsPDF from "jspdf";
 import { createHash } from "node:crypto";
@@ -26,21 +26,21 @@ function extractToken(req: Request): string | undefined {
   return undefined;
 }
 
-function requireAuth(req: Request, res: Response, next: NextFunction) {
+async function requireAuth(req: Request, res: Response, next: NextFunction) {
   const token = extractToken(req);
   const userId = getSessionUser(token);
   if (!userId) return res.status(401).json({ message: "Not authenticated" });
-  const user = storage.getUser(userId);
+  const user = await storage.getUser(userId);
   if (!user) return res.status(401).json({ message: "User not found" });
   req.user = user;
   next();
 }
 
-function canAccessProject(projectId: number, userId: number): boolean {
-  const p = storage.getProject(projectId);
+async function canAccessProject(projectId: number, userId: number): Promise<boolean> {
+  const p = await storage.getProject(projectId);
   if (!p) return false;
   if (p.ownerId === userId) return true;
-  return storage.isMember(projectId, userId);
+  return await storage.isMember(projectId, userId);
 }
 
 function safeArchiveName(value: string): string {
@@ -64,18 +64,18 @@ function checksumBuffer(buffer: Buffer): string {
 // 1. .cel-archive Portable Export
 bakRouter.get("/projects/:id/archive", requireAuth, async (req, res) => {
   const projectId = parseInt(String(req.params.id), 10);
-  if (!canAccessProject(projectId, req.user!.id)) {
+  if (!(await canAccessProject(projectId, req.user!.id))) {
     return res.status(403).json({ message: "Forbidden" });
   }
 
-  const project = storage.getProject(projectId);
+  const project = await storage.getProject(projectId);
   if (!project) return res.status(404).json({ message: "Project not found" });
-  const projScripts = db.select().from(scripts).where(eq(scripts.projectId, projectId)).all();
-  const projStoryboards = db.select().from(storyboards).where(eq(storyboards.projectId, projectId)).all();
-  const projScenes = db.select().from(scenes).where(eq(scenes.projectId, projectId)).all();
-  const projAssets = db.select().from(assets).where(eq(assets.projectId, projectId)).all();
-  const projComments = db.select().from(comments).where(eq(comments.projectId, projectId)).all();
-  const projMembers = db.select().from(projectMembers).where(eq(projectMembers.projectId, projectId)).all();
+  const projScripts = await db.select().from(scripts).where(eq(scripts.projectId, projectId));
+  const projStoryboards = await db.select().from(storyboards).where(eq(storyboards.projectId, projectId));
+  const projScenes = await db.select().from(scenes).where(eq(scenes.projectId, projectId));
+  const projAssets = await db.select().from(assets).where(eq(assets.projectId, projectId));
+  const projComments = await db.select().from(comments).where(eq(comments.projectId, projectId));
+  const projMembers = await db.select().from(projectMembers).where(eq(projectMembers.projectId, projectId));
 
   const archiveName = `${safeArchiveName(project.title)}.cel-archive`;
   res.attachment(archiveName);
@@ -83,10 +83,10 @@ bakRouter.get("/projects/:id/archive", requireAuth, async (req, res) => {
   const archive = archiver('zip', { zlib: { level: 9 } });
   archive.pipe(res);
 
-  const storyboardPayload = projStoryboards.map((storyboard) => ({
+  const storyboardPayload = await Promise.all(projStoryboards.map(async (storyboard) => ({
     ...storyboard,
-    panels: db.select().from(storyboardPanels).where(eq(storyboardPanels.storyboardId, storyboard.id)).all(),
-  }));
+    panels: await db.select().from(storyboardPanels).where(eq(storyboardPanels.storyboardId, storyboard.id)),
+  })));
   const assetManifest = projAssets.map((asset) => ({
     ...asset,
     fileData: asset.fileData ? `assets/${asset.id}_${safeArchiveName(asset.filename)}` : null,
@@ -177,26 +177,33 @@ bakRouter.get("/projects/:id/archive", requireAuth, async (req, res) => {
 // 3. Branching Snapshots
 bakRouter.post("/projects/:id/snapshot", requireAuth, async (req, res) => {
   const projectId = parseInt(String(req.params.id), 10);
-  if (!canAccessProject(projectId, req.user!.id)) {
+  if (!(await canAccessProject(projectId, req.user!.id))) {
     return res.status(403).json({ message: "Forbidden" });
   }
 
   const { label } = req.body;
 
+  const snapshotStoryboards = await db.select().from(storyboards).where(eq(storyboards.projectId, projectId));
+  const snapshotPanels = (
+    await Promise.all(snapshotStoryboards.map((sb) =>
+      db.select().from(storyboardPanels).where(eq(storyboardPanels.storyboardId, sb.id))
+    ))
+  ).flat();
+
   const snapshotData = {
-    project: storage.getProject(projectId),
-    scripts: db.select().from(scripts).where(eq(scripts.projectId, projectId)).all(),
-    storyboards: db.select().from(storyboards).where(eq(storyboards.projectId, projectId)).all(),
-    panels: db.select().from(storyboards).where(eq(storyboards.projectId, projectId)).all().flatMap(sb => db.select().from(storyboardPanels).where(eq(storyboardPanels.storyboardId, sb.id)).all()),
-    scenes: db.select().from(scenes).where(eq(scenes.projectId, projectId)).all(),
-    comments: db.select().from(comments).where(eq(comments.projectId, projectId)).all()
+    project: await storage.getProject(projectId),
+    scripts: await db.select().from(scripts).where(eq(scripts.projectId, projectId)),
+    storyboards: snapshotStoryboards,
+    panels: snapshotPanels,
+    scenes: await db.select().from(scenes).where(eq(scenes.projectId, projectId)),
+    comments: await db.select().from(comments).where(eq(comments.projectId, projectId))
   };
 
-  db.insert(bakSnapshots).values({
+  await db.insert(bakSnapshots).values({
     projectId,
     label: label || "Manual Snapshot",
     jsonBlob: JSON.stringify(snapshotData)
-  }).run();
+  });
 
   res.json({ message: "Snapshot created" });
 });
@@ -205,40 +212,40 @@ bakRouter.post("/projects/:id/snapshots/:snapId/restore", requireAuth, async (re
   const projectId = parseInt(String(req.params.id), 10);
   const snapId = parseInt(String(req.params.snapId), 10);
   
-  if (!canAccessProject(projectId, req.user!.id)) {
+  if (!(await canAccessProject(projectId, req.user!.id))) {
     return res.status(403).json({ message: "Forbidden" });
   }
 
-  const snap = db.select().from(bakSnapshots).where(eq(bakSnapshots.id, snapId)).get();
+  const snap = await db.select().from(bakSnapshots).where(eq(bakSnapshots.id, snapId)).then((r) => r[0]);
   if (!snap || snap.projectId !== projectId) {
     return res.status(404).json({ message: "Snapshot not found" });
   }
 
   const data = JSON.parse(snap.jsonBlob);
 
-  db.transaction((tx) => {
+  await db.transaction(async (tx) => {
     // Restore scripts
-    tx.delete(scripts).where(eq(scripts.projectId, projectId)).run();
-    data.scripts.forEach((s: any) => tx.insert(scripts).values(s).run());
+    await tx.delete(scripts).where(eq(scripts.projectId, projectId));
+    for (const s of data.scripts) await tx.insert(scripts).values(s);
 
     // Restore storyboards and panels
-    tx.delete(storyboards).where(eq(storyboards.projectId, projectId)).run();
-    data.storyboards.forEach((sb: any) => tx.insert(storyboards).values(sb).run());
+    await tx.delete(storyboards).where(eq(storyboards.projectId, projectId));
+    for (const sb of data.storyboards) await tx.insert(storyboards).values(sb);
     
     // Clean up all panels for these storyboards, then insert
     // Since we deleted storyboards, any associated panels conceptually are orphaned, but let's just delete the ones we know
-    data.storyboards.forEach((sb: any) => {
-      tx.delete(storyboardPanels).where(eq(storyboardPanels.storyboardId, sb.id)).run();
-    });
-    data.panels.forEach((p: any) => tx.insert(storyboardPanels).values(p).run());
+    for (const sb of data.storyboards) {
+      await tx.delete(storyboardPanels).where(eq(storyboardPanels.storyboardId, sb.id));
+    }
+    for (const p of data.panels) await tx.insert(storyboardPanels).values(p);
 
     // Restore scenes
-    tx.delete(scenes).where(eq(scenes.projectId, projectId)).run();
-    data.scenes.forEach((s: any) => tx.insert(scenes).values(s).run());
+    await tx.delete(scenes).where(eq(scenes.projectId, projectId));
+    for (const s of data.scenes) await tx.insert(scenes).values(s);
 
     // Restore comments
-    tx.delete(comments).where(eq(comments.projectId, projectId)).run();
-    data.comments.forEach((c: any) => tx.insert(comments).values(c).run());
+    await tx.delete(comments).where(eq(comments.projectId, projectId));
+    for (const c of data.comments) await tx.insert(comments).values(c);
   });
 
   res.json({ message: "Snapshot restored successfully" });
@@ -246,15 +253,15 @@ bakRouter.post("/projects/:id/snapshots/:snapId/restore", requireAuth, async (re
 
 bakRouter.get("/projects/:id/snapshots", requireAuth, async (req, res) => {
   const projectId = parseInt(String(req.params.id), 10);
-  if (!canAccessProject(projectId, req.user!.id)) {
+  if (!(await canAccessProject(projectId, req.user!.id))) {
     return res.status(403).json({ message: "Forbidden" });
   }
 
-  const snaps = db.select({
+  const snaps = await db.select({
     id: bakSnapshots.id,
     label: bakSnapshots.label,
     createdAt: bakSnapshots.createdAt
-  }).from(bakSnapshots).where(eq(bakSnapshots.projectId, projectId)).all();
+  }).from(bakSnapshots).where(eq(bakSnapshots.projectId, projectId));
 
   res.json(snaps);
 });
@@ -264,12 +271,12 @@ bakRouter.get("/projects/:id/export/:kind", requireAuth, async (req, res) => {
   const projectId = parseInt(String(req.params.id), 10);
   const { kind } = req.params;
   
-  if (!canAccessProject(projectId, req.user!.id)) {
+  if (!(await canAccessProject(projectId, req.user!.id))) {
     return res.status(403).json({ message: "Forbidden" });
   }
 
   if (kind === "scripts-pdf") {
-    const projScripts = db.select().from(scripts).where(eq(scripts.projectId, projectId)).all();
+    const projScripts = await db.select().from(scripts).where(eq(scripts.projectId, projectId));
     const doc = new jsPDF();
     let y = 10;
     projScripts.forEach((s, idx) => {
@@ -290,7 +297,7 @@ bakRouter.get("/projects/:id/export/:kind", requireAuth, async (req, res) => {
     const arrayBuffer = doc.output('arraybuffer');
     res.send(Buffer.from(arrayBuffer));
   } else if (kind === "scenes-csv") {
-    const projScenes = db.select().from(scenes).where(eq(scenes.projectId, projectId)).all();
+    const projScenes = await db.select().from(scenes).where(eq(scenes.projectId, projectId));
     let csv = "ID,Number,Title,Status,Description\n";
     projScenes.forEach(s => {
       csv += `"${s.id}","${s.number}","${s.title.replace(/"/g, '""')}","${s.status}","${s.description.replace(/"/g, '""')}"\n`;
@@ -299,7 +306,7 @@ bakRouter.get("/projects/:id/export/:kind", requireAuth, async (req, res) => {
     res.setHeader('Content-Disposition', 'attachment; filename="scenes.csv"');
     res.send(csv);
   } else if (kind === "comments-csv") {
-    const projComments = db.select().from(comments).where(eq(comments.projectId, projectId)).all();
+    const projComments = await db.select().from(comments).where(eq(comments.projectId, projectId));
     let csv = "ID,AuthorID,SceneID,Body,CreatedAt\n";
     projComments.forEach(c => {
       csv += `"${c.id}","${c.authorId}","${c.sceneId}","${c.body.replace(/"/g, '""')}","${c.createdAt}"\n`;
@@ -308,14 +315,14 @@ bakRouter.get("/projects/:id/export/:kind", requireAuth, async (req, res) => {
     res.setHeader('Content-Disposition', 'attachment; filename="comments.csv"');
     res.send(csv);
   } else if (kind === "storyboards-zip-png") {
-    const projStoryboards = db.select().from(storyboards).where(eq(storyboards.projectId, projectId)).all();
+    const projStoryboards = await db.select().from(storyboards).where(eq(storyboards.projectId, projectId));
     res.attachment('storyboards.zip');
     const archive = archiver('zip', { zlib: { level: 9 } });
     archive.pipe(res);
 
     const storyboardIds = projStoryboards.map(sb => sb.id);
     const allPanels = storyboardIds.length > 0
-      ? db.select().from(storyboardPanels).where(inArray(storyboardPanels.storyboardId, storyboardIds)).all()
+      ? await db.select().from(storyboardPanels).where(inArray(storyboardPanels.storyboardId, storyboardIds))
       : [];
 
     const panelsByStoryboardId = allPanels.reduce((acc, panel) => {
@@ -344,7 +351,7 @@ bakRouter.get("/projects/:id/export/:kind", requireAuth, async (req, res) => {
 // 5. Sprite-Sheet Auto-Packer
 bakRouter.post("/projects/:id/spritesheet", requireAuth, async (req, res) => {
   const projectId = parseInt(String(req.params.id), 10);
-  if (!canAccessProject(projectId, req.user!.id)) {
+  if (!(await canAccessProject(projectId, req.user!.id))) {
     return res.status(403).json({ message: "Forbidden" });
   }
 
@@ -363,9 +370,9 @@ bakRouter.post("/projects/:id/spritesheet", requireAuth, async (req, res) => {
     return res.status(400).json({ message: "No panels selected" });
   }
 
-  const panels = db.select().from(storyboardPanels).where(
+  const panels = (await db.select().from(storyboardPanels).where(
     inArray(storyboardPanels.id, panelIds)
-  ).all().filter(p => panelIds.includes(p.id));
+  )).filter(p => panelIds.includes(p.id));
 
   if (panels.length === 0) return res.status(404).json({ message: "Panels not found" });
 
@@ -418,10 +425,10 @@ bakRouter.post("/projects/:id/spritesheet", requireAuth, async (req, res) => {
 // 6. GLTF Export Stub
 bakRouter.post("/scenes/:id/gltf-stub", requireAuth, async (req, res) => {
   const sceneId = parseInt(String(req.params.id), 10);
-  const sceneObj = db.select().from(scenes).where(eq(scenes.id, sceneId)).get();
+  const sceneObj = await db.select().from(scenes).where(eq(scenes.id, sceneId)).then((r) => r[0]);
   
   if (!sceneObj) return res.status(404).json({ message: "Scene not found" });
-  if (!canAccessProject(sceneObj.projectId, req.user!.id)) {
+  if (!(await canAccessProject(sceneObj.projectId, req.user!.id))) {
     return res.status(403).json({ message: "Forbidden" });
   }
 
@@ -467,10 +474,10 @@ bakRouter.post("/scenes/:id/gltf-stub", requireAuth, async (req, res) => {
 
   const gltfStr = JSON.stringify(gltf);
 
-  db.insert(bakGltfExports).values({
+  await db.insert(bakGltfExports).values({
     sceneId,
     fileData: gltfStr
-  }).run();
+  });
 
   res.setHeader('Content-Type', 'application/json');
   res.setHeader('Content-Disposition', `attachment; filename="scene_${sceneId}_stub.gltf"`);
@@ -480,15 +487,16 @@ bakRouter.post("/scenes/:id/gltf-stub", requireAuth, async (req, res) => {
 // 7. Asset Integrity Scan
 bakRouter.get("/projects/:id/trash/integrity", requireAuth, async (req, res) => {
   const projectId = parseInt(String(req.params.id), 10);
-  if (!canAccessProject(projectId, req.user!.id)) {
+  if (!(await canAccessProject(projectId, req.user!.id))) {
     return res.status(403).json({ message: "Forbidden" });
   }
 
-  const projAssets = db.select().from(assets).where(eq(assets.projectId, projectId)).all();
-  const projStoryboards = db.select().from(storyboards).where(eq(storyboards.projectId, projectId)).all();
-  const projPanels = projStoryboards.flatMap((storyboard) =>
-    db.select().from(storyboardPanels).where(eq(storyboardPanels.storyboardId, storyboard.id)).all(),
-  );
+  const projAssets = await db.select().from(assets).where(eq(assets.projectId, projectId));
+  const projStoryboards = await db.select().from(storyboards).where(eq(storyboards.projectId, projectId));
+  const storyboardIds = projStoryboards.map(sb => sb.id);
+  const projPanels = storyboardIds.length > 0
+    ? await db.select().from(storyboardPanels).where(inArray(storyboardPanels.storyboardId, storyboardIds))
+    : [];
 
   const items = [
     ...projAssets.map((asset) => ({
@@ -540,18 +548,19 @@ bakRouter.get("/projects/:id/trash/integrity", requireAuth, async (req, res) => 
 // 2. Trash Recovery API
 bakRouter.get("/projects/:id/trash", requireAuth, async (req, res) => {
   const projectId = parseInt(String(req.params.id), 10);
-  if (!canAccessProject(projectId, req.user!.id)) {
+  if (!(await canAccessProject(projectId, req.user!.id))) {
     return res.status(403).json({ message: "Forbidden" });
   }
 
   // Not null deletedAt
-  const delScripts = db.select().from(scripts).where(eq(scripts.projectId, projectId)).all().filter(x => x.deletedAt !== null);
-  const delScenes = db.select().from(scenes).where(eq(scenes.projectId, projectId)).all().filter(x => x.deletedAt !== null);
-  const delAssets = db.select().from(assets).where(eq(assets.projectId, projectId)).all().filter(x => x.deletedAt !== null);
-  const projStoryboards = db.select().from(storyboards).where(eq(storyboards.projectId, projectId)).all();
-  const delPanels = projStoryboards.flatMap(sb =>
-    db.select().from(storyboardPanels).where(eq(storyboardPanels.storyboardId, sb.id)).all().filter(x => x.deletedAt !== null),
-  );
+  const delScripts = (await db.select().from(scripts).where(eq(scripts.projectId, projectId))).filter(x => x.deletedAt !== null);
+  const delScenes = (await db.select().from(scenes).where(eq(scenes.projectId, projectId))).filter(x => x.deletedAt !== null);
+  const delAssets = (await db.select().from(assets).where(eq(assets.projectId, projectId))).filter(x => x.deletedAt !== null);
+  const projStoryboards = await db.select().from(storyboards).where(eq(storyboards.projectId, projectId));
+  const storyboardIds = projStoryboards.map(sb => sb.id);
+  const delPanels = storyboardIds.length > 0
+    ? await db.select().from(storyboardPanels).where(and(inArray(storyboardPanels.storyboardId, storyboardIds), isNotNull(storyboardPanels.deletedAt)))
+    : [];
   
   res.json({
     scripts: delScripts,
@@ -568,39 +577,39 @@ bakRouter.post("/trash/restore/:kind/:id", requireAuth, async (req, res) => {
   // Resolve projectId for access check
   let projectId: number | undefined;
   if (kind === 'script') {
-    const row = db.select().from(scripts).where(eq(scripts.id, numId)).get();
+    const row = await db.select().from(scripts).where(eq(scripts.id, numId)).then((r) => r[0]);
     if (!row) return res.status(404).json({ message: "Not found" });
     projectId = row.projectId;
   } else if (kind === 'scene') {
-    const row = db.select().from(scenes).where(eq(scenes.id, numId)).get();
+    const row = await db.select().from(scenes).where(eq(scenes.id, numId)).then((r) => r[0]);
     if (!row) return res.status(404).json({ message: "Not found" });
     projectId = row.projectId;
   } else if (kind === 'asset') {
-    const row = db.select().from(assets).where(eq(assets.id, numId)).get();
+    const row = await db.select().from(assets).where(eq(assets.id, numId)).then((r) => r[0]);
     if (!row) return res.status(404).json({ message: "Not found" });
     projectId = row.projectId;
   } else if (kind === 'panel') {
-    const row = db.select().from(storyboardPanels).where(eq(storyboardPanels.id, numId)).get();
+    const row = await db.select().from(storyboardPanels).where(eq(storyboardPanels.id, numId)).then((r) => r[0]);
     if (!row) return res.status(404).json({ message: "Not found" });
-    const sb = db.select().from(storyboards).where(eq(storyboards.id, row.storyboardId)).get();
+    const sb = await db.select().from(storyboards).where(eq(storyboards.id, row.storyboardId)).then((r) => r[0]);
     if (!sb) return res.status(404).json({ message: "Storyboard not found" });
     projectId = sb.projectId;
   } else {
     return res.status(400).json({ message: "Invalid kind" });
   }
 
-  if (!canAccessProject(projectId, req.user!.id)) {
+  if (!(await canAccessProject(projectId, req.user!.id))) {
     return res.status(403).json({ message: "No access" });
   }
 
   if (kind === 'script') {
-    db.update(scripts).set({ deletedAt: null }).where(eq(scripts.id, numId)).run();
+    await db.update(scripts).set({ deletedAt: null }).where(eq(scripts.id, numId));
   } else if (kind === 'scene') {
-    db.update(scenes).set({ deletedAt: null }).where(eq(scenes.id, numId)).run();
+    await db.update(scenes).set({ deletedAt: null }).where(eq(scenes.id, numId));
   } else if (kind === 'asset') {
-    db.update(assets).set({ deletedAt: null }).where(eq(assets.id, numId)).run();
+    await db.update(assets).set({ deletedAt: null }).where(eq(assets.id, numId));
   } else if (kind === 'panel') {
-    db.update(storyboardPanels).set({ deletedAt: null }).where(eq(storyboardPanels.id, numId)).run();
+    await db.update(storyboardPanels).set({ deletedAt: null }).where(eq(storyboardPanels.id, numId));
   }
   res.json({ message: "Restored" });
 });
@@ -612,39 +621,39 @@ bakRouter.delete("/trash/permanent/:kind/:id", requireAuth, async (req, res) => 
   // Resolve projectId for access check
   let projectId: number | undefined;
   if (kind === 'script') {
-    const row = db.select().from(scripts).where(eq(scripts.id, numId)).get();
+    const row = await db.select().from(scripts).where(eq(scripts.id, numId)).then((r) => r[0]);
     if (!row) return res.status(404).json({ message: "Not found" });
     projectId = row.projectId;
   } else if (kind === 'scene') {
-    const row = db.select().from(scenes).where(eq(scenes.id, numId)).get();
+    const row = await db.select().from(scenes).where(eq(scenes.id, numId)).then((r) => r[0]);
     if (!row) return res.status(404).json({ message: "Not found" });
     projectId = row.projectId;
   } else if (kind === 'asset') {
-    const row = db.select().from(assets).where(eq(assets.id, numId)).get();
+    const row = await db.select().from(assets).where(eq(assets.id, numId)).then((r) => r[0]);
     if (!row) return res.status(404).json({ message: "Not found" });
     projectId = row.projectId;
   } else if (kind === 'panel') {
-    const row = db.select().from(storyboardPanels).where(eq(storyboardPanels.id, numId)).get();
+    const row = await db.select().from(storyboardPanels).where(eq(storyboardPanels.id, numId)).then((r) => r[0]);
     if (!row) return res.status(404).json({ message: "Not found" });
-    const sb = db.select().from(storyboards).where(eq(storyboards.id, row.storyboardId)).get();
+    const sb = await db.select().from(storyboards).where(eq(storyboards.id, row.storyboardId)).then((r) => r[0]);
     if (!sb) return res.status(404).json({ message: "Storyboard not found" });
     projectId = sb.projectId;
   } else {
     return res.status(400).json({ message: "Invalid kind" });
   }
 
-  if (!canAccessProject(projectId, req.user!.id)) {
+  if (!(await canAccessProject(projectId, req.user!.id))) {
     return res.status(403).json({ message: "No access" });
   }
 
   if (kind === 'script') {
-    db.delete(scripts).where(eq(scripts.id, numId)).run();
+    await db.delete(scripts).where(eq(scripts.id, numId));
   } else if (kind === 'scene') {
-    db.delete(scenes).where(eq(scenes.id, numId)).run();
+    await db.delete(scenes).where(eq(scenes.id, numId));
   } else if (kind === 'asset') {
-    db.delete(assets).where(eq(assets.id, numId)).run();
+    await db.delete(assets).where(eq(assets.id, numId));
   } else if (kind === 'panel') {
-    db.delete(storyboardPanels).where(eq(storyboardPanels.id, numId)).run();
+    await db.delete(storyboardPanels).where(eq(storyboardPanels.id, numId));
   }
   res.json({ message: "Permanently deleted" });
 });

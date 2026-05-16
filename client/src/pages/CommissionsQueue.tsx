@@ -12,6 +12,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { GlassButton } from "@/components/ui/glass-button";
+import { DataSurface, DataWorkspace } from "@/components/layout/data-workspace";
 import { Copy, ExternalLink, Check, Calendar, DollarSign, User, Mail, FolderOpen } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 // v4 commission invoice
@@ -106,59 +107,68 @@ export default function CommissionsQueue() {
 
   if (isLoading) {
     return (
-      <div className="px-6 lg:px-10 py-8 max-w-5xl mx-auto">
-        {[1, 2, 3].map((i) => <div key={i} className="h-16 bg-muted rounded-xl animate-pulse mb-3" />)}
-      </div>
+      <DataWorkspace
+        title="Commissions"
+        icon={<DollarSign size={20} className="text-primary" />}
+        description="Manage incoming commission work, intake links, and conversion into project spaces."
+      >
+        {[1, 2, 3].map((i) => <div key={i} className="h-16 rounded-xl bg-muted animate-pulse" />)}
+      </DataWorkspace>
     );
   }
 
-  return (
-    <div className="px-6 lg:px-10 py-8 max-w-5xl mx-auto">
-      {/* Header */}
-      <div className="mb-8">
-        <p className="text-[11px] font-mono font-medium uppercase tracking-widest text-muted-foreground mb-2 opacity-70">
-          Your Queue
-        </p>
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <h1 className="font-display text-xl font-bold tracking-tight">Commissions</h1>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground hidden sm:block">Your intake link:</span>
-            <code className="text-xs bg-muted px-2 py-1 rounded font-mono truncate max-w-52 hidden sm:block">
-              …/commission/{user?.id}
-            </code>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={copyIntakeUrl}
-              className="gap-1.5"
-              data-testid="button-copy-intake-url"
-            >
-              {copied ? <Check size={13} className="text-emerald-500" /> : <Copy size={13} />}
-              {copied ? "Copied!" : "Copy link"}
-            </Button>
-            <Button size="sm" variant="outline" asChild>
-              <a href={`#/commission/${user?.id}`} target="_blank" rel="noopener noreferrer" data-testid="link-preview-intake">
-                <ExternalLink size={13} />
-              </a>
-            </Button>
-          </div>
-        </div>
-      </div>
+  const statusCounts = STATUS_ORDER.reduce<Record<string, number>>((acc, status) => {
+    acc[status] = list?.filter((commission) => commission.status === status).length ?? 0;
+    return acc;
+  }, {});
+  const linkedProjects = list?.filter((commission) => commission.linkedProjectId !== null).length ?? 0;
 
-      {/* Table */}
+  return (
+    <DataWorkspace
+      title="Commissions"
+      icon={<DollarSign size={20} className="text-primary" />}
+      description="Manage incoming commission work, intake links, and conversion into project spaces."
+      actions={
+        <>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={copyIntakeUrl}
+            className="gap-1.5"
+            data-testid="button-copy-intake-url"
+          >
+            {copied ? <Check size={13} className="text-emerald-500" /> : <Copy size={13} />}
+            {copied ? "Copied!" : "Copy link"}
+          </Button>
+          <Button size="sm" variant="outline" asChild>
+            <a href={`#/commission/${user?.id}`} target="_blank" rel="noopener noreferrer" data-testid="link-preview-intake">
+              <ExternalLink size={13} />
+            </a>
+          </Button>
+        </>
+      }
+      summary={
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <QueueStat label="New" value={String(statusCounts.new ?? 0)} detail="Fresh intake requests" />
+          <QueueStat label="Quoted" value={String(statusCounts.quoted ?? 0)} detail="Waiting on approval" />
+          <QueueStat label="In progress" value={String(statusCounts["in-progress"] ?? 0)} detail="Active commission work" />
+          <QueueStat label="Linked projects" value={String(linkedProjects)} detail="Converted into project spaces" />
+        </div>
+      }
+    >
       {!list || list.length === 0 ? (
-        <div className="border border-dashed border-border rounded-xl py-16 text-center bg-card">
-          <div className="h-12 w-12 rounded-full bg-primary/10 text-primary flex items-center justify-center mx-auto mb-4">
+        <DataSurface className="border-dashed py-16 text-center">
+          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
             <DollarSign size={20} />
           </div>
-          <h3 className="font-display font-semibold mb-1.5">No commissions yet</h3>
-          <p className="text-sm text-muted-foreground mb-4">Share your intake link and commissions will appear here.</p>
+          <h3 className="mb-1.5 font-display font-semibold">No commissions yet</h3>
+          <p className="mb-4 text-sm text-muted-foreground">Share your intake link and commissions will appear here.</p>
           <Button variant="outline" onClick={copyIntakeUrl}>
             <Copy size={13} className="mr-1.5" /> Copy intake URL
           </Button>
-        </div>
+        </DataSurface>
       ) : (
-        <div className="rounded-xl border border-card-border bg-card overflow-hidden">
+        <DataSurface className="overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -207,7 +217,7 @@ export default function CommissionsQueue() {
               </tbody>
             </table>
           </div>
-        </div>
+        </DataSurface>
       )}
 
       {/* Detail dialog */}
@@ -219,6 +229,16 @@ export default function CommissionsQueue() {
         onConvert={() => selected && convert.mutate(selected)}
         converting={convert.isPending}
       />
+    </DataWorkspace>
+  );
+}
+
+function QueueStat({ label, value, detail }: { label: string; value: string; detail: string }) {
+  return (
+    <div className="rounded-xl border border-border/70 bg-background/84 p-4">
+      <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className="mt-2 font-display text-2xl font-semibold">{value}</div>
+      <div className="mt-1 text-xs text-muted-foreground">{detail}</div>
     </div>
   );
 }

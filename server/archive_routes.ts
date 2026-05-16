@@ -18,11 +18,11 @@ import {
 } from "@shared/studio_schema";
 import { biz_festivals, biz_expenses } from "@shared/biz_schema";
 
-function canAccessProject(projectId: number, userId: number): boolean {
-  const p = storage.getProject(projectId);
+async function canAccessProject(projectId: number, userId: number): Promise<boolean> {
+  const p = await storage.getProject(projectId);
   if (!p) return false;
   if (p.ownerId === userId) return true;
-  return storage.isMember(projectId, userId);
+  return await storage.isMember(projectId, userId);
 }
 
 function extractToken(req: Request): string | undefined {
@@ -33,11 +33,11 @@ function extractToken(req: Request): string | undefined {
   return undefined;
 }
 
-function requireAuth(req: Request, res: Response, next: NextFunction) {
+async function requireAuth(req: Request, res: Response, next: NextFunction) {
   const token = extractToken(req);
   const userId = getSessionUser(token);
   if (!userId) return res.status(401).json({ message: "Not authenticated" });
-  const user = storage.getUser(userId);
+  const user = await storage.getUser(userId);
   if (!user) return res.status(401).json({ message: "User not found" });
   (req as any).user = user;
   next();
@@ -46,11 +46,11 @@ function requireAuth(req: Request, res: Response, next: NextFunction) {
 export function registerArchiveRoutes(app: Express) {
   app.get("/api/projects/:id/archive", requireAuth, async (req, res) => {
     const projectId = parseInt(String(req.params.id), 10);
-    if (!canAccessProject(projectId, (req as any).user.id)) {
+    if (!(await canAccessProject(projectId, (req as any).user.id))) {
       return res.status(403).json({ message: "No access" });
     }
 
-    const project = storage.getProject(projectId);
+    const project = await storage.getProject(projectId);
     if (!project) return res.status(404).json({ message: "Project not found" });
 
     res.setHeader("Content-Type", "application/zip");
@@ -65,59 +65,59 @@ export function registerArchiveRoutes(app: Express) {
         version: "1.0.0",
         exportedAt: new Date().toISOString(),
         project,
-        members: storage.listMembers(projectId),
-        scripts: db.select().from(scripts).where(eq(scripts.projectId, projectId)).all(),
-        storyboards: db.select().from(storyboards).where(eq(storyboards.projectId, projectId)).all(),
-        animatics: db.select().from(animatics).where(eq(animatics.projectId, projectId)).all(),
-        scenes: db.select().from(scenes).where(eq(scenes.projectId, projectId)).all(),
-        comments: db.select().from(comments).where(eq(comments.projectId, projectId)).all(),
-        assets: db.select().from(assets).where(eq(assets.projectId, projectId)).all(),
-        animaticProjects: db.select().from(animaticProjects).where(eq(animaticProjects.projectId, projectId)).all(),
-        continuityFacts: db.select().from(lor_continuity_facts).where(eq(lor_continuity_facts.projectId, projectId)).all(),
-        palettes: db.select().from(lor_palettes).where(eq(lor_palettes.projectId, projectId)).all(),
-        approvals: db.select().from(cli_approvals).where(eq(cli_approvals.projectId, projectId)).all(),
-        feedback: db.select().from(cli_feedback).where(eq(cli_feedback.projectId, projectId)).all(),
-        voiceTakes: db.select().from(audVoiceTakes).where(eq(audVoiceTakes.projectId, projectId)).all(),
-        renderEvents: db.select().from(studio_render_events).where(eq(studio_render_events.projectId, projectId)).all(),
-        renderBudget: db.select().from(studio_render_budget).where(eq(studio_render_budget.projectId, projectId)).get(),
-        snapshots: db.select().from(studio_snapshots).where(eq(studio_snapshots.projectId, projectId)).all(),
-        creditEntries: db.select().from(studio_credit_entries).where(eq(studio_credit_entries.projectId, projectId)).all(),
-        festivals: db.select().from(biz_festivals).where(eq(biz_festivals.projectId, projectId)).all(),
-        expenses: db.select().from(biz_expenses).where(eq(biz_expenses.projectId, projectId)).all(),
-        aiKey: db.select().from(projectAiKeys).where(eq(projectAiKeys.projectId, projectId)).get(),
-        castingMatrix: db.select().from(lor_casting_matrix).where(eq(lor_casting_matrix.projectId, projectId)).all(),
-        pricingPresets: db.select().from(commissionPricingPresets).where(eq(commissionPricingPresets.projectId, projectId)).all(),
+        members: await storage.listMembers(projectId),
+        scripts: await db.select().from(scripts).where(eq(scripts.projectId, projectId)),
+        storyboards: await db.select().from(storyboards).where(eq(storyboards.projectId, projectId)),
+        animatics: await db.select().from(animatics).where(eq(animatics.projectId, projectId)),
+        scenes: await db.select().from(scenes).where(eq(scenes.projectId, projectId)),
+        comments: await db.select().from(comments).where(eq(comments.projectId, projectId)),
+        assets: await db.select().from(assets).where(eq(assets.projectId, projectId)),
+        animaticProjects: await db.select().from(animaticProjects).where(eq(animaticProjects.projectId, projectId)),
+        continuityFacts: await db.select().from(lor_continuity_facts).where(eq(lor_continuity_facts.projectId, projectId)),
+        palettes: await db.select().from(lor_palettes).where(eq(lor_palettes.projectId, projectId)),
+        approvals: await db.select().from(cli_approvals).where(eq(cli_approvals.projectId, projectId)),
+        feedback: await db.select().from(cli_feedback).where(eq(cli_feedback.projectId, projectId)),
+        voiceTakes: await db.select().from(audVoiceTakes).where(eq(audVoiceTakes.projectId, projectId)),
+        renderEvents: await db.select().from(studio_render_events).where(eq(studio_render_events.projectId, projectId)),
+        renderBudget: await db.select().from(studio_render_budget).where(eq(studio_render_budget.projectId, projectId)).then((r) => r[0]),
+        snapshots: await db.select().from(studio_snapshots).where(eq(studio_snapshots.projectId, projectId)),
+        creditEntries: await db.select().from(studio_credit_entries).where(eq(studio_credit_entries.projectId, projectId)),
+        festivals: await db.select().from(biz_festivals).where(eq(biz_festivals.projectId, projectId)),
+        expenses: await db.select().from(biz_expenses).where(eq(biz_expenses.projectId, projectId)),
+        aiKey: await db.select().from(projectAiKeys).where(eq(projectAiKeys.projectId, projectId)).then((r) => r[0]),
+        castingMatrix: await db.select().from(lor_casting_matrix).where(eq(lor_casting_matrix.projectId, projectId)),
+        pricingPresets: await db.select().from(commissionPricingPresets).where(eq(commissionPricingPresets.projectId, projectId)),
       };
 
       // 2. Fetch related sub-data
       const sbIds = data.storyboards.map((s: any) => s.id);
       if (sbIds.length > 0) {
-        data.storyboardPanels = db.select().from(storyboardPanels).where(inArray(storyboardPanels.storyboardId, sbIds)).all();
+        data.storyboardPanels = await db.select().from(storyboardPanels).where(inArray(storyboardPanels.storyboardId, sbIds));
         const panelIds = data.storyboardPanels.map((p: any) => p.id);
         if (panelIds.length > 0) {
-          data.panelPins = db.select().from(panelPins).where(inArray(panelPins.panelId, panelIds)).all();
+          data.panelPins = await db.select().from(panelPins).where(inArray(panelPins.panelId, panelIds));
         }
       }
 
       const sceneIds = data.scenes.map((s: any) => s.id);
       if (sceneIds.length > 0) {
-        data.renders = db.select().from(renders).where(inArray(renders.sceneId, sceneIds)).all();
-        data.timeEntries = db.select().from(sceneTimeEntries).where(inArray(sceneTimeEntries.sceneId, sceneIds)).all();
+        data.renders = await db.select().from(renders).where(inArray(renders.sceneId, sceneIds));
+        data.timeEntries = await db.select().from(sceneTimeEntries).where(inArray(sceneTimeEntries.sceneId, sceneIds));
       }
 
       const assetIds = data.assets.map((a: any) => a.id);
       if (assetIds.length > 0) {
-        data.assetVersions = db.select().from(lor_asset_versions).where(inArray(lor_asset_versions.assetId, assetIds)).all();
+        data.assetVersions = await db.select().from(lor_asset_versions).where(inArray(lor_asset_versions.assetId, assetIds));
       }
 
       const apIds = data.animaticProjects.map((ap: any) => ap.id);
       if (apIds.length > 0) {
-        data.animaticTracks = db.select().from(animaticTracks).where(inArray(animaticTracks.animaticProjectId, apIds)).all();
+        data.animaticTracks = await db.select().from(animaticTracks).where(inArray(animaticTracks.animaticProjectId, apIds));
         const trackIds = data.animaticTracks.map((t: any) => t.id);
         if (trackIds.length > 0) {
-          data.animaticClips = db.select().from(animaticClips).where(inArray(animaticClips.trackId, trackIds)).all();
+          data.animaticClips = await db.select().from(animaticClips).where(inArray(animaticClips.trackId, trackIds));
         }
-        data.captions = db.select().from(audCaptions).where(inArray(audCaptions.animaticProjectId, apIds)).all();
+        data.captions = await db.select().from(audCaptions).where(inArray(audCaptions.animaticProjectId, apIds));
       }
 
       // 3. Process Assets: Extract base64 to separate files for better portability
@@ -167,7 +167,7 @@ export function registerArchiveRoutes(app: Express) {
   app.get("/api/projects/:id/export/:kind", requireAuth, async (req, res) => {
     const projectId = parseInt(String(req.params.id), 10);
     const kind = req.params.kind;
-    if (!canAccessProject(projectId, (req as any).user.id)) return res.status(403).json({ message: "No access" });
+    if (!(await canAccessProject(projectId, (req as any).user.id))) return res.status(403).json({ message: "No access" });
 
     // RFC-4180 CSV field escaping: wrap in quotes if field contains comma, quote, or newline
     const csvField = (val: any): string => {
@@ -180,7 +180,7 @@ export function registerArchiveRoutes(app: Express) {
 
     try {
       if (kind === "scenes-csv") {
-        const rows = db.select().from(scenes).where(eq(scenes.projectId, projectId)).all();
+        const rows = await db.select().from(scenes).where(eq(scenes.projectId, projectId));
         const csv = [
           "ID,Number,Title,Status,Deadline",
           ...rows.map(r => [r.id, csvField(r.number), csvField(r.title), csvField(r.status), csvField(r.deadline || "")].join(","))
@@ -191,7 +191,7 @@ export function registerArchiveRoutes(app: Express) {
       }
 
       if (kind === "comments-csv") {
-        const rows = db.select().from(comments).where(eq(comments.projectId, projectId)).all();
+        const rows = await db.select().from(comments).where(eq(comments.projectId, projectId));
         const csv = [
           "ID,AuthorID,Body,CreatedAt",
           ...rows.map(r => [r.id, r.authorId, csvField(r.body), csvField(r.createdAt)].join(","))
@@ -202,7 +202,7 @@ export function registerArchiveRoutes(app: Express) {
       }
 
       if (kind === "storyboards-zip-png") {
-        const sbs = db.select().from(storyboards).where(eq(storyboards.projectId, projectId)).all();
+        const sbs = await db.select().from(storyboards).where(eq(storyboards.projectId, projectId));
         const archive = archiver("zip", { zlib: { level: 5 } });
         res.setHeader("Content-Type", "application/zip");
         res.setHeader("Content-Disposition", `attachment; filename="project-${projectId}-storyboards.zip"`);
@@ -210,7 +210,7 @@ export function registerArchiveRoutes(app: Express) {
 
         const storyboardIds = sbs.map(sb => sb.id);
         const allPanels = storyboardIds.length > 0
-          ? db.select().from(storyboardPanels).where(inArray(storyboardPanels.storyboardId, storyboardIds)).all()
+          ? await db.select().from(storyboardPanels).where(inArray(storyboardPanels.storyboardId, storyboardIds))
           : [];
 
         const panelsByStoryboardId = allPanels.reduce((acc, panel) => {
@@ -243,7 +243,7 @@ export function registerArchiveRoutes(app: Express) {
       }
 
       if (kind === "scripts-pdf") {
-        const rows = db.select().from(scripts).where(eq(scripts.projectId, projectId)).all();
+        const rows = await db.select().from(scripts).where(eq(scripts.projectId, projectId));
         if (rows.length === 0) {
           return res.status(404).json({ message: "No scripts to export" });
         }
@@ -254,7 +254,7 @@ export function registerArchiveRoutes(app: Express) {
       }
 
       if (kind === "credit-roll-png") {
-        const entries = db.select().from(studio_credit_entries).where(eq(studio_credit_entries.projectId, projectId)).all();
+        const entries = await db.select().from(studio_credit_entries).where(eq(studio_credit_entries.projectId, projectId));
         
         const cast = entries.filter(e => e.section === "cast").sort((a, b) => a.orderIdx - b.orderIdx);
         const crew = entries.filter(e => e.section === "crew").sort((a, b) => a.orderIdx - b.orderIdx);
@@ -279,7 +279,7 @@ export function registerArchiveRoutes(app: Express) {
         
         let y = titleHeight;
 
-        const p = storage.getProject(projectId);
+        const p = await storage.getProject(projectId);
         ctx.font = "bold 90px Arial";
         ctx.fillText(p?.title || "Project", width / 2, y);
         y += sectionGap;

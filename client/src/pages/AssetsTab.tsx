@@ -13,9 +13,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { GlassButton } from "@/components/ui/glass-button";
 
-// === AGENT_3 ADDITIONS START ===
 import AssetRevisionTree from "./lor/AssetRevisionTree";
-// === AGENT_3 ADDITIONS END ===
 const CATEGORIES = ["All", "Characters", "Backgrounds", "Props", "References", "Other"];
 
 function fileSizeMB(base64: string): string {
@@ -251,13 +249,13 @@ export function AssetsTab({ projectId }: AssetsTabProps) {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => syncDrive.mutate()}
-            disabled={syncDrive.isPending}
+            onClick={() => driveSync.mutate()}
+            disabled={driveSync.isPending}
             data-testid="button-sync-drive"
             className="text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/10 h-8"
           >
             <CloudRain size={13} className="mr-1" />
-            {syncDrive.isPending ? "Polling..." : "Drive Watcher"}
+            {driveSync.isPending ? "Polling..." : "Drive Watcher"}
           </Button>
           <Button
             variant="outline"
@@ -378,6 +376,7 @@ function AssetModal({
 }) {
   const [notes, setNotes] = useState("");
   const [tags, setTags] = useState("");
+  const { toast } = useToast();
 
   if (!asset) return null;
 
@@ -441,9 +440,7 @@ function AssetModal({
                 placeholder="character, rig, bluey"
                 className="text-xs h-8"
               />
-          {/* === AGENT_3 ADDITIONS START === */}
           <AssetRevisionTree assetId={asset.id} />
-          {/* === AGENT_3 ADDITIONS END === */}
             </div>
           </div>
         </div>
