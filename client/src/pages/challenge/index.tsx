@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Sparkles } from "lucide-react";
+import ChallengeLeaderboard from "./Leaderboard";
 
 type Sticker = "spark" | "heart" | "study" | "wow";
 
@@ -21,7 +22,7 @@ const STICKERS: { id: Sticker; label: string }[] = [
   { id: "spark", label: "Spark" },
   { id: "heart", label: "Heart" },
   { id: "study", label: "Study" },
-  { id: "wow", label: "Wow" },
+  { id: "wow",   label: "Wow"   },
 ];
 
 export default function ChallengeFeed() {
@@ -45,16 +46,24 @@ export default function ChallengeFeed() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/challenges/submissions"] });
       queryClient.invalidateQueries({ queryKey: ["/api/challenges/feed"] });
+      // Refresh the live leaderboard after a new submission changes reaction totals
+      queryClient.invalidateQueries({ queryKey: ["/api/challenges/leaderboard"] });
     },
   });
 
   const reactionMutation = useMutation({
     mutationFn: async ({ submissionId, sticker }: { submissionId: number; sticker: Sticker }) => {
-      const res = await apiRequest("POST", `/api/challenges/submissions/${submissionId}/reactions`, { sticker });
+      const res = await apiRequest(
+        "POST",
+        `/api/challenges/submissions/${submissionId}/reactions`,
+        { sticker }
+      );
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/challenges/feed"] });
+      // Keep leaderboard in sync after a reaction toggle
+      queryClient.invalidateQueries({ queryKey: ["/api/challenges/leaderboard"] });
     },
   });
 
@@ -62,19 +71,27 @@ export default function ChallengeFeed() {
     return <div className="p-8">Loading challenges...</div>;
   }
 
-  const isSubmitted = (promptId: number) => {
-    return submissions?.some((s) => s.promptId === promptId);
-  };
+  const isSubmitted = (promptId: number) =>
+    submissions?.some((s) => s.promptId === promptId);
+
+  // Derive the current week number from the most-recent prompt.
+  const currentWeek = prompts && prompts.length > 0
+    ? prompts[prompts.length - 1].weekNumber
+    : null;
 
   return (
     <div className="p-8 max-w-5xl mx-auto">
+      {/* ── Header ── */}
       <div className="mb-8">
         <h1 className="text-3xl font-bold mb-2 flex items-center gap-2">
           <Sparkles className="h-7 w-7 text-primary" /> Weekly Challenges
         </h1>
-        <p className="text-muted-foreground">Level up your skills with a new prompt every week.</p>
+        <p className="text-muted-foreground">
+          Level up your skills with a new prompt every week.
+        </p>
       </div>
 
+      {/* ── Active prompts ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {prompts?.map((prompt) => (
           <Card key={prompt.id} className={isSubmitted(prompt.id) ? "opacity-75" : ""}>
@@ -93,18 +110,32 @@ export default function ChallengeFeed() {
                   Completed
                 </Button>
               ) : (
-                <SubmitDialog promptId={prompt.id} onSubmit={(data) => submitMutation.mutate(data)} />
+                <SubmitDialog
+                  promptId={prompt.id}
+                  onSubmit={(data) => submitMutation.mutate(data)}
+                />
               )}
             </CardFooter>
           </Card>
         ))}
       </div>
 
+      {/* ── Live leaderboard for the current week ── */}
+      {currentWeek !== null && (
+        <div className="mt-10">
+          <ChallengeLeaderboard weekNumber={currentWeek} useSnapshot={false} />
+        </div>
+      )}
+
+      {/* ── Submission feed ── */}
       <div className="mt-10">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-xl font-semibold">Submission Feed</h2>
-          <span className="text-xs text-muted-foreground">{feed.length} local submissions</span>
+          <span className="text-xs text-muted-foreground">
+            {feed.length} submissions
+          </span>
         </div>
+
         {feed.length === 0 ? (
           <Card>
             <CardContent className="py-10 text-center text-sm text-muted-foreground">
@@ -117,21 +148,35 @@ export default function ChallengeFeed() {
               <Card key={submission.id}>
                 <CardHeader>
                   <div className="text-xs text-muted-foreground">
-                    {submission.prompt ? `Week ${submission.prompt.weekNumber}` : "Challenge"} - Artist #{submission.userId}
+                    {submission.prompt
+                      ? `Week ${submission.prompt.weekNumber}`
+                      : "Challenge"}{" "}
+                    — Artist #{submission.userId}
                   </div>
-                  <CardTitle className="text-base">{submission.prompt?.title || "Challenge submission"}</CardTitle>
+                  <CardTitle className="text-base">
+                    {submission.prompt?.title || "Challenge submission"}
+                  </CardTitle>
                 </CardHeader>
+
                 <CardContent className="space-y-4">
                   {submission.imageUrl ? (
                     <div className="overflow-hidden rounded-lg border bg-muted">
-                      <img src={submission.imageUrl} alt="Challenge submission" className="aspect-video w-full object-cover" />
+                      <img
+                        src={submission.imageUrl}
+                        alt="Challenge submission"
+                        className="aspect-video w-full object-cover"
+                      />
                     </div>
                   ) : (
                     <div className="grid aspect-video place-items-center rounded-lg border border-dashed bg-muted/40 text-xs text-muted-foreground">
                       No artwork URL attached
                     </div>
                   )}
-                  {submission.notes && <p className="text-sm text-muted-foreground">{submission.notes}</p>}
+
+                  {submission.notes && (
+                    <p className="text-sm text-muted-foreground">{submission.notes}</p>
+                  )}
+
                   <div className="flex flex-wrap gap-2">
                     {STICKERS.map((sticker) => {
                       const active = submission.myReaction === sticker.id;
@@ -141,11 +186,17 @@ export default function ChallengeFeed() {
                           size="sm"
                           variant={active ? "default" : "outline"}
                           className="h-8 text-xs"
-                          onClick={() => reactionMutation.mutate({ submissionId: submission.id, sticker: sticker.id })}
+                          onClick={() =>
+                            reactionMutation.mutate({
+                              submissionId: submission.id,
+                              sticker: sticker.id,
+                            })
+                          }
                           disabled={reactionMutation.isPending}
                           data-testid={`button-reaction-${submission.id}-${sticker.id}`}
                         >
-                          {sticker.label} {submission.reactionCounts[sticker.id] || 0}
+                          {sticker.label}{" "}
+                          {submission.reactionCounts[sticker.id] || 0}
                         </Button>
                       );
                     })}
@@ -160,7 +211,15 @@ export default function ChallengeFeed() {
   );
 }
 
-function SubmitDialog({ promptId, onSubmit }: { promptId: number; onSubmit: (data: any) => void }) {
+// ─── SubmitDialog (unchanged) ─────────────────────────────────────────────────
+
+function SubmitDialog({
+  promptId,
+  onSubmit,
+}: {
+  promptId: number;
+  onSubmit: (data: any) => void;
+}) {
   const [open, setOpen] = useState(false);
   const [imageUrl, setImageUrl] = useState("");
   const [notes, setNotes] = useState("");
@@ -197,7 +256,9 @@ function SubmitDialog({ promptId, onSubmit }: { promptId: number; onSubmit: (dat
               onChange={(e) => setNotes(e.target.value)}
             />
           </div>
-          <Button type="submit" className="w-full">Submit</Button>
+          <Button type="submit" className="w-full">
+            Submit
+          </Button>
         </form>
       </DialogContent>
     </Dialog>
