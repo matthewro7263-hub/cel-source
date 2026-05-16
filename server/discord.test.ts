@@ -15,7 +15,7 @@ mock.module('drizzle-orm/better-sqlite3', () => ({
   drizzle: () => ({})
 }));
 
-// Also mock neon so it doesn't fail either, as standard on main
+// Mock neon-serverless to prevent Render/CI environment loading errors
 mock.module('@neondatabase/serverless', () => ({
   Pool: class {
     constructor() {}
@@ -24,14 +24,23 @@ mock.module('@neondatabase/serverless', () => ({
     end() {}
   }
 }));
+
 mock.module('drizzle-orm/neon-serverless', () => ({
   drizzle: () => ({})
 }));
 
-import { notifyDiscord } from "./discord.ts";
-import { storage } from "./storage.ts";
+// Also mock bindings to prevent the underlying error if transitive imports evaluate too early
+mock.module('bindings', () => () => ({}));
+
+// Workaround for `storage.ts` evaluating before the mock is successfully hoisted in bun
+mock.module("./storage.ts", () => ({ storage: { getProject: () => undefined } }));
+mock.module("./storage", () => ({ storage: { getProject: () => undefined } }));
 
 test("notifyDiscord gracefully handles malformed webhook URLs", async () => {
+  // Use dynamic import so it doesn't trigger static evaluation of module graph containing better-sqlite3 before mock.module runs
+  const { notifyDiscord } = await import("./discord.ts");
+  const { storage } = await import("./storage.ts");
+
   spyOn(storage, "getProject").mockImplementation((id: number) => ({
     id,
     title: "Test Project",
