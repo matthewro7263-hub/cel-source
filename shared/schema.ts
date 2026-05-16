@@ -472,3 +472,19 @@ export const commissionPricingPresets = pgTable("commission_pricing_presets", {
 export const insertCommissionPricingPresetSchema = createInsertSchema(commissionPricingPresets).omit({ id: true, createdAt: true });
 export type InsertCommissionPricingPreset = z.infer<typeof insertCommissionPricingPresetSchema>;
 export type CommissionPricingPreset = typeof commissionPricingPresets.$inferSelect;
+
+// ============================================================
+// Panel Change Requests (Review Room per-panel checklist)
+// ============================================================
+export const panelChangeRequests = pgTable("panel_change_requests", {
+  id:        serial("id").primaryKey(),
+  panelId:   integer("panel_id").notNull(),    // FK → storyboard_panels.id
+  pinId:     integer("pin_id"),                // optional FK → panel_pins.id (spatial anchor)
+  authorId:  integer("author_id").notNull(),   // FK → users.id
+  body:      text("body").notNull(),           // description of requested change
+  done:      boolean("done").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+export const insertPanelChangeRequestSchema = createInsertSchema(panelChangeRequests).omit({ id: true, createdAt: true });
+export type InsertPanelChangeRequest = z.infer<typeof insertPanelChangeRequestSchema>;
+export type PanelChangeRequest = typeof panelChangeRequests.$inferSelect;
