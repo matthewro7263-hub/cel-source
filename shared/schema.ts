@@ -30,6 +30,9 @@ export const projects = pgTable("projects", {
   cli_brandColor: text("cli_brand_color").notNull().default("#9DD0FF"),
   cli_brandWelcome: text("cli_brand_welcome"),
   dltDiscordWebhookUrl: text("dlt_discord_webhook_url"),
+  // CEL-MON-002: watermark upsell columns
+  watermarkRemoved: boolean("watermark_removed").notNull().default(false),
+  watermarkStripeSessionId: text("watermark_stripe_session_id"),
 });
 export const insertProjectSchema = createInsertSchema(projects).omit({ id: true, createdAt: true });
 export type InsertProject = z.infer<typeof insertProjectSchema>;

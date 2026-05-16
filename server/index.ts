@@ -9,6 +9,7 @@ import { registerAudio2Routes } from "./audio2_routes";
 import { registerApprovalRoutes } from "./approval_routes";
 import { registerArchiveRoutes } from "./archive_routes";
 import { registerSpriteSheetRoutes } from "./spritesheet_routes";
+import { registerWatermarkRoutes } from "./routes/watermark";
 import { createServer } from "node:http";
 
 const app = express();
@@ -117,6 +118,7 @@ app.use((req, res, next) => {
   registerApprovalRoutes(app);
   registerArchiveRoutes(app);
   registerSpriteSheetRoutes(app);
+  registerWatermarkRoutes(app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
