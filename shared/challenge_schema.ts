@@ -1,1 +1,55 @@
-aW1wb3J0IHsgcGdUYWJsZSwgdGV4dCwgdGltZXN0YW1wLCBpbnRlZ2VyLCBzZXJpYWwsIGJvb2xlYW4gfSBmcm9tICJkcml6emxlLW9ybS9wZy1jb3JlIjsKaW1wb3J0IHsgY3JlYXRlSW5zZXJ0U2NoZW1hIH0gZnJvbSAiZHJpenpsZS16b2QiOwppbXBvcnQgeyB6IH0gZnJvbSAiem9kIjsKCmV4cG9ydCBjb25zdCBjaGFsbGVuZ2VfcHJvbXB0cyA9IHBnVGFibGUoImNoYWxsZW5nZV9wcm9tcHRzIiwgewogIGlkOiBzZXJpYWwoImlkIikucHJpbWFyeUtleSgpLAogIHdlZWtOdW1iZXI6IGludGVnZXIoIndlZWtfbnVtYmVyIikubm90TnVsbCgpLAogIHRpdGxlOiB0ZXh0KCJ0aXRsZSIpLm5vdE51bGwoKSwKICBib2R5OiB0ZXh0KCJib2R5Iikubm90TnVsbCgpLAogIC8vIC0tLS0tIFNwZWVkcnVuIGZpZWxkcyAobnVsbCBmb3Igc3RhbmRhcmQgY2hhbGxlbmdlcykgLS0tLS0KICBpc1NwZWVkcnVuOiBib29sZWFuKCJpc19zcGVlZHJ1biIpLm5vdE51bGwoKS5kZWZhdWx0KGZhbHNlKSwKICBkZWFkbGluZUhvdXJzOiBpbnRlZ2VyKCJkZWFkbGluZV9ob3VycyIpLCAvLyBudWxsID0gbm9ybWFsIGNoYWxsZW5nZQogIGNyZWF0ZWRBdDogdGltZXN0YW1wKCJjcmVhdGVkX2F0IiwgeyB3aXRoVGltZXpvbmU6IHRydWUgfSkuZGVmYXVsdE5vdygpLm5vdE51bGwoKSwKfSk7CgpleHBvcnQgY29uc3QgY2hhbGxlbmdlX3N1Ym1pc3Npb25zID0gcGdUYWJsZSgiY2hhbGxlbmdlX3N1Ym1pc3Npb25zIiwgewogIGlkOiBzZXJpYWwoImlkIikucHJpbWFyeUtleSgpLAogIHByb21wdElkOiBpbnRlZ2VyKCJwcm9tcHRfaWQiKS5ub3ROdWxsKCksCiAgdXNlcklkOiBpbnRlZ2VyKCJ1c2VyX2lkIikubm90TnVsbCgpLAogIGltYWdlVXJsOiB0ZXh0KCJpbWFnZV91cmwiKSwKICBub3Rlczogd GV4dCgibm90ZXMiKSwKICBjcmVhdGVkQXQ6IHRpbWVzdGFtcCgiY3JlYXRlZF9hdCIsIHsgd2l0aFRpbWV6b25lOiB0cnVlIH0pLmRlZmF1bHROb3coKS5ub3ROdWxsKCksCn0pOwoKZXhwb3J0IGNvbnN0IGNoYWxsZW5nZV9yZWFjdGlvbnMgPSBwZ1RhYmxlKCJjaGFsbGVuZ2VfcmVhY3Rpb25zIiwgewogIGlkOiBzZXJpYWwoImlkIikucHJpbWFyeUtleSgpLAogIHN1Ym1pc3Npb25JZDogaW50ZWdlcigic3VibWlzc2lvbl9pZCIpLm5vdE51bGwoKSwKICB1c2VySWQ6IGludGVnZXIoInVzZXJfaWQiKS5ub3ROdWxsKCksCiAgc3RpY2tlcjogdGV4dCgic3RpY2tlciIpLm5vdE51bGwoKSwKICBjcmVhdGVkQXQ6IHRpbWVzdGFtcCgiY3JlYXRlZF9hdCIsIHsgd2l0aFRpbWV6b25lOiB0cnVlIH0pLmRlZmF1bHROb3coKS5ub3ROdWxsKCksCn0pOwoKZXhwb3J0IGNvbnN0IGluc2VydENoYWxsZW5nZVByb21wdFNjaGVtYSA9IGNyZWF0ZUluc2VydFNjaGVtYShjaGFsbGVuZ2VfcHJvbXB0cykub21pdCh7CiAgaWQ6IHRydWUsCiAgY3JlYXRlZEF0OiB0cnVlLAp9KTsKCmV4cG9ydCBjb25zdCBpbnNlcnRDaGFsbGVuZ2VTdWJtaXNzaW9uU2NoZW1hID0gY3JlYXRlSW5zZXJ0U2NoZW1hKGNoYWxsZW5nZV9zdWJtaXNzaW9ucykub21pdCh7CiAgaWQ6IHRydWUsCiAgY3JlYXRlZEF0OiB0cnVlLAogIHVzZXJJZDogdHJ1ZSwgLy8gd2UgZ2V0IHRoaXMgZnJvbSB0aGUgc2Vzc2lvbgp9KTsKCmV4cG9ydCBjb25zdCBpbnNlcnRDaGFsbGVuZ2VSZWFjdGlvblNjaGVtYSA9IGNyZWF0ZUluc2VydFNjaGVtYShjaGFsbGVuZ2VfcmVhY3Rpb25zKS5vbWl0KHsKICBpZDogdHJ1ZSwKICBjcmVhdGVkQXQ6IHRydWUsCiAgdXNlcklkOiB0cnVlLAp9KTsKCmV4cG9ydCB0eXBlIEluc2VydENoYWxsZW5nZVByb21wdCA9IHouaW5mZXI8dHlwZW9mIGluc2VydENoYWxsZW5nZVByb21wdFNjaGVtYT47CmV4cG9ydCB0eXBlIEluc2VydENoYWxsZW5nZVN1Ym1pc3Npb24gPSB6LmluZmVyPHR5cGVvZiBpbnNlcnRDaGFsbGVuZ2VTdWJtaXNzaW9uU2NoZW1hPjsKZXhwb3J0IHR5cGUgSW5zZXJ0Q2hhbGxlbmdlUmVhY3Rpb24gPSB6LmluZmVyPHR5cGVvZiBpbnNlcnRDaGFsbGVuZ2VSZWFjdGlvblNjaGVtYT47CmV4cG9ydCB0eXBlIENoYWxsZW5nZVN1Ym1pc3Npb24gPSB0eXBlb2YgY2hhbGxlbmdlX3N1Ym1pc3Npb25zLiRpbmZlclNlbGVjdDsKZXhwb3J0IHR5cGUgQ2hhbGxlbmdlUmVhY3Rpb24gPSB0eXBlb2YgY2hhbGxlbmdlX3JlYWN0aW9ucy4kaW5mZXJTZWxlY3Q7CmV4cG9ydCB0eXBlIENoYWxsZW5nZVByb21wdCA9IHR5cGVvZiBjaGFsbGVuZ2VfcHJvbXB0cy4kaW5mZXJTZWxlY3Q7Cg==
+import { pgTable, text, timestamp, integer, serial, boolean } from "drizzle-orm/pg-core";
+import { createInsertSchema } from "drizzle-zod";
+import { z } from "zod";
+
+export const challenge_prompts = pgTable("challenge_prompts", {
+  id: serial("id").primaryKey(),
+  weekNumber: integer("week_number").notNull(),
+  title: text("title").notNull(),
+  body: text("body").notNull(),
+  // ----- Speedrun fields (null for standard challenges) -----
+  isSpeedrun: boolean("is_speedrun").notNull().default(false),
+  deadlineHours: integer("deadline_hours"), // null = normal challenge; e.g. 24 or 48
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const challenge_submissions = pgTable("challenge_submissions", {
+  id: serial("id").primaryKey(),
+  promptId: integer("prompt_id").notNull(),
+  userId: integer("user_id").notNull(),
+  imageUrl: text("image_url"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const challenge_reactions = pgTable("challenge_reactions", {
+  id: serial("id").primaryKey(),
+  submissionId: integer("submission_id").notNull(),
+  userId: integer("user_id").notNull(),
+  sticker: text("sticker").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const insertChallengePromptSchema = createInsertSchema(challenge_prompts).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertChallengeSubmissionSchema = createInsertSchema(challenge_submissions).omit({
+  id: true,
+  createdAt: true,
+  userId: true, // we get this from the session
+});
+
+export const insertChallengeReactionSchema = createInsertSchema(challenge_reactions).omit({
+  id: true,
+  createdAt: true,
+  userId: true,
+});
+
+export type InsertChallengePrompt = z.infer<typeof insertChallengePromptSchema>;
+export type InsertChallengeSubmission = z.infer<typeof insertChallengeSubmissionSchema>;
+export type InsertChallengeReaction = z.infer<typeof insertChallengeReactionSchema>;
+export type ChallengeSubmission = typeof challenge_submissions.$inferSelect;
+export type ChallengeReaction = typeof challenge_reactions.$inferSelect;
+export type ChallengePrompt = typeof challenge_prompts.$inferSelect;

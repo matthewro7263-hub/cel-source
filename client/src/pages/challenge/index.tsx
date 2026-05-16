@@ -4,10 +4,19 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { ChallengePrompt, ChallengeSubmission } from "../../../../shared/challenge_schema";
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Sparkles } from "lucide-react";
+import { Sparkles, Zap, Users } from "lucide-react";
+import { SpeedrunCountdown } from "@/components/SpeedrunCountdown";
+import { useSpeedrunParticipants } from "@/hooks/useSpeedrunParticipants";
 
 type Sticker = "spark" | "heart" | "study" | "wow";
 
@@ -23,6 +32,29 @@ const STICKERS: { id: Sticker; label: string }[] = [
   { id: "study", label: "Study" },
   { id: "wow", label: "Wow" },
 ];
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Returns the Date when a speedrun prompt's submission window closes. */
+function getSpeedrunDeadline(prompt: ChallengePrompt): Date | null {
+  if (!prompt.isSpeedrun || !prompt.deadlineHours) return null;
+  return new Date(
+    new Date(prompt.createdAt).getTime() + prompt.deadlineHours * 60 * 60 * 1000,
+  );
+}
+
+/** Returns true if the speedrun window for this prompt is still open. */
+function isSpeedrunOpen(prompt: ChallengePrompt): boolean {
+  const deadline = getSpeedrunDeadline(prompt);
+  if (!deadline) return false;
+  return Date.now() < deadline.getTime();
+}
+
+// ---------------------------------------------------------------------------
+// Main page
+// ---------------------------------------------------------------------------
 
 export default function ChallengeFeed() {
   const { data: prompts, isLoading: promptsLoading } = useQuery<ChallengePrompt[]>({
@@ -50,7 +82,11 @@ export default function ChallengeFeed() {
 
   const reactionMutation = useMutation({
     mutationFn: async ({ submissionId, sticker }: { submissionId: number; sticker: Sticker }) => {
-      const res = await apiRequest("POST", `/api/challenges/submissions/${submissionId}/reactions`, { sticker });
+      const res = await apiRequest(
+        "POST",
+        `/api/challenges/submissions/${submissionId}/reactions`,
+        { sticker },
+      );
       return res.json();
     },
     onSuccess: () => {
@@ -62,9 +98,8 @@ export default function ChallengeFeed() {
     return <div className="p-8">Loading challenges...</div>;
   }
 
-  const isSubmitted = (promptId: number) => {
-    return submissions?.some((s) => s.promptId === promptId);
-  };
+  const isSubmitted = (promptId: number) =>
+    submissions?.some((s) => s.promptId === promptId);
 
   return (
     <div className="p-8 max-w-5xl mx-auto">
@@ -72,38 +107,29 @@ export default function ChallengeFeed() {
         <h1 className="text-3xl font-bold mb-2 flex items-center gap-2">
           <Sparkles className="h-7 w-7 text-primary" /> Weekly Challenges
         </h1>
-        <p className="text-muted-foreground">Level up your skills with a new prompt every week.</p>
+        <p className="text-muted-foreground">
+          Level up your skills with a new prompt every week.
+        </p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {prompts?.map((prompt) => (
-          <Card key={prompt.id} className={isSubmitted(prompt.id) ? "opacity-75" : ""}>
-            <CardHeader>
-              <div className="text-xs text-muted-foreground font-mono uppercase tracking-wider mb-1">
-                Week {prompt.weekNumber}
-              </div>
-              <CardTitle>{prompt.title}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm">{prompt.body}</p>
-            </CardContent>
-            <CardFooter>
-              {isSubmitted(prompt.id) ? (
-                <Button variant="secondary" disabled className="w-full">
-                  Completed
-                </Button>
-              ) : (
-                <SubmitDialog promptId={prompt.id} onSubmit={(data) => submitMutation.mutate(data)} />
-              )}
-            </CardFooter>
-          </Card>
+          <PromptCard
+            key={prompt.id}
+            prompt={prompt}
+            submitted={!!isSubmitted(prompt.id)}
+            onSubmit={(data) => submitMutation.mutate(data)}
+            submitPending={submitMutation.isPending}
+          />
         ))}
       </div>
 
       <div className="mt-10">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-xl font-semibold">Submission Feed</h2>
-          <span className="text-xs text-muted-foreground">{feed.length} local submissions</span>
+          <span className="text-xs text-muted-foreground">
+            {feed.length} local submissions
+          </span>
         </div>
         {feed.length === 0 ? (
           <Card>
@@ -117,21 +143,32 @@ export default function ChallengeFeed() {
               <Card key={submission.id}>
                 <CardHeader>
                   <div className="text-xs text-muted-foreground">
-                    {submission.prompt ? `Week ${submission.prompt.weekNumber}` : "Challenge"} - Artist #{submission.userId}
+                    {submission.prompt
+                      ? `Week ${submission.prompt.weekNumber}`
+                      : "Challenge"}{" "}
+                    - Artist #{submission.userId}
                   </div>
-                  <CardTitle className="text-base">{submission.prompt?.title || "Challenge submission"}</CardTitle>
+                  <CardTitle className="text-base">
+                    {submission.prompt?.title || "Challenge submission"}
+                  </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {submission.imageUrl ? (
                     <div className="overflow-hidden rounded-lg border bg-muted">
-                      <img src={submission.imageUrl} alt="Challenge submission" className="aspect-video w-full object-cover" />
+                      <img
+                        src={submission.imageUrl}
+                        alt="Challenge submission"
+                        className="aspect-video w-full object-cover"
+                      />
                     </div>
                   ) : (
                     <div className="grid aspect-video place-items-center rounded-lg border border-dashed bg-muted/40 text-xs text-muted-foreground">
                       No artwork URL attached
                     </div>
                   )}
-                  {submission.notes && <p className="text-sm text-muted-foreground">{submission.notes}</p>}
+                  {submission.notes && (
+                    <p className="text-sm text-muted-foreground">{submission.notes}</p>
+                  )}
                   <div className="flex flex-wrap gap-2">
                     {STICKERS.map((sticker) => {
                       const active = submission.myReaction === sticker.id;
@@ -141,7 +178,12 @@ export default function ChallengeFeed() {
                           size="sm"
                           variant={active ? "default" : "outline"}
                           className="h-8 text-xs"
-                          onClick={() => reactionMutation.mutate({ submissionId: submission.id, sticker: sticker.id })}
+                          onClick={() =>
+                            reactionMutation.mutate({
+                              submissionId: submission.id,
+                              sticker: sticker.id,
+                            })
+                          }
                           disabled={reactionMutation.isPending}
                           data-testid={`button-reaction-${submission.id}-${sticker.id}`}
                         >
@@ -160,7 +202,98 @@ export default function ChallengeFeed() {
   );
 }
 
-function SubmitDialog({ promptId, onSubmit }: { promptId: number; onSubmit: (data: any) => void }) {
+// ---------------------------------------------------------------------------
+// PromptCard — extracted so speedrun logic is isolated
+// ---------------------------------------------------------------------------
+
+interface PromptCardProps {
+  prompt: ChallengePrompt;
+  submitted: boolean;
+  onSubmit: (data: { promptId: number; imageUrl?: string; notes?: string }) => void;
+  submitPending: boolean;
+}
+
+function PromptCard({ prompt, submitted, onSubmit, submitPending }: PromptCardProps) {
+  const deadline = getSpeedrunDeadline(prompt);
+  const open = isSpeedrunOpen(prompt);
+
+  // Only poll participants while the speedrun window is live
+  const { count: participantCount } = useSpeedrunParticipants(
+    prompt.id,
+    prompt.isSpeedrun && open,
+  );
+
+  // A speedrun whose window is closed acts like a completed prompt
+  const windowClosed = prompt.isSpeedrun && !open;
+  const isDisabled = submitted || windowClosed;
+
+  return (
+    <Card className={isDisabled ? "opacity-75" : ""}>
+      <CardHeader>
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-xs text-muted-foreground font-mono uppercase tracking-wider">
+            Week {prompt.weekNumber}
+          </div>
+          {prompt.isSpeedrun && (
+            <Badge
+              variant="secondary"
+              className="gap-1 bg-primary/10 text-primary border-primary/20"
+            >
+              <Zap className="h-3 w-3" />
+              Speedrun
+            </Badge>
+          )}
+        </div>
+        <CardTitle>{prompt.title}</CardTitle>
+        {prompt.isSpeedrun && deadline && (
+          <div className="flex items-center gap-3 mt-1">
+            <SpeedrunCountdown endsAt={deadline} />
+            {open && (
+              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                <Users className="h-3 w-3" />
+                {participantCount} animator{participantCount !== 1 ? "s" : ""} joined
+              </span>
+            )}
+          </div>
+        )}
+      </CardHeader>
+      <CardContent>
+        <p className="text-sm">{prompt.body}</p>
+      </CardContent>
+      <CardFooter>
+        {submitted ? (
+          <Button variant="secondary" disabled className="w-full">
+            Completed
+          </Button>
+        ) : windowClosed ? (
+          <Button variant="secondary" disabled className="w-full">
+            Window closed
+          </Button>
+        ) : (
+          <SubmitDialog
+            promptId={prompt.id}
+            onSubmit={onSubmit}
+            disabled={submitPending}
+          />
+        )}
+      </CardFooter>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// SubmitDialog — unchanged from original except disabled prop threaded through
+// ---------------------------------------------------------------------------
+
+function SubmitDialog({
+  promptId,
+  onSubmit,
+  disabled,
+}: {
+  promptId: number;
+  onSubmit: (data: any) => void;
+  disabled?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const [imageUrl, setImageUrl] = useState("");
   const [notes, setNotes] = useState("");
@@ -174,7 +307,9 @@ function SubmitDialog({ promptId, onSubmit }: { promptId: number; onSubmit: (dat
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button className="w-full">Mark as done</Button>
+        <Button className="w-full" disabled={disabled}>
+          Mark as done
+        </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
@@ -197,7 +332,9 @@ function SubmitDialog({ promptId, onSubmit }: { promptId: number; onSubmit: (dat
               onChange={(e) => setNotes(e.target.value)}
             />
           </div>
-          <Button type="submit" className="w-full">Submit</Button>
+          <Button type="submit" className="w-full">
+            Submit
+          </Button>
         </form>
       </DialogContent>
     </Dialog>
