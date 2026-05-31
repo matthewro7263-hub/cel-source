@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "NODE_ENV=development tsx server/index.ts",
     "build": "tsx script/build.ts",
-    "start": "NODE_ENV=production node dist/index.cjs",
+    "start": "npx drizzle-kit push && NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
     "test": "bun test",
     "db:push": "drizzle-kit push"
