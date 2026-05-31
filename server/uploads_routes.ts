@@ -5,12 +5,20 @@
 
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { presignUpload, presignDownload, deleteObject, listUserObjects, isOwnedKey } from "./r2";
+import type { User as AppUser } from "@shared/schema";
+
+declare global {
+  namespace Express {
+    interface User extends AppUser {}
+  }
+}
+
 
 export const uploadsRouter = Router();
 
 // Adjust this guard to match however auth is wired in this project.
 function requireUser(req: Request, res: Response, next: NextFunction) {
-  const user: any = (req as any).user;
+  const user = req.user;
   if (!user || !user.id) {
     return res.status(401).json({ error: "unauthorized" });
   }
@@ -29,7 +37,7 @@ uploadsRouter.post("/presign", requireUser, async (req, res) => {
     if (prefix && !ALLOWED_PREFIX.test(prefix)) {
       return res.status(400).json({ error: "invalid prefix" });
     }
-    const userId = (req as any).user.id as string;
+    const userId = req.user!.id.toString();
     const data = await presignUpload({ userId, filename, contentType, prefix, maxBytes: MAX_BYTES });
     res.json(data);
   } catch (err: any) {
@@ -40,7 +48,7 @@ uploadsRouter.post("/presign", requireUser, async (req, res) => {
 uploadsRouter.get("/download", requireUser, async (req, res) => {
   try {
     const key = String(req.query.key ?? "");
-    const userId = (req as any).user.id as string;
+    const userId = req.user!.id.toString();
     if (!key || !isOwnedKey(userId, key)) return res.status(404).json({ error: "not_found" });
     const url = await presignDownload(key, 300);
     res.json({ url, expiresIn: 300 });
@@ -52,7 +60,7 @@ uploadsRouter.get("/download", requireUser, async (req, res) => {
 uploadsRouter.delete("/object", requireUser, async (req, res) => {
   try {
     const key = String(req.query.key ?? "");
-    const userId = (req as any).user.id as string;
+    const userId = req.user!.id.toString();
     if (!key || !isOwnedKey(userId, key)) return res.status(404).json({ error: "not_found" });
     await deleteObject(key);
     res.json({ ok: true });
@@ -63,7 +71,7 @@ uploadsRouter.delete("/object", requireUser, async (req, res) => {
 
 uploadsRouter.get("/list", requireUser, async (req, res) => {
   try {
-    const userId = (req as any).user.id as string;
+    const userId = req.user!.id.toString();
     const prefix = typeof req.query.prefix === "string" ? req.query.prefix : undefined;
     if (prefix && !ALLOWED_PREFIX.test(prefix)) return res.status(400).json({ error: "invalid prefix" });
     const out = await listUserObjects(userId, prefix);
