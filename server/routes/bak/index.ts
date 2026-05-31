@@ -226,26 +226,37 @@ bakRouter.post("/projects/:id/snapshots/:snapId/restore", requireAuth, async (re
   await db.transaction(async (tx) => {
     // Restore scripts
     await tx.delete(scripts).where(eq(scripts.projectId, projectId));
-    for (const s of data.scripts) await tx.insert(scripts).values(s);
+    if (data.scripts && data.scripts.length > 0) {
+      await tx.insert(scripts).values(data.scripts);
+    }
 
     // Restore storyboards and panels
     await tx.delete(storyboards).where(eq(storyboards.projectId, projectId));
-    for (const sb of data.storyboards) await tx.insert(storyboards).values(sb);
+    if (data.storyboards && data.storyboards.length > 0) {
+      await tx.insert(storyboards).values(data.storyboards);
+    }
     
     // Clean up all panels for these storyboards, then insert
     // Since we deleted storyboards, any associated panels conceptually are orphaned, but let's just delete the ones we know
-    for (const sb of data.storyboards) {
-      await tx.delete(storyboardPanels).where(eq(storyboardPanels.storyboardId, sb.id));
+    if (data.storyboards && data.storyboards.length > 0) {
+      const sbIds = data.storyboards.map((sb: any) => sb.id);
+      await tx.delete(storyboardPanels).where(inArray(storyboardPanels.storyboardId, sbIds));
     }
-    for (const p of data.panels) await tx.insert(storyboardPanels).values(p);
+    if (data.panels && data.panels.length > 0) {
+      await tx.insert(storyboardPanels).values(data.panels);
+    }
 
     // Restore scenes
     await tx.delete(scenes).where(eq(scenes.projectId, projectId));
-    for (const s of data.scenes) await tx.insert(scenes).values(s);
+    if (data.scenes && data.scenes.length > 0) {
+      await tx.insert(scenes).values(data.scenes);
+    }
 
     // Restore comments
     await tx.delete(comments).where(eq(comments.projectId, projectId));
-    for (const c of data.comments) await tx.insert(comments).values(c);
+    if (data.comments && data.comments.length > 0) {
+      await tx.insert(comments).values(data.comments);
+    }
   });
 
   res.json({ message: "Snapshot restored successfully" });
