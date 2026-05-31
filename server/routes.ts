@@ -4,7 +4,7 @@ const pdfParse = (pdfParseModule as any).default || pdfParseModule;
 import mammoth from "mammoth";
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { randomUUID } from "node:crypto";
+import { randomUUID, createCipheriv, createDecipheriv, randomBytes, createHash } from "node:crypto";
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer } from "node:http";
 import type { Server } from "node:http";
@@ -83,8 +83,40 @@ const upload = multer({
 
   // No cookie-parser — we use Authorization: Bearer <token> only
 
+  // ===== RATE LIMITER =====
+  const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
+  function rateLimiter(options: { windowMs: number; max: number; message: string }) {
+    return (req: any, res: any, next: any) => {
+      const ip = req.ip || req.headers["x-forwarded-for"] || req.socket.remoteAddress || "unknown-ip";
+      const now = Date.now();
+      let bucket = rateLimitMap.get(ip);
+      if (!bucket || now > bucket.resetTime) {
+        bucket = { count: 1, resetTime: now + options.windowMs };
+        rateLimitMap.set(ip, bucket);
+        return next();
+      }
+      bucket.count++;
+      if (bucket.count > options.max) {
+        return res.status(429).json({ message: options.message });
+      }
+      next();
+    };
+  }
+
+  const signupLimiter = rateLimiter({
+    windowMs: 60 * 60 * 1000, // 1 hour
+    max: 10,
+    message: "Too many registrations from this IP, please try again in an hour."
+  });
+
+  const loginLimiter = rateLimiter({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 20,
+    message: "Too many login attempts, please try again in 15 minutes."
+  });
+
   // ===== AUTH =====
-  app.post("/api/auth/signup", async (req, res) => {
+  app.post("/api/auth/signup", signupLimiter, async (req, res) => {
     const schema = z.object({
       email: z.string().email(),
       name: z.string().min(1).max(80),
@@ -105,7 +137,7 @@ const upload = multer({
     res.json({ user: safe, token });
   });
 
-  app.post("/api/auth/login", async (req, res) => {
+  app.post("/api/auth/login", loginLimiter, async (req, res) => {
     const schema = z.object({ email: z.string().email(), password: z.string() });
     const body = schema.parse(req.body);
     const user = await storage.getUserByEmail(body.email);
@@ -2080,10 +2112,41 @@ ${body.scriptContent}
   return httpServer;
 }
 
-// Helper: simple base64 obfuscation (NOT real encryption — for note-keeping only)
-function obfuscateKey(key: string): string {
-  return Buffer.from(key).toString("base64");
+// Helper: secure AES-256-CBC encryption for AI keys at-rest
+function getEncryptionKey(): Buffer {
+  const envKey = process.env.ENCRYPTION_KEY || process.env.SESSION_SECRET || "fallback-encryption-secret-key-1234567890abcdef";
+  if (/^[0-9a-fA-F]{64}$/.test(envKey)) {
+    return Buffer.from(envKey, "hex");
+  }
+  return createHash("sha256").update(envKey).digest();
 }
+
+function obfuscateKey(key: string): string {
+  try {
+    const encKey = getEncryptionKey();
+    const iv = randomBytes(16);
+    const cipher = createCipheriv("aes-256-cbc", encKey, iv);
+    let encrypted = cipher.update(key, "utf8", "hex");
+    encrypted += cipher.final("hex");
+    return `${iv.toString("hex")}:${encrypted}`;
+  } catch (err) {
+    return Buffer.from(key).toString("base64");
+  }
+}
+
 function deobfuscateKey(key: string): string {
-  try { return Buffer.from(key, "base64").toString("utf8"); } catch { return ""; }
+  try {
+    if (!key.includes(":")) {
+      return Buffer.from(key, "base64").toString("utf8");
+    }
+    const [ivHex, encryptedHex] = key.split(":");
+    const encKey = getEncryptionKey();
+    const iv = Buffer.from(ivHex, "hex");
+    const decipher = createDecipheriv("aes-256-cbc", encKey, iv);
+    let decrypted = decipher.update(encryptedHex, "hex", "utf8");
+    decrypted += decipher.final("utf8");
+    return decrypted;
+  } catch {
+    try { return Buffer.from(key, "base64").toString("utf8"); } catch { return ""; }
+  }
 }

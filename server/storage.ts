@@ -2,7 +2,7 @@ import { Pool, neonConfig } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-serverless";
 import ws from "ws";
 import { eq, and, or, inArray, asc, desc, like } from "drizzle-orm";
-import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { randomBytes, scryptSync, timingSafeEqual, createHmac } from "node:crypto";
 
 import * as mainSchema from "@shared/schema";
 import * as a11ySchema from "@shared/a11y_schema";
@@ -115,19 +115,47 @@ export function genToken(len = 16): string {
   return randomBytes(len).toString("hex").slice(0, len);
 }
 
-// ===== SESSIONS (in-memory) =====
-const sessions = new Map<string, number>(); // sessionId -> userId
+// ===== SESSIONS (cryptographic, stateless & persistent) =====
+const SESSION_SECRET = process.env.SESSION_SECRET || "fallback-secret-for-dev-only-change-in-prod-1234567890abcdef";
+
 export function createSession(userId: number): string {
-  const sid = randomBytes(24).toString("hex");
-  sessions.set(sid, userId);
-  return sid;
+  // Session expires in 30 days
+  const expiresAt = Date.now() + 1000 * 60 * 60 * 24 * 30;
+  const payload = `${userId}:${expiresAt}`;
+  const hmac = createHmac("sha256", SESSION_SECRET);
+  hmac.update(payload);
+  const signature = hmac.digest("hex");
+  return `${payload}:${signature}`;
 }
+
 export function getSessionUser(sid: string | undefined): number | undefined {
   if (!sid) return undefined;
-  return sessions.get(sid);
+  const parts = sid.split(":");
+  if (parts.length !== 3) return undefined;
+  const [userIdStr, expiresAtStr, signature] = parts;
+  const userId = parseInt(userIdStr, 10);
+  const expiresAt = parseInt(expiresAtStr, 10);
+  
+  if (isNaN(userId) || isNaN(expiresAt)) return undefined;
+  if (Date.now() > expiresAt) return undefined; // Session expired
+  
+  const payload = `${userIdStr}:${expiresAtStr}`;
+  const hmac = createHmac("sha256", SESSION_SECRET);
+  hmac.update(payload);
+  const expectedSignature = hmac.digest("hex");
+  
+  try {
+    if (timingSafeEqual(Buffer.from(signature, "hex"), Buffer.from(expectedSignature, "hex"))) {
+      return userId;
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
 }
+
 export function destroySession(sid: string) {
-  sessions.delete(sid);
+  // Stateless token destruction is handled by client-side token clearing
 }
 
 export const storage = {
