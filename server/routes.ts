@@ -2112,9 +2112,9 @@ ${body.scriptContent}
   return httpServer;
 }
 
-// Helper: secure AES-256-CBC encryption for AI keys at-rest
+// Helper: secure aes-256-gcm encryption for AI keys at-rest
 function getEncryptionKey(): Buffer {
-  const envKey = process.env.ENCRYPTION_KEY || process.env.SESSION_SECRET || "fallback-encryption-secret-key-1234567890abcdef";
+  const envKey = process.env.ENCRYPTION_KEY;
   if (/^[0-9a-fA-F]{64}$/.test(envKey)) {
     return Buffer.from(envKey, "hex");
   }
@@ -2125,7 +2125,7 @@ function obfuscateKey(key: string): string {
   try {
     const encKey = getEncryptionKey();
     const iv = randomBytes(16);
-    const cipher = createCipheriv("aes-256-cbc", encKey, iv);
+    const cipher = createCipheriv("aes-256-gcm", encKey, iv);
     let encrypted = cipher.update(key, "utf8", "hex");
     encrypted += cipher.final("hex");
     return `${iv.toString("hex")}:${encrypted}`;
@@ -2142,7 +2142,7 @@ function deobfuscateKey(key: string): string {
     const [ivHex, encryptedHex] = key.split(":");
     const encKey = getEncryptionKey();
     const iv = Buffer.from(ivHex, "hex");
-    const decipher = createDecipheriv("aes-256-cbc", encKey, iv);
+    const decipher = createDecipheriv("aes-256-gcm", encKey, iv);
     let decrypted = decipher.update(encryptedHex, "hex", "utf8");
     decrypted += decipher.final("utf8");
     return decrypted;
