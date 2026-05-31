@@ -118,10 +118,10 @@ export function genToken(len = 16): string {
 // ===== SESSIONS (cryptographic, stateless & persistent) =====
 const SESSION_SECRET = process.env.SESSION_SECRET || "fallback-secret-for-dev-only-change-in-prod-1234567890abcdef";
 
-export function createSession(userId: number): string {
+export function createSession(userId: number, tokenVersion: number): string {
   // Session expires in 30 days
   const expiresAt = Date.now() + 1000 * 60 * 60 * 24 * 30;
-  const payload = `${userId}:${expiresAt}`;
+  const payload = `${userId}:${expiresAt}:${tokenVersion}`;
   const hmac = createHmac("sha256", SESSION_SECRET);
   hmac.update(payload);
   const signature = hmac.digest("hex");
@@ -131,8 +131,8 @@ export function createSession(userId: number): string {
 export function getSessionUser(sid: string | undefined): number | undefined {
   if (!sid) return undefined;
   const parts = sid.split(":");
-  if (parts.length !== 3) return undefined;
-  const [userIdStr, expiresAtStr, signature] = parts;
+  if (parts.length !== 4) return undefined;
+  const [userIdStr, expiresAtStr, tokenVersionStr, signature] = parts;
   const userId = parseInt(userIdStr, 10);
   const expiresAt = parseInt(expiresAtStr, 10);
   
