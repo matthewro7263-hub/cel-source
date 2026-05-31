@@ -8,7 +8,7 @@ export const users = pgTable("users", {
   email: text("email").notNull().unique(),
   name: text("name").notNull(),
   avatarColor: text("avatar_color").notNull().default("#6E4FE8"),
-  passwordHash: text("password_hash").notNull(),
+  passwordHash: text("password_hash").notNull().   tokenVersion: integer("token_version").notNull().default(0),
 });
 export const insertUserSchema = createInsertSchema(users).omit({ id: true });
 export type InsertUser = z.infer<typeof insertUserSchema>;
