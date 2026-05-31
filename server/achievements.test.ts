@@ -25,5 +25,3 @@ assert.equal(emptyAchievement, undefined);
 // Edge case: undefined/null cast
 const nullAchievement = getAchievementDef(null as any);
 assert.equal(nullAchievement, undefined);
-
-console.log("server/achievements tests passed");
