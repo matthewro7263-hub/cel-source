@@ -1,4 +1,4 @@
-import { Project, SyntaxKind, ObjectLiteralExpression, PropertyAssignment } from "ts-morph";
+import { Project, SyntaxKind, ObjectLiteralExpression, PropertyAssignment, ArrowFunction, FunctionExpression, ParameterDeclaration } from "ts-morph";
 import * as fs from 'fs';
 
 const project = new Project();
@@ -17,8 +17,8 @@ props.forEach(prop => {
         const initializer = pa.getInitializer();
 
         if (initializer && (initializer.getKind() === SyntaxKind.ArrowFunction || initializer.getKind() === SyntaxKind.FunctionExpression)) {
-            const func = initializer as any;
-            const params = func.getParameters().map((p: any) => p.getText()).join(", ");
+            const func = initializer as ArrowFunction | FunctionExpression;
+            const params = func.getParameters().map((p: ParameterDeclaration) => p.getText()).join(", ");
             const body = func.getBody();
             const bodyText = body.getKind() === SyntaxKind.Block ? body.getText() : `{ return ${body.getText()}; }`;
             

@@ -192,8 +192,10 @@ export const storage = {
   async deleteProject(id: number) {
       await db.delete(comments).where(eq(comments.projectId, id));
       await db.delete(scenes).where(eq(scenes.projectId, id));
-      const sbs = await db.select().from(storyboards).where(eq(storyboards.projectId, id));
-      for (const sb of sbs) await db.delete(storyboardPanels).where(eq(storyboardPanels.storyboardId, sb.id));
+      const sbs = await db.select({ id: storyboards.id }).from(storyboards).where(eq(storyboards.projectId, id));
+      if (sbs.length > 0) {
+        await db.delete(storyboardPanels).where(inArray(storyboardPanels.storyboardId, sbs.map((sb) => sb.id)));
+      }
       await db.delete(storyboards).where(eq(storyboards.projectId, id));
       await db.delete(animatics).where(eq(animatics.projectId, id));
       await db.delete(scripts).where(eq(scripts.projectId, id));

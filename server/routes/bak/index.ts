@@ -184,11 +184,8 @@ bakRouter.post("/projects/:id/snapshot", requireAuth, async (req, res) => {
   const { label } = req.body;
 
   const snapshotStoryboards = await db.select().from(storyboards).where(eq(storyboards.projectId, projectId));
-  const snapshotPanels = (
-    await Promise.all(snapshotStoryboards.map((sb) =>
-      db.select().from(storyboardPanels).where(eq(storyboardPanels.storyboardId, sb.id))
-    ))
-  ).flat();
+  const storyboardIds = snapshotStoryboards.map(sb => sb.id);
+  const snapshotPanels = storyboardIds.length > 0 ? await db.select().from(storyboardPanels).where(inArray(storyboardPanels.storyboardId, storyboardIds)) : [];
 
   const snapshotData = {
     project: await storage.getProject(projectId),
