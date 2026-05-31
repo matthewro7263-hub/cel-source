@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, integer , serial} from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, integer, serial, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -7,6 +7,9 @@ export const challenge_prompts = pgTable("challenge_prompts", {
   weekNumber: integer("week_number").notNull(),
   title: text("title").notNull(),
   body: text("body").notNull(),
+  // ----- Speedrun fields (null for standard challenges) -----
+  isSpeedrun: boolean("is_speedrun").notNull().default(false),
+  deadlineHours: integer("deadline_hours"), // null = normal challenge; e.g. 24 or 48
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
@@ -27,6 +30,11 @@ export const challenge_reactions = pgTable("challenge_reactions", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+export const insertChallengePromptSchema = createInsertSchema(challenge_prompts).omit({
+  id: true,
+  createdAt: true,
+});
+
 export const insertChallengeSubmissionSchema = createInsertSchema(challenge_submissions).omit({
   id: true,
   createdAt: true,
@@ -39,6 +47,7 @@ export const insertChallengeReactionSchema = createInsertSchema(challenge_reacti
   userId: true,
 });
 
+export type InsertChallengePrompt = z.infer<typeof insertChallengePromptSchema>;
 export type InsertChallengeSubmission = z.infer<typeof insertChallengeSubmissionSchema>;
 export type InsertChallengeReaction = z.infer<typeof insertChallengeReactionSchema>;
 export type ChallengeSubmission = typeof challenge_submissions.$inferSelect;
