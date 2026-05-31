@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import ChallengeLeaderboard from "./Leaderboard";
 import { Sparkles, Zap, Users } from "lucide-react";
 import { SpeedrunCountdown } from "@/components/SpeedrunCountdown";
 import { useSpeedrunParticipants } from "@/hooks/useSpeedrunParticipants";
@@ -30,7 +31,7 @@ const STICKERS: { id: Sticker; label: string }[] = [
   { id: "spark", label: "Spark" },
   { id: "heart", label: "Heart" },
   { id: "study", label: "Study" },
-  { id: "wow", label: "Wow" },
+  { id: "wow",   label: "Wow"   },
 ];
 
 // ---------------------------------------------------------------------------
@@ -77,6 +78,8 @@ export default function ChallengeFeed() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/challenges/submissions"] });
       queryClient.invalidateQueries({ queryKey: ["/api/challenges/feed"] });
+      // Refresh the live leaderboard after a new submission changes reaction totals
+      queryClient.invalidateQueries({ queryKey: ["/api/challenges/leaderboard"] });
     },
   });
 
@@ -91,6 +94,8 @@ export default function ChallengeFeed() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/challenges/feed"] });
+      // Keep leaderboard in sync after a reaction toggle
+      queryClient.invalidateQueries({ queryKey: ["/api/challenges/leaderboard"] });
     },
   });
 
@@ -101,8 +106,14 @@ export default function ChallengeFeed() {
   const isSubmitted = (promptId: number) =>
     submissions?.some((s) => s.promptId === promptId);
 
+  // Derive the current week number from the most-recent prompt.
+  const currentWeek = prompts && prompts.length > 0
+    ? prompts[prompts.length - 1].weekNumber
+    : null;
+
   return (
     <div className="p-8 max-w-5xl mx-auto">
+      {/* ── Header ── */}
       <div className="mb-8">
         <h1 className="text-3xl font-bold mb-2 flex items-center gap-2">
           <Sparkles className="h-7 w-7 text-primary" /> Weekly Challenges
@@ -112,6 +123,7 @@ export default function ChallengeFeed() {
         </p>
       </div>
 
+      {/* ── Active prompts ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {prompts?.map((prompt) => (
           <PromptCard
@@ -124,6 +136,14 @@ export default function ChallengeFeed() {
         ))}
       </div>
 
+      {/* ── Live leaderboard for the current week ── */}
+      {currentWeek !== null && (
+        <div className="mt-10">
+          <ChallengeLeaderboard weekNumber={currentWeek} useSnapshot={false} />
+        </div>
+      )}
+
+      {/* ── Submission feed ── */}
       <div className="mt-10">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-xl font-semibold">Submission Feed</h2>
@@ -131,6 +151,7 @@ export default function ChallengeFeed() {
             {feed.length} local submissions
           </span>
         </div>
+
         {feed.length === 0 ? (
           <Card>
             <CardContent className="py-10 text-center text-sm text-muted-foreground">
@@ -152,6 +173,7 @@ export default function ChallengeFeed() {
                     {submission.prompt?.title || "Challenge submission"}
                   </CardTitle>
                 </CardHeader>
+
                 <CardContent className="space-y-4">
                   {submission.imageUrl ? (
                     <div className="overflow-hidden rounded-lg border bg-muted">
@@ -187,7 +209,8 @@ export default function ChallengeFeed() {
                           disabled={reactionMutation.isPending}
                           data-testid={`button-reaction-${submission.id}-${sticker.id}`}
                         >
-                          {sticker.label} {submission.reactionCounts[sticker.id] || 0}
+                          {sticker.label}{" "}
+                          {submission.reactionCounts[sticker.id] || 0}
                         </Button>
                       );
                     })}
