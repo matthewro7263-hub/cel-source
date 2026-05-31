@@ -70,13 +70,30 @@
     --brand-purple: #C4B5FD;
     --brand-warm: #FFD9A8;
 
+    /* Type Scale */
+    --text-xs: 12px;
+    --text-sm: 14px;
+    --text-base: 16px;
+    --text-lg: 20px;
+    --text-xl: 28px;
+    --text-2xl: 40px;
+    --text-3xl: 56px;
+
+    /* Motion & transitions — refined, subtle */
+    --ease-out: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+    --duration-fast: 150ms;
+    --duration-normal: 200ms;
+    --duration-slow: 300ms;
+
     /* Surfaces */
     --surface-1: rgba(255, 255, 255, 0.72);
     --surface-2: rgba(255, 255, 255, 0.55);
     --surface-3: rgba(255, 255, 255, 0.35);
     --surface-ink: rgba(20, 24, 40, 0.06);
-    --shadow-soft: 0 1px 2px rgba(20,24,40,0.04), 0 8px 24px rgba(20,24,40,0.06);
-    --shadow-pop: 0 1px 2px rgba(20,24,40,0.05), 0 20px 48px rgba(20,24,40,0.10);
+    --shadow-soft: 0 1px 2px rgba(0,0,0,0.04), 0 12px 32px -8px rgba(20,20,35,0.08);
+    --shadow-pop: 0 1px 2px rgba(0,0,0,0.05), 0 20px 48px -8px rgba(20,20,35,0.12);
+    --shadow-card-inner: inset 0 1px 0 rgba(255, 255, 255, 0.6);
 
     /* Liquid Glass Neumorphic tokens */
     --neu-glass-bg: rgba(255, 255, 255, 0.66);
@@ -185,8 +202,9 @@
     --surface-2: rgba(255, 255, 255, 0.04);
     --surface-3: rgba(255, 255, 255, 0.025);
     --surface-ink: rgba(0,0,0,0.20);
-    --shadow-soft: 0 1px 2px rgba(0,0,0,0.30), 0 12px 32px rgba(0,0,0,0.40);
-    --shadow-pop: 0 2px 4px rgba(0,0,0,0.40), 0 30px 60px rgba(0,0,0,0.55);
+    --shadow-soft: 0 1px 2px rgba(0,0,0,0.30), 0 12px 32px -8px rgba(0,0,0,0.40);
+    --shadow-pop: 0 2px 4px rgba(0,0,0,0.40), 0 20px 48px -8px rgba(0,0,0,0.55);
+    --shadow-card-inner: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 
     /* Liquid Glass Neumorphic tokens — dark */
     --neu-glass-bg: rgba(255, 255, 255, 0.09);
@@ -303,6 +321,14 @@
   ::-webkit-scrollbar-thumb:hover { background: rgba(120,130,160,0.45); background-clip: padding-box; }
 
   h1, h2, h3, h4 { letter-spacing: -0.02em; }
+
+  /* Apply type scale to headings */
+  h1 { font-size: var(--text-3xl); font-weight: 700; }
+  h2 { font-size: var(--text-2xl); font-weight: 600; }
+  h3 { font-size: var(--text-xl); font-weight: 600; }
+  h4 { font-size: var(--text-lg); font-weight: 600; }
+  h5 { font-size: var(--text-base); font-weight: 600; }
+  h6 { font-size: var(--text-sm); font-weight: 600; }
 }
 
 /* ============================================================ */
@@ -316,6 +342,7 @@
     backdrop-filter: blur(22px) saturate(160%);
     -webkit-backdrop-filter: blur(22px) saturate(160%);
     border: 1px solid hsl(var(--card-border, var(--border)));
+    border-radius: 16px;
     box-shadow: var(--shadow-soft);
   }
 
@@ -324,6 +351,7 @@
     backdrop-filter: blur(28px) saturate(180%);
     -webkit-backdrop-filter: blur(28px) saturate(180%);
     border: 1px solid hsl(var(--card-border, var(--border)));
+    border-radius: 16px;
     box-shadow: var(--shadow-soft);
   }
 
@@ -335,7 +363,7 @@
   .panel {
     background: hsl(var(--card));
     border: 1px solid var(--card-border);
-    border-radius: var(--radius);
+    border-radius: 16px;
     box-shadow: var(--shadow-soft);
   }
 
@@ -344,7 +372,7 @@
     backdrop-filter: blur(18px);
     -webkit-backdrop-filter: blur(18px);
     border: 1px solid var(--card-border);
-    border-radius: var(--radius);
+    border-radius: 16px;
   }
 
   /* Sky button — liquid glass with neumorphic elevation */
@@ -383,7 +411,7 @@
     isolation: isolate;
     background: transparent;
     color: hsl(var(--foreground));
-    border: 1px solid transparent;
+    border: 1px solid rgba(0,0,0,0.08);
     border-radius: 16px;
     padding: 0.5rem 0.9rem;
     font-weight: 500;
@@ -398,6 +426,10 @@
     -webkit-backdrop-filter: blur(20px) saturate(160%);
     border-color: var(--neu-glass-border);
     box-shadow: var(--neu-shadow-raised);
+  }
+
+  .dark .btn-ghost {
+    border-color: rgba(255,255,255,0.08);
   }
 
   /* ── Liquid Glass Neumorphic Button ── */
@@ -589,14 +621,15 @@
   input, textarea, select {
     background: hsl(var(--input));
     border: 1px solid var(--card-border);
-    border-radius: 10px;
-    transition: border-color 120ms ease, box-shadow 120ms ease;
+    border-radius: 12px;
+    transition: border-color 150ms ease, box-shadow 150ms ease;
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.03);
   }
 
   input:focus, textarea:focus, select:focus {
     outline: none;
     border-color: hsl(var(--ring));
-    box-shadow: 0 0 0 4px hsl(var(--ring) / 0.18);
+    box-shadow: 0 0 0 2px hsl(var(--ring) / 0.15), inset 0 1px 2px rgba(0,0,0,0.03);
   }
 
   /* Chips / badges */
@@ -618,6 +651,43 @@
 
   /* Soft divider */
   .hr-soft { height: 1px; background: linear-gradient(to right, transparent, var(--card-border), transparent); border: none; }
+
+  /* Iconography — refined Lucide icons */
+  .icon-refined {
+    stroke-width: 1.5;
+  }
+
+  .icon-sm { width: 20px; height: 20px; }
+  .icon-md { width: 24px; height: 24px; }
+  .icon-lg { width: 28px; height: 28px; }
+
+  /* Motion utilities — refined transitions */
+  .motion-fast {
+    transition: all var(--duration-fast) var(--ease-out);
+  }
+
+  .motion-normal {
+    transition: all var(--duration-normal) var(--ease-out);
+  }
+
+  .motion-slow {
+    transition: all var(--duration-slow) var(--ease-out);
+  }
+
+  .motion-fade-up {
+    animation: fadeUp var(--duration-normal) var(--ease-out) forwards;
+  }
+
+  @keyframes fadeUp {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
 }
 
 /* ============================================================ */

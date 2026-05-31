@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, integer , serial, boolean} from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, integer , serial, boolean, index} from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -8,7 +8,7 @@ export const users = pgTable("users", {
   email: text("email").notNull().unique(),
   name: text("name").notNull(),
   avatarColor: text("avatar_color").notNull().default("#6E4FE8"),
-  passwordHash: text("password_hash").notNull(),
+  passwordHash: text("password_hash").notNull().   tokenVersion: integer("token_version").notNull().default(0),
 });
 export const insertUserSchema = createInsertSchema(users).omit({ id: true });
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -30,6 +30,10 @@ export const projects = pgTable("projects", {
   cli_brandColor: text("cli_brand_color").notNull().default("#9DD0FF"),
   cli_brandWelcome: text("cli_brand_welcome"),
   dltDiscordWebhookUrl: text("dlt_discord_webhook_url"),
+}, (table: any) => {
+  return {
+    projectsOwnerIdIdx: index("projects_owner_id_idx").on(table.ownerId),
+  };
 });
 export const insertProjectSchema = createInsertSchema(projects).omit({ id: true, createdAt: true });
 export type InsertProject = z.infer<typeof insertProjectSchema>;
@@ -41,6 +45,11 @@ export const projectMembers = pgTable("project_members", {
   projectId: integer("project_id").notNull(),
   userId: integer("user_id").notNull(),
   role: text("role").notNull().default("editor"),
+}, (table: any) => {
+  return {
+    projectMembersProjectIdIdx: index("project_members_project_id_idx").on(table.projectId),
+    projectMembersUserIdIdx: index("project_members_user_id_idx").on(table.userId),
+  };
 });
 export const insertProjectMemberSchema = createInsertSchema(projectMembers).omit({ id: true });
 export type InsertProjectMember = z.infer<typeof insertProjectMemberSchema>;
@@ -57,6 +66,10 @@ export const scripts = pgTable("scripts", {
   originalKey: text("original_key").default(""),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   deletedAt: timestamp("deleted_at", { withTimezone: true }).defaultNow(),
+}, (table: any) => {
+  return {
+    scriptsProjectIdIdx: index("scripts_project_id_idx").on(table.projectId),
+  };
 });
 export const insertScriptSchema = createInsertSchema(scripts).omit({ id: true, updatedAt: true });
 export type InsertScript = z.infer<typeof insertScriptSchema>;
@@ -68,6 +81,10 @@ export const storyboards = pgTable("storyboards", {
   projectId: integer("project_id").notNull(),
   title: text("title").notNull().default("Storyboard"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table: any) => {
+  return {
+    storyboardsProjectIdIdx: index("storyboards_project_id_idx").on(table.projectId),
+  };
 });
 export const insertStoryboardSchema = createInsertSchema(storyboards).omit({ id: true, createdAt: true });
 export type InsertStoryboard = z.infer<typeof insertStoryboardSchema>;
@@ -82,6 +99,10 @@ export const storyboardPanels = pgTable("storyboard_panels", {
   caption: text("caption").notNull().default(""),
   dialogue: text("dialogue").notNull().default(""),
   deletedAt: timestamp("deleted_at", { withTimezone: true }).defaultNow(),
+}, (table: any) => {
+  return {
+    storyboardPanelsStoryboardIdIdx: index("storyboard_panels_storyboard_id_idx").on(table.storyboardId),
+  };
 });
 export const insertPanelSchema = createInsertSchema(storyboardPanels).omit({ id: true });
 export type InsertPanel = z.infer<typeof insertPanelSchema>;
@@ -111,6 +132,10 @@ export const scenes = pgTable("scenes", {
   deadline: text("deadline"),
   assigneeId: integer("assignee_id"),
   deletedAt: timestamp("deleted_at", { withTimezone: true }).defaultNow(),
+}, (table: any) => {
+  return {
+    scenesProjectIdIdx: index("scenes_project_id_idx").on(table.projectId),
+  };
 });
 export const insertSceneSchema = createInsertSchema(scenes).omit({ id: true });
 export type InsertScene = z.infer<typeof insertSceneSchema>;
@@ -124,6 +149,11 @@ export const comments = pgTable("comments", {
   authorId: integer("author_id").notNull(),
   body: text("body").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table: any) => {
+  return {
+    commentsProjectIdIdx: index("comments_project_id_idx").on(table.projectId),
+    commentsSceneIdIdx: index("comments_scene_id_idx").on(table.sceneId),
+  };
 });
 export const insertCommentSchema = createInsertSchema(comments).omit({ id: true, createdAt: true });
 export type InsertComment = z.infer<typeof insertCommentSchema>;
@@ -143,6 +173,10 @@ export const assets = pgTable("assets", {
   uploaderId: integer("uploader_id").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   deletedAt: timestamp("deleted_at", { withTimezone: true }).defaultNow(),
+}, (table: any) => {
+  return {
+    assetsProjectIdIdx: index("assets_project_id_idx").on(table.projectId),
+  };
 });
 export const insertAssetSchema = createInsertSchema(assets).omit({ id: true, createdAt: true });
 export type InsertAsset = z.infer<typeof insertAssetSchema>;
