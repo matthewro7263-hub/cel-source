@@ -52,7 +52,7 @@
     "@types/cookie-parser": "^1.4.10",
     "@types/dompurify": "^3.2.0",
     "archiver": "^7.0.1",
-    "canvas": "^2.11.2",
+
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
@@ -120,6 +120,7 @@
     "vite": "^7.3.0"
   },
   "optionalDependencies": {
+    "canvas": "^2.11.2",
     "bufferutil": "^4.0.8"
   },
   "overrides": {

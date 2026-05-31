@@ -4,7 +4,7 @@ import { eq, inArray } from "drizzle-orm";
 import { storyboardPanels, storyboards } from "@shared/schema";
 import { z } from "zod";
 import archiver from "archiver";
-import { createCanvas, loadImage } from "canvas";
+let createCanvas: any, loadImage: any; try { import("canvas").then(c => { createCanvas = c.createCanvas; loadImage = c.loadImage; }).catch(() => {}); } catch (e) {}
 
 async function canAccessProject(projectId: number, userId: number): Promise<boolean> {
   const p = await storage.getProject(projectId);

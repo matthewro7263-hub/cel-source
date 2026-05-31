@@ -2,7 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { db, getSessionUser, storage } from "./storage";
 import { eq, inArray } from "drizzle-orm";
 import archiver from "archiver";
-import { createCanvas } from "canvas";
+let createCanvas: any; try { import("canvas").then(c => createCanvas = c.createCanvas).catch(() => {}); } catch (e) {}
 import { 
   scripts, storyboards, storyboardPanels, animatics, scenes, comments, 
   assets, animaticProjects, animaticTracks, animaticClips,

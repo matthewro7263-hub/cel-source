@@ -41,6 +41,7 @@ async function buildAll() {
   const allDeps = [
     ...Object.keys(pkg.dependencies || {}),
     ...Object.keys(pkg.devDependencies || {}),
+    ...Object.keys(pkg.optionalDependencies || {}),
   ];
   const externals = allDeps.filter((dep) => !allowlist.includes(dep));
 
