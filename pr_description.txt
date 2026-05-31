@@ -1,4 +1,0 @@
-🎯 **What:** The `@ts-ignore` for `webkitAudioContext` has been addressed by properly adding it to the `Window` interface type.
-💡 **Why:** This improves maintainability by removing suppression of TypeScript errors, enforcing type safety when referencing browser APIs, and following cleaner conventions.
-✅ **Verification:** Verified with `pnpm check` to ensure there are no compilation errors related to `aud_web_audio.ts` or `webkitAudioContext`. Rechecked git status to ensure only relevant files were committed.
-✨ **Result:** Cleanly replaced an arbitrary compiler suppression comment with the actual interface definition required for standard web platform interactions.
