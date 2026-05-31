@@ -83,10 +83,23 @@ bakRouter.get("/projects/:id/archive", requireAuth, async (req, res) => {
   const archive = archiver('zip', { zlib: { level: 9 } });
   archive.pipe(res);
 
-  const storyboardPayload = await Promise.all(projStoryboards.map(async (storyboard) => ({
+  const storyboardIds = projStoryboards.map(sb => sb.id);
+  const allPanels = storyboardIds.length > 0
+    ? await db.select().from(storyboardPanels).where(inArray(storyboardPanels.storyboardId, storyboardIds))
+    : [];
+
+  const panelsByStoryboardId = allPanels.reduce((acc, panel) => {
+    if (!acc[panel.storyboardId]) {
+      acc[panel.storyboardId] = [];
+    }
+    acc[panel.storyboardId].push(panel);
+    return acc;
+  }, {} as Record<number, typeof allPanels[0][]>);
+
+  const storyboardPayload = projStoryboards.map(storyboard => ({
     ...storyboard,
-    panels: await db.select().from(storyboardPanels).where(eq(storyboardPanels.storyboardId, storyboard.id)),
-  })));
+    panels: panelsByStoryboardId[storyboard.id] || [],
+  }));
   const assetManifest = projAssets.map((asset) => ({
     ...asset,
     fileData: asset.fileData ? `assets/${asset.id}_${safeArchiveName(asset.filename)}` : null,
