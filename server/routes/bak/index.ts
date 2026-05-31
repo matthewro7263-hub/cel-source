@@ -233,29 +233,55 @@ bakRouter.post("/projects/:id/snapshots/:snapId/restore", requireAuth, async (re
 
   const data = JSON.parse(snap.jsonBlob);
 
+  const CHUNK_SIZE = 500;
   await db.transaction(async (tx) => {
+
     // Restore scripts
     await tx.delete(scripts).where(eq(scripts.projectId, projectId));
-    for (const s of data.scripts) await tx.insert(scripts).values(s);
+    if (data.scripts && data.scripts.length > 0) {
+      for (let i = 0; i < data.scripts.length; i += CHUNK_SIZE) {
+        await tx.insert(scripts).values(data.scripts.slice(i, i + CHUNK_SIZE));
+      }
+    }
 
     // Restore storyboards and panels
     await tx.delete(storyboards).where(eq(storyboards.projectId, projectId));
-    for (const sb of data.storyboards) await tx.insert(storyboards).values(sb);
+    if (data.storyboards && data.storyboards.length > 0) {
+      for (let i = 0; i < data.storyboards.length; i += CHUNK_SIZE) {
+        await tx.insert(storyboards).values(data.storyboards.slice(i, i + CHUNK_SIZE));
+      }
+    }
     
     // Clean up all panels for these storyboards, then insert
     // Since we deleted storyboards, any associated panels conceptually are orphaned, but let's just delete the ones we know
-    for (const sb of data.storyboards) {
-      await tx.delete(storyboardPanels).where(eq(storyboardPanels.storyboardId, sb.id));
+    if (data.storyboards && data.storyboards.length > 0) {
+      const sbIds = data.storyboards.map((sb: any) => sb.id);
+      // Delete in chunks too, inArray might have limits on number of parameters
+      for (let i = 0; i < sbIds.length; i += CHUNK_SIZE) {
+        await tx.delete(storyboardPanels).where(inArray(storyboardPanels.storyboardId, sbIds.slice(i, i + CHUNK_SIZE)));
+      }
     }
-    for (const p of data.panels) await tx.insert(storyboardPanels).values(p);
+    if (data.panels && data.panels.length > 0) {
+      for (let i = 0; i < data.panels.length; i += CHUNK_SIZE) {
+        await tx.insert(storyboardPanels).values(data.panels.slice(i, i + CHUNK_SIZE));
+      }
+    }
 
     // Restore scenes
     await tx.delete(scenes).where(eq(scenes.projectId, projectId));
-    for (const s of data.scenes) await tx.insert(scenes).values(s);
+    if (data.scenes && data.scenes.length > 0) {
+      for (let i = 0; i < data.scenes.length; i += CHUNK_SIZE) {
+        await tx.insert(scenes).values(data.scenes.slice(i, i + CHUNK_SIZE));
+      }
+    }
 
     // Restore comments
     await tx.delete(comments).where(eq(comments.projectId, projectId));
-    for (const c of data.comments) await tx.insert(comments).values(c);
+    if (data.comments && data.comments.length > 0) {
+      for (let i = 0; i < data.comments.length; i += CHUNK_SIZE) {
+        await tx.insert(comments).values(data.comments.slice(i, i + CHUNK_SIZE));
+      }
+    }
   });
 
   res.json({ message: "Snapshot restored successfully" });
