@@ -38,6 +38,15 @@ const clips: VideoEditorClip[] = [
 
 assert.equal(formatTimestamp(61_234), "1:01.23");
 assert.equal(formatTimestamp(-12), "0:00.00");
+assert.equal(formatTimestamp(0), "0:00.00");
+assert.equal(formatTimestamp(5), "0:00.00");
+assert.equal(formatTimestamp(50), "0:00.05");
+assert.equal(formatTimestamp(999), "0:00.99");
+assert.equal(formatTimestamp(1000), "0:01.00");
+assert.equal(formatTimestamp(5000), "0:05.00");
+assert.equal(formatTimestamp(60000), "1:00.00");
+assert.equal(formatTimestamp(600000), "10:00.00");
+assert.equal(formatTimestamp(3600000), "60:00.00");
 
 assert.equal(sanitizeDurationMs(24), 100);
 assert.equal(sanitizeDurationMs(123_456), 120_000);
