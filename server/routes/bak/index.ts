@@ -223,8 +223,8 @@ bakRouter.post("/projects/:id/snapshots/:snapId/restore", requireAuth, async (re
 
   const data = JSON.parse(snap.jsonBlob);
 
+  const CHUNK_SIZE = 500;
   await db.transaction(async (tx) => {
-    const CHUNK_SIZE = 500;
 
     // Restore scripts
     await tx.delete(scripts).where(eq(scripts.projectId, projectId));
