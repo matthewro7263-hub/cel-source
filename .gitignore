@@ -14,3 +14,9 @@ data.db-journal
 
 *.log
 .DS_Store
+commit_body.txt
+patch.diff
+pr_description.md
+pr_description.txt
+test_perf.ts
+test_perf_mock.ts
