@@ -107,3 +107,4 @@ const gltf = {
     }
   ]
 };
+fs.writeFileSync("output.gltf", JSON.stringify(gltf, null, 2));
