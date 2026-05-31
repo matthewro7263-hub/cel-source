@@ -200,14 +200,15 @@ export function registerBizRoutes(app: Express) {
     // Auto-seed 3 canonical templates on first access
     const existing = await db.select().from(biz_contracts).where(eq(biz_contracts.userId, userId));
     if (existing.length === 0) {
-      const valuesToInsert = SEED_CONTRACTS.map((tmpl) => ({
-        userId,
-        name: tmpl.name,
-        kind: tmpl.kind as any,
-        body: tmpl.body,
-        createdAt: new Date(),
-      }));
-      await db.insert(biz_contracts).values(valuesToInsert);
+      for (const tmpl of SEED_CONTRACTS) {
+        await db.insert(biz_contracts).values({
+          userId,
+          name: tmpl.name,
+          kind: tmpl.kind as any,
+          body: tmpl.body,
+          createdAt: new Date(),
+        });
+      }
       const seeded = await db.select().from(biz_contracts).where(eq(biz_contracts.userId, userId));
       return res.json(seeded);
     }
