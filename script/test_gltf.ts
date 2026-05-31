@@ -107,5 +107,3 @@ const gltf = {
     }
   ]
 };
-
-console.log(JSON.stringify(gltf, null, 2));
