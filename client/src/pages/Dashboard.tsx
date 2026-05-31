@@ -365,11 +365,32 @@ function ProjectCard({ p }: { p: Project }) {
 
 function EmptyState({ onNew }: { onNew: () => void }) {
   return (
-    <div className="glass-card rounded-2xl py-20 px-6 flex flex-col items-center text-center">
-      <div className="h-14 w-14 rounded-full bg-primary/10 text-primary flex items-center justify-center mb-5 ring-4 ring-primary/8">
-        <Clapperboard size={22} />
+    <div className="glass rounded-2xl py-20 px-6 flex flex-col items-center text-center">
+      {/* Branded illustration - empty filmstrip */}
+      <div className="mb-6">
+        <svg width="160" height="160" viewBox="0 0 160 160" className="opacity-70">
+          <defs>
+            <linearGradient id="emptyProjectGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#9DD0FF" />
+              <stop offset="50%" stopColor="#C4B5FD" />
+              <stop offset="100%" stopColor="#FFD9A8" />
+            </linearGradient>
+          </defs>
+          {/* Filmstrip frame */}
+          <rect x="20" y="30" width="120" height="100" rx="6" fill="none" stroke="url(#emptyProjectGradient)" strokeWidth="1.5" opacity="0.5" />
+          {/* Sprocket holes */}
+          <rect x="28" y="42" width="8" height="8" rx="2" fill="#9DD0FF" opacity="0.6" />
+          <rect x="124" y="42" width="8" height="8" rx="2" fill="#9DD0FF" opacity="0.6" />
+          <rect x="28" y="76" width="8" height="8" rx="2" fill="#C4B5FD" opacity="0.6" />
+          <rect x="124" y="76" width="8" height="8" rx="2" fill="#C4B5FD" opacity="0.6" />
+          <rect x="28" y="110" width="8" height="8" rx="2" fill="#FFD9A8" opacity="0.6" />
+          <rect x="124" y="110" width="8" height="8" rx="2" fill="#FFD9A8" opacity="0.6" />
+          {/* Plus sign in center */}
+          <line x1="80" y1="60" x2="80" y2="100" stroke="url(#emptyProjectGradient)" strokeWidth="3" strokeLinecap="round" />
+          <line x1="60" y1="80" x2="100" y2="80" stroke="url(#emptyProjectGradient)" strokeWidth="3" strokeLinecap="round" />
+        </svg>
       </div>
-      <h3 className="font-display font-semibold mb-2 tracking-tight">No projects yet</h3>
+      <h3 className="font-display font-semibold mb-2 tracking-tight text-lg">No projects yet</h3>
       <p className="text-sm text-muted-foreground mb-6 max-w-sm leading-relaxed">
         Start by creating your first project. You'll get scripts, storyboards, animatics, and a scene tracker — all in one place.
       </p>

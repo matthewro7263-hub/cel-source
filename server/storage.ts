@@ -2,7 +2,7 @@ import { Pool, neonConfig } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-serverless";
 import ws from "ws";
 import { eq, and, or, inArray, asc, desc, like } from "drizzle-orm";
-import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { randomBytes, scryptSync, timingSafeEqual, createHmac } from "node:crypto";
 
 import * as mainSchema from "@shared/schema";
 import * as a11ySchema from "@shared/a11y_schema";
@@ -115,19 +115,47 @@ export function genToken(len = 16): string {
   return randomBytes(len).toString("hex").slice(0, len);
 }
 
-// ===== SESSIONS (in-memory) =====
-const sessions = new Map<string, number>(); // sessionId -> userId
-export function createSession(userId: number): string {
-  const sid = randomBytes(24).toString("hex");
-  sessions.set(sid, userId);
-  return sid;
+// ===== SESSIONS (cryptographic, stateless & persistent) =====
+const SESSION_SECRET = process.env.SESSION_SECRET || "fallback-secret-for-dev-only-change-in-prod-1234567890abcdef";
+
+export function createSession(userId: number, tokenVersion: number): string {
+  // Session expires in 30 days
+  const expiresAt = Date.now() + 1000 * 60 * 60 * 24 * 30;
+  const payload = `${userId}:${expiresAt}:${tokenVersion}`;
+  const hmac = createHmac("sha256", SESSION_SECRET);
+  hmac.update(payload);
+  const signature = hmac.digest("hex");
+  return `${payload}:${signature}`;
 }
+
 export function getSessionUser(sid: string | undefined): number | undefined {
   if (!sid) return undefined;
-  return sessions.get(sid);
+  const parts = sid.split(":");
+  if (parts.length !== 4) return undefined;
+  const [userIdStr, expiresAtStr, tokenVersionStr, signature] = parts;
+  const userId = parseInt(userIdStr, 10);
+  const expiresAt = parseInt(expiresAtStr, 10);
+  
+  if (isNaN(userId) || isNaN(expiresAt)) return undefined;
+  if (Date.now() > expiresAt) return undefined; // Session expired
+  
+  const payload = `${userIdStr}:${expiresAtStr}`;
+  const hmac = createHmac("sha256", SESSION_SECRET);
+  hmac.update(payload);
+  const expectedSignature = hmac.digest("hex");
+  
+  try {
+    if (timingSafeEqual(Buffer.from(signature, "hex"), Buffer.from(expectedSignature, "hex"))) {
+      return userId;
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
 }
+
 export function destroySession(sid: string) {
-  sessions.delete(sid);
+  // Stateless token destruction is handled by client-side token clearing
 }
 
 export const storage = {
@@ -164,8 +192,10 @@ export const storage = {
   async deleteProject(id: number) {
       await db.delete(comments).where(eq(comments.projectId, id));
       await db.delete(scenes).where(eq(scenes.projectId, id));
-      const sbs = await db.select().from(storyboards).where(eq(storyboards.projectId, id));
-      for (const sb of sbs) await db.delete(storyboardPanels).where(eq(storyboardPanels.storyboardId, sb.id));
+      const sbs = await db.select({ id: storyboards.id }).from(storyboards).where(eq(storyboards.projectId, id));
+      if (sbs.length > 0) {
+        await db.delete(storyboardPanels).where(inArray(storyboardPanels.storyboardId, sbs.map((sb) => sb.id)));
+      }
       await db.delete(storyboards).where(eq(storyboards.projectId, id));
       await db.delete(animatics).where(eq(animatics.projectId, id));
       await db.delete(scripts).where(eq(scripts.projectId, id));

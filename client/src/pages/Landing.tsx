@@ -2,8 +2,8 @@ import { Link } from "wouter";
 import { useHashLocation } from "wouter/use-hash-location";
 import { useAuth } from "@/lib/auth";
 import { useEffect } from "react";
+import { CelLogo } from "@/components/CelLogo";
 import {
-  PlayCircle,
   Brush,
   Film,
   Briefcase,
@@ -45,7 +45,7 @@ export default function Landing() {
       <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-[20px] bg-white/40 dark:bg-black/30 border-b border-white/40 dark:border-white/10 shadow-sm">
         <div className="flex justify-between items-center px-6 py-4 max-w-[1440px] mx-auto">
           <Link href="/" className="flex items-center gap-2 group">
-            <PlayCircle className="w-6 h-6 text-sky-600" fill="currentColor" fillOpacity={0.15} />
+            <CelLogo size={24} className="text-sky-600" />
             <span className="font-extrabold tracking-tight text-2xl">Cel</span>
           </Link>
 
@@ -66,6 +66,39 @@ export default function Landing() {
       </nav>
 
       <main className="relative z-10 pt-[110px] pb-24 px-6 max-w-[1440px] mx-auto flex flex-col items-center">
+        {/* Signature visual motif - animated filmstrip frame line */}
+        <div className="absolute top-20 left-0 right-0 z-0 pointer-events-none overflow-hidden opacity-40">
+          <svg className="w-full h-8" viewBox="0 0 1200 32" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="filmstripGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stopColor="#9DD0FF" stopOpacity="0" />
+                <stop offset="20%" stopColor="#9DD0FF" stopOpacity="0.6" />
+                <stop offset="50%" stopColor="#C4B5FD" stopOpacity="0.8" />
+                <stop offset="80%" stopColor="#9DD0FF" stopOpacity="0.6" />
+                <stop offset="100%" stopColor="#9DD0FF" stopOpacity="0" />
+              </linearGradient>
+            </defs>
+            {/* Filmstrip frame line */}
+            <line x1="0" y1="16" x2="1200" y2="16" stroke="url(#filmstripGradient)" strokeWidth="1" />
+            {/* Sprocket perforations */}
+            {[50, 150, 250, 350, 450, 550, 650, 750, 850, 950, 1050, 1150].map((x) => (
+              <rect key={x} x={x} y="12" width="8" height="8" rx="2" fill="#9DD0FF" opacity="0.5">
+                <animate attributeName="opacity" values="0.3;0.7;0.3" dur="3s" repeatCount="indefinite" begin={`${x * 0.002}s`} />
+              </rect>
+            ))}
+          </svg>
+        </div>
+
+        {/* Onion-skin overlay motif */}
+        <div className="absolute top-32 right-10 z-0 pointer-events-none opacity-20">
+          <svg width="200" height="200" viewBox="0 0 200 200">
+            <path d="M100 20 C160 20 160 180 100 180" fill="none" stroke="#C4B5FD" strokeWidth="2" opacity="0.3" />
+            <path d="M90 30 C140 30 140 170 90 170" fill="none" stroke="#9DD0FF" strokeWidth="2" opacity="0.4" />
+            <path d="M80 40 C120 40 120 160 80 160" fill="none" stroke="#FFD9A8" strokeWidth="2" opacity="0.5" />
+            <path d="M70 50 C100 50 100 150 70 150" fill="none" stroke="#C4B5FD" strokeWidth="2" opacity="0.6" />
+          </svg>
+        </div>
+
         {/* Hero */}
         <section className="w-full text-center mt-10 mb-24 flex flex-col items-center">
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-mono uppercase tracking-wider mb-6 landing-chip">
@@ -187,7 +220,7 @@ export default function Landing() {
             {[
               ["Storyboards", Layers],
               ["Animatic editor", Film],
-              ["Video editor", PlayCircle],
+              ["Video editor", Film],
               ["Palette matcher", Brush],
               ["Commissions queue", Briefcase],
               ["Voice booth + audio", Wand2],
@@ -225,7 +258,7 @@ export default function Landing() {
         <div className="flex flex-col md:flex-row justify-between items-start px-6 max-w-[1440px] mx-auto gap-10 md:gap-0">
           <div className="flex flex-col gap-3">
             <div className="flex items-center gap-2">
-              <PlayCircle className="w-5 h-5 text-sky-600" fill="currentColor" fillOpacity={0.15} />
+              <CelLogo size={20} className="text-sky-600" />
               <span className="font-extrabold text-xl">Cel</span>
             </div>
             <p className="text-sm text-on-surface/60 max-w-xs">

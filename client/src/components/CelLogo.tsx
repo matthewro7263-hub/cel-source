@@ -11,25 +11,40 @@ export function CelLogo({ size = 24, className = "" }: CelLogoProps) {
       viewBox="0 0 32 32"
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.75"
+      strokeWidth="1.5"
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-label="Cel logo"
       className={className}
       data-testid="img-logo"
     >
-      {/* filmstrip frame */}
-      <rect x="4.5" y="6.5" width="23" height="19" rx="2.5" />
-      {/* sprocket dots top */}
-      <circle cx="9" cy="10" r="0.9" fill="currentColor" stroke="none" />
-      <circle cx="16" cy="10" r="0.9" fill="currentColor" stroke="none" />
-      <circle cx="23" cy="10" r="0.9" fill="currentColor" stroke="none" />
-      {/* sprocket dots bottom */}
-      <circle cx="9" cy="22" r="0.9" fill="currentColor" stroke="none" />
-      <circle cx="16" cy="22" r="0.9" fill="currentColor" stroke="none" />
-      <circle cx="23" cy="22" r="0.9" fill="currentColor" stroke="none" />
-      {/* play triangle in middle frame */}
-      <path d="M14.5 13.5 L20 16 L14.5 18.5 Z" fill="currentColor" stroke="none" />
+      {/* Outer onion-skin layer - opacity 0.3 */}
+      <path
+        d="M22 6 C28 6 28 26 22 26"
+        strokeOpacity="0.3"
+        strokeWidth="1.5"
+      />
+      {/* Middle onion-skin layer - opacity 0.5 */}
+      <path
+        d="M20 8 C24 8 24 24 20 24"
+        strokeOpacity="0.5"
+        strokeWidth="1.5"
+      />
+      {/* Inner onion-skin layer - opacity 0.7 */}
+      <path
+        d="M18 10 C22 10 22 22 18 22"
+        strokeOpacity="0.7"
+        strokeWidth="1.5"
+      />
+      {/* Main "C" shape - full opacity */}
+      <path
+        d="M16 12 C19 12 19 20 16 20"
+        strokeWidth="2"
+      />
+      {/* Film sprocket perforation squares on left edge */}
+      <rect x="6" y="8" width="3" height="3" rx="0.75" fill="currentColor" stroke="none" opacity="0.9" />
+      <rect x="6" y="14.5" width="3" height="3" rx="0.75" fill="currentColor" stroke="none" opacity="0.9" />
+      <rect x="6" y="21" width="3" height="3" rx="0.75" fill="currentColor" stroke="none" opacity="0.9" />
     </svg>
   );
 }
