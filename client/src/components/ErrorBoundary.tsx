@@ -49,7 +49,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
     window.location.reload();
   };
 
-  getErrorDetails = () => {
+  getErrorDetails = (): string => {
     const { error, errorInfo } = this.state;
     if (!error) return "";
     return [
