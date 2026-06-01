@@ -1,4 +1,5 @@
 import "dotenv/config";
+import path from "path";
 import express, { Response, NextFunction } from 'express';
 import type { Request } from 'express';
 import { registerRoutes } from "./routes";
@@ -129,7 +130,7 @@ async function runMigrations() {
   try {
     const sql = neon(process.env.DATABASE_URL);
     const migrationDb = drizzleHttp(sql);
-    await migrate(migrationDb, { migrationsFolder: "migrations" });
+        await migrate(migrationDb, { migrationsFolder: path.join(__dirname, "../migrations") });
     log("database migrations completed", "migrations");
   } catch (err) {
     console.error("Database migration failed; continuing startup:", err);
