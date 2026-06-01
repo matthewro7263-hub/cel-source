@@ -72,7 +72,7 @@ function ExportDialog({ open, onClose, progress, status, onCancel }: ExportDialo
         </DialogHeader>
         <div className="space-y-4 py-2">
           <Progress value={progress} className="h-2" />
-          <p className="text-sm text-muted-foreground text-center">{status}</p>
+          <p className={`text-sm text-muted-foreground text-center ${status.toLowerCase().includes("frame") ? "font-mono" : ""}`}>{status}</p>
           {progress < 100 && (
             <div className="flex justify-center">
               <Button variant="ghost" size="sm" onClick={onCancel}>Cancel</Button>
@@ -574,7 +574,7 @@ export default function AnimaticEditor() {
 
         {/* Duration display */}
         <span className="text-xs text-muted-foreground">
-          Duration: {formatTime(localDurationMs)}
+          Duration: <span className="font-mono">{formatTime(localDurationMs)}</span>
         </span>
 
         <div className="flex-1" />

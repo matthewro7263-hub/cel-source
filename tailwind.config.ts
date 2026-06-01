@@ -111,10 +111,10 @@ export default {
         },
       },
       fontFamily: {
-        sans: ["var(--font-sans)"],
+        sans: ['Geist', 'Inter', 'system-ui'],
         serif: ["var(--font-serif)"],
-        mono: ["var(--font-mono)"],
-        celmono: ["JetBrains Mono", "Fira Code", "monospace"],
+          mono: ['Geist Mono', 'JetBrains Mono', 'var(--font-mono)', 'monospace'],
+                  celmono: ["JetBrains Mono", "Fira Code", "monospace"],
       },
       keyframes: {
         "accordion-down": {

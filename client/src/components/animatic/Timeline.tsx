@@ -87,7 +87,7 @@ export function Timeline({
       <g key={s} transform={`translate(${x},0)`}>
         <line y1={isMajor ? 0 : RULER_HEIGHT / 2} y2={RULER_HEIGHT} stroke="rgba(255,255,255,0.2)" strokeWidth="1" />
         {isMajor && (
-          <text y={14} fill="rgba(255,255,255,0.5)" fontSize="10" fontFamily="ui-monospace, monospace">
+          <text y={14} fill="rgba(255,255,255,0.5)" fontSize="10" fontFamily="var(--font-mono)">
             {formatTime(s * 1000).slice(0, 5)}
           </text>
         )}

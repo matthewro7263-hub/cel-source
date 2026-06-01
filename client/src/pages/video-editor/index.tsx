@@ -653,7 +653,7 @@ export default function VideoEditor() {
         <>
           <span>{clips.length} clip{clips.length === 1 ? "" : "s"}</span>
           <span>•</span>
-          <span>{formatTimestamp(totalMs)}</span>
+          <span className="font-mono">{formatTimestamp(totalMs)}</span>
           {selectedClip && (
             <>
               <span>•</span>
@@ -1147,7 +1147,7 @@ export default function VideoEditor() {
                           <Plus size={14} className="opacity-60" />
                         </div>
                         <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
-                          <span>{videoDurations[animatic.id] ? formatTimestamp(videoDurations[animatic.id]) : "4s default"}</span>
+                          <span className="font-mono">{videoDurations[animatic.id] ? formatTimestamp(videoDurations[animatic.id]) : "4s default"}</span>
                           <span>•</span>
                           <span>{drawable ? "canvas-ready" : "external link"}</span>
                         </div>

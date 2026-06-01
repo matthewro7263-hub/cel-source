@@ -1,12 +1,29 @@
 // Format a deadline string (YYYY-MM-DD) → relative phrase + tone.
-export function formatDeadline(deadline?: string | null): { text: string; tone: "red" | "amber" | "green" | "muted" } {
+export function formatDeadline(deadline?: string | null): { text: string; tone: "overdue-amber" | "overdue-orange" | "red" | "amber" | "green" | "muted"; daysOverdue?: number } {
   if (!deadline) return { text: "No deadline", tone: "muted" };
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const d = new Date(deadline);
+  
+  // Robust timezone-safe local date construction
+  const parts = deadline.split("-").map(Number);
+  if (parts.length !== 3 || parts.some(isNaN)) {
+    return { text: "Invalid date", tone: "muted" };
+  }
+  const [year, month, day] = parts;
+  const d = new Date(year, month - 1, day);
   d.setHours(0, 0, 0, 0);
+
   const diff = Math.round((d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-  if (diff < 0) return { text: `${Math.abs(diff)}d overdue`, tone: "red" };
+  if (diff < 0) {
+    const daysOverdue = Math.abs(diff);
+    if (daysOverdue >= 1 && daysOverdue <= 7) {
+      return { text: `${daysOverdue}d overdue`, tone: "overdue-amber", daysOverdue };
+    }
+    if (daysOverdue >= 8 && daysOverdue <= 13) {
+      return { text: `${daysOverdue}d overdue`, tone: "overdue-orange", daysOverdue };
+    }
+    return { text: `${daysOverdue}d overdue`, tone: "red", daysOverdue };
+  }
   if (diff === 0) return { text: "Due today", tone: "red" };
   if (diff <= 3) return { text: `in ${diff}d`, tone: "amber" };
   if (diff <= 14) return { text: `in ${diff}d`, tone: "green" };

@@ -90,7 +90,7 @@ export function CaptionsPanel({ animaticId }: { animaticId: number }) {
       <div className="flex-1 overflow-y-auto space-y-2">
         {sortedCaptions.map(c => (
           <div key={c.id} className="flex items-center gap-3 p-2 rounded bg-white/5 text-sm">
-            <div className="text-xs text-muted-foreground whitespace-nowrap">
+            <div className="text-xs text-muted-foreground whitespace-nowrap font-mono">
               {formatTime(c.startMs)} - {formatTime(c.endMs)}
             </div>
             <div className="flex-1 truncate">{c.text}</div>
@@ -104,13 +104,13 @@ export function CaptionsPanel({ animaticId }: { animaticId: number }) {
       <div className="flex flex-col gap-2 pt-2 border-t border-white/10">
         <div className="flex gap-2">
           <Input 
-            className="flex-1 text-xs" 
+            className="flex-1 text-xs font-mono" 
             placeholder="Start (HH:MM:SS.mmm)" 
             value={newStart} 
             onChange={e => setNewStart(e.target.value)} 
           />
           <Input 
-            className="flex-1 text-xs" 
+            className="flex-1 text-xs font-mono" 
             placeholder="End (HH:MM:SS.mmm)" 
             value={newEnd} 
             onChange={e => setNewEnd(e.target.value)} 

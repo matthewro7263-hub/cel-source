@@ -249,7 +249,15 @@ export default function ReviewRoomPage() {
           ))}
           <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent p-4 text-white">
             <div className="text-xs uppercase tracking-wider text-white/50">Dailies panel</div>
-            <div className="font-medium">{panel?.label || "Waiting for boards"}</div>
+            <div className="font-medium">
+              {panel ? (
+                <>
+                  {panel.label.split(" - Panel ")[0]} - Panel <span className="font-mono">{panel.label.split(" - Panel ")[1]}</span>
+                </>
+              ) : (
+                "Waiting for boards"
+              )}
+            </div>
           </div>
         </ToolSurface>
       }

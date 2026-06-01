@@ -83,7 +83,7 @@ export default function CastingTab({ projectId }: { projectId: number }) {
             {scenes.map((scene: any) => (
               <TableRow key={scene.id}>
                 <TableCell className="font-medium sticky left-0 bg-card z-10 shadow-[1px_0_0_0_hsl(var(--border))]">
-                  {scene.number}. {scene.title}
+                  <span className="font-mono">{scene.number}</span>. {scene.title}
                 </TableCell>
                 {entities.map((e: any) => {
                   const isPresent = matrix.find((m: any) => m.sceneId === scene.id && m.entityId === e.id)?.present || false;

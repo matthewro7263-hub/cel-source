@@ -96,13 +96,20 @@ export const storyboardPanels = pgTable("storyboard_panels", {
   id: serial("id").primaryKey(),
   storyboardId: integer("storyboard_id").notNull(),
   orderIdx: integer("order_idx").notNull().default(0),
-  imageData: text("image_data").notNull(),
+  imageData: text("image_data"), // nullable now that we support r2_key
+  r2Key: text("r2_key"), // Cloudflare R2 object key
+  sceneId: integer("scene_id"), // optional target scene attachment
   caption: text("caption").notNull().default(""),
   dialogue: text("dialogue").notNull().default(""),
+  notes: text("notes").notNull().default(""),
+  changeRequest: text("change_request").notNull().default(""),
+  status: text("status").notNull().default("ROUGH"),
+  frameCount: integer("frame_count").notNull().default(24),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
 }, (table) => {
   return {
     storyboardPanelsStoryboardIdIdx: index("storyboard_panels_storyboard_id_idx").on(table.storyboardId),
+    storyboardPanelsSceneIdIdx: index("storyboard_panels_scene_id_idx").on(table.sceneId),
   };
 });
 export const insertPanelSchema = createInsertSchema(storyboardPanels).omit({ id: true });

@@ -384,7 +384,7 @@ export default function RenderBudget() {
                 placeholder="e.g. Scene 3A"
                 value={newLabel}
                 onChange={(e) => setNewLabel(e.target.value)}
-                className="w-44"
+                className="w-44 font-mono"
                 data-testid="input-event-label"
               />
             </div>
@@ -442,7 +442,7 @@ export default function RenderBudget() {
                   data-testid={`row-render-event-${ev.id}`}
                 >
                   <div className="min-w-0">
-                    <p className="font-medium text-sm truncate">{ev.label}</p>
+                    <p className="font-medium text-sm font-mono truncate">{ev.label}</p>
                     <p className="text-xs text-muted-foreground">
                       {ev.minutes.toFixed(1)} min
                       {ev.cost ? ` · $${ev.cost.toFixed(2)}` : ""}
