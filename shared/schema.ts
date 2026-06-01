@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, integer , serial, boolean, index} from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, integer, serial, boolean, index} from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -8,7 +8,8 @@ export const users = pgTable("users", {
   email: text("email").notNull().unique(),
   name: text("name").notNull(),
   avatarColor: text("avatar_color").notNull().default("#6E4FE8"),
-  passwordHash: text("password_hash").notNull().   tokenVersion: integer("token_version").notNull().default(0),
+  passwordHash: text("password_hash").notNull(),
+  tokenVersion: integer("token_version").notNull().default(0),
 });
 export const insertUserSchema = createInsertSchema(users).omit({ id: true });
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -30,7 +31,7 @@ export const projects = pgTable("projects", {
   cli_brandColor: text("cli_brand_color").notNull().default("#9DD0FF"),
   cli_brandWelcome: text("cli_brand_welcome"),
   dltDiscordWebhookUrl: text("dlt_discord_webhook_url"),
-}, (table: any) => {
+}, (table) => {
   return {
     projectsOwnerIdIdx: index("projects_owner_id_idx").on(table.ownerId),
   };
@@ -45,7 +46,7 @@ export const projectMembers = pgTable("project_members", {
   projectId: integer("project_id").notNull(),
   userId: integer("user_id").notNull(),
   role: text("role").notNull().default("editor"),
-}, (table: any) => {
+}, (table) => {
   return {
     projectMembersProjectIdIdx: index("project_members_project_id_idx").on(table.projectId),
     projectMembersUserIdIdx: index("project_members_user_id_idx").on(table.userId),
@@ -65,8 +66,8 @@ export const scripts = pgTable("scripts", {
   sourceFormat: text("source_format").default(""),
   originalKey: text("original_key").default(""),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-  deletedAt: timestamp("deleted_at", { withTimezone: true }).defaultNow(),
-}, (table: any) => {
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+}, (table) => {
   return {
     scriptsProjectIdIdx: index("scripts_project_id_idx").on(table.projectId),
   };
@@ -81,7 +82,7 @@ export const storyboards = pgTable("storyboards", {
   projectId: integer("project_id").notNull(),
   title: text("title").notNull().default("Storyboard"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-}, (table: any) => {
+}, (table) => {
   return {
     storyboardsProjectIdIdx: index("storyboards_project_id_idx").on(table.projectId),
   };
@@ -98,8 +99,8 @@ export const storyboardPanels = pgTable("storyboard_panels", {
   imageData: text("image_data").notNull(),
   caption: text("caption").notNull().default(""),
   dialogue: text("dialogue").notNull().default(""),
-  deletedAt: timestamp("deleted_at", { withTimezone: true }).defaultNow(),
-}, (table: any) => {
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+}, (table) => {
   return {
     storyboardPanelsStoryboardIdIdx: index("storyboard_panels_storyboard_id_idx").on(table.storyboardId),
   };
@@ -131,8 +132,8 @@ export const scenes = pgTable("scenes", {
   status: text("status").notNull().default("script"),
   deadline: text("deadline"),
   assigneeId: integer("assignee_id"),
-  deletedAt: timestamp("deleted_at", { withTimezone: true }).defaultNow(),
-}, (table: any) => {
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+}, (table) => {
   return {
     scenesProjectIdIdx: index("scenes_project_id_idx").on(table.projectId),
   };
@@ -149,7 +150,7 @@ export const comments = pgTable("comments", {
   authorId: integer("author_id").notNull(),
   body: text("body").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-}, (table: any) => {
+}, (table) => {
   return {
     commentsProjectIdIdx: index("comments_project_id_idx").on(table.projectId),
     commentsSceneIdIdx: index("comments_scene_id_idx").on(table.sceneId),
@@ -166,14 +167,15 @@ export const assets = pgTable("assets", {
   category: text("category").notNull().default("Other"), // Characters | Backgrounds | Props | References | Other
   filename: text("filename").notNull(),
   mimeType: text("mime_type").notNull().default(""),
-  fileData: text("file_data").notNull(), // base64 data URL
+  fileData: text("file_data"), // base64 data URL — deprecated, use r2Key instead
+  r2Key: text("r2_key"), // Cloudflare R2 object key for the file
   thumbnailData: text("thumbnail_data"), // null for non-images
   notes: text("notes").notNull().default(""),
   tags: text("tags").notNull().default(""), // comma-separated
   uploaderId: integer("uploader_id").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-  deletedAt: timestamp("deleted_at", { withTimezone: true }).defaultNow(),
-}, (table: any) => {
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+}, (table) => {
   return {
     assetsProjectIdIdx: index("assets_project_id_idx").on(table.projectId),
   };
@@ -224,7 +226,8 @@ export const animaticTracks = pgTable("animatic_tracks", {
   name: text("name").notNull().default("Track"),
   orderIdx: integer("order_idx").notNull().default(0),
   muted: boolean("muted").notNull().default(false),
-  volume: text("volume").notNull().default("1.0"), // stored as text to avoid float precision issues
+  // Stored as milliunits integer: 1000 = 1.0, 500 = 0.5, 0 = 0.0
+  volume: integer("volume").notNull().default(1000),
 });
 export const insertAnimaticTrackSchema = createInsertSchema(animaticTracks).omit({ id: true });
 export type InsertAnimaticTrack = z.infer<typeof insertAnimaticTrackSchema>;
@@ -242,7 +245,8 @@ export const animaticClips = pgTable("animatic_clips", {
   label: text("label").notNull().default(""),
   fadeInMs: integer("fade_in_ms").notNull().default(0),
   fadeOutMs: integer("fade_out_ms").notNull().default(0),
-  volume: text("volume").notNull().default("1.0"),
+  // Stored as milliunits integer: 1000 = 1.0, 500 = 0.5
+  volume: integer("volume").notNull().default(1000),
 });
 export const insertAnimaticClipSchema = createInsertSchema(animaticClips).omit({ id: true });
 export type InsertAnimaticClip = z.infer<typeof insertAnimaticClipSchema>;
@@ -270,7 +274,7 @@ export type Render = typeof renders.$inferSelect;
 export const projectAiKeys = pgTable("project_ai_keys", {
   id: serial("id").primaryKey(),
   projectId: integer("project_id").notNull(),
-  encryptedKey: text("encrypted_key").notNull(), // base64 obfuscation (NOT real encryption - see build notes)
+  encryptedKey: text("encrypted_key").notNull(), // AES-256-GCM encrypted via ENCRYPTION_KEY env var
   model: text("model"), // Optional model preference
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
@@ -300,7 +304,7 @@ export const aiChatMessages = pgTable("ai_chat_messages", {
 });
 export const insertAiChatMessageSchema = createInsertSchema(aiChatMessages).omit({ id: true, createdAt: true });
 export type InsertAiChatMessage = z.infer<typeof insertAiChatMessageSchema>;
-export type AiChatMessage = typeof aiChatMessages.$inferSelect;
+export type AiChatMessage = typeof aiChatSessions.$inferSelect;
 
 
 // ============================================================
@@ -315,6 +319,20 @@ export const achievements = pgTable("achievements", {
 export const insertAchievementSchema = createInsertSchema(achievements).omit({ id: true });
 export type InsertAchievement = z.infer<typeof insertAchievementSchema>;
 export type Achievement = typeof achievements.$inferSelect;
+
+// ============================================================
+// v4 User Activity Log (for week_streak achievement)
+// ============================================================
+export const userActivityLog = pgTable("user_activity_log", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull(),
+  date: text("date").notNull(), // YYYY-MM-DD
+}, (table) => ({
+  userDateIdx: index("user_activity_log_user_date_idx").on(table.userId, table.date),
+}));
+export const insertUserActivityLogSchema = createInsertSchema(userActivityLog).omit({ id: true });
+export type InsertUserActivityLog = z.infer<typeof insertUserActivityLogSchema>;
+export type UserActivityLog = typeof userActivityLog.$inferSelect;
 
 // ============================================================
 // v4 Panel Pins
@@ -469,7 +487,7 @@ export const cli_approvals = pgTable("cli_approvals", {
   projectId: integer("project_id").notNull(),
   phase: text("phase").notNull(), // storyboard | animatic | final
   signedName: text("signed_name").notNull(),
-  signatureData: text("signature_data").notNull(), // typed name rendered in cursive, stored as text or base64 (we'll just use the font to render it, so we can store the name or base64 of the image)
+  signatureData: text("signature_data").notNull(),
   signedAt: timestamp("signed_at", { withTimezone: true }).defaultNow().notNull(),
 });
 export const insertCliApprovalSchema = createInsertSchema(cli_approvals).omit({ id: true });
@@ -483,7 +501,10 @@ export const cli_feedback = pgTable("cli_feedback", {
   sceneId: integer("scene_id"),
   fields: text("fields").notNull(), // JSON string representing the rubric
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (table) => ({
+  cliFeedbackProjectIdIdx: index("cli_feedback_project_id_idx").on(table.projectId),
+  cliFeedbackSceneIdIdx: index("cli_feedback_scene_id_idx").on(table.sceneId),
+}));
 export const insertCliFeedbackSchema = createInsertSchema(cli_feedback).omit({ id: true, createdAt: true });
 export type InsertCliFeedback = z.infer<typeof insertCliFeedbackSchema>;
 export type CliFeedback = typeof cli_feedback.$inferSelect;
