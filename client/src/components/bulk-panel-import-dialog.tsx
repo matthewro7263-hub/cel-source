@@ -340,7 +340,7 @@ export function BulkImportDialog({ storyboardId, projectId, onSuccess }: BulkImp
                     <SelectItem value="none">No Scene</SelectItem>
                     {scenes?.map((s) => (
                       <SelectItem key={s.id} value={s.id.toString()}>
-                        Scene {s.number}: {s.title}
+                        Scene <span className="font-mono">{s.number}</span>: {s.title}
                       </SelectItem>
                     ))}
                   </SelectContent>

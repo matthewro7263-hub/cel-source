@@ -181,6 +181,115 @@ const upload = multer({
     res.json(list);
   });
 
+  app.get ("/api/production/queue", requireAuth, async (req, res) => {
+    try {
+      const userId = req.user!.id;
+      const userProjects = await storage.listProjectsForUser(userId);
+      
+      const userCache = new Map<number, { name: string; avatarColor: string }>();
+      const getUserInfo = async (id: number) => {
+        if (userCache.has(id)) return userCache.get(id)!;
+        const u = await storage.getUser(id);
+        const info = u ? { name: u.name, avatarColor: u.avatarColor } : { name: "System", avatarColor: "#6E4FE8" };
+        userCache.set(id, info);
+        return info;
+      };
+
+      const queueItems = await Promise.all(userProjects.map(async (project) => {
+        const projectScenes = await storage.listScenes(project.id);
+        const activeScenes = projectScenes.filter(s => s.status !== "done" && !s.deletedAt);
+        const currentScene = activeScenes[0] || null;
+
+        const projectStoryboards = await storage.listStoryboards(project.id);
+        let lastPanel: any = null;
+        const allPanels: any[] = [];
+        for (const sb of projectStoryboards) {
+          const panels = await storage.listPanels(sb.id);
+          allPanels.push(...panels.filter(p => !p.deletedAt));
+        }
+
+        if (allPanels.length > 0) {
+          allPanels.sort((a, b) => b.id - a.id);
+          lastPanel = allPanels[0];
+        }
+
+        const pendingScenesCount = activeScenes.length;
+        const pendingChangeRequestsCount = allPanels.filter(p => p.changeRequest && p.changeRequest.trim() !== "").length;
+        const pendingItemsCount = pendingScenesCount + pendingChangeRequestsCount;
+
+        return {
+          project: {
+            id: project.id,
+            title: project.title,
+            status: project.status,
+            coverColor: project.coverColor,
+            deadline: project.deadline
+          },
+          currentScene: currentScene ? {
+            id: currentScene.id,
+            number: currentScene.number,
+            title: currentScene.title,
+            status: currentScene.status,
+            deadline: currentScene.deadline
+          } : null,
+          lastPanel: lastPanel ? {
+            id: lastPanel.id,
+            storyboardId: lastPanel.storyboardId,
+            orderIdx: lastPanel.orderIdx,
+            imageData: lastPanel.imageData,
+            r2Key: lastPanel.r2Key,
+            caption: lastPanel.caption,
+            dialogue: lastPanel.dialogue,
+          } : null,
+          pendingItemsCount,
+        };
+      }));
+
+      const activityFeed: any[] = [];
+      for (const project of userProjects) {
+        const commentsList = await storage.listComments(project.id);
+        const enrichedComments = await Promise.all(commentsList.map(async (c) => {
+          const user = await getUserInfo(c.authorId);
+          return {
+            id: `comment-${c.id}`,
+            projectId: project.id,
+            projectTitle: project.title,
+            type: "comment",
+            user,
+            content: c.body,
+            timestamp: c.createdAt,
+          };
+        }));
+        activityFeed.push(...enrichedComments);
+
+        const assetsList = await storage.listAssets(project.id);
+        const enrichedAssets = await Promise.all(assetsList.map(async (a) => {
+          const user = await getUserInfo(a.uploaderId);
+          return {
+            id: `asset-${a.id}`,
+            projectId: project.id,
+            projectTitle: project.title,
+            type: "asset",
+            user,
+            content: `Uploaded asset: ${a.filename} (${a.category})`,
+            timestamp: a.createdAt,
+          };
+        }));
+        activityFeed.push(...enrichedAssets);
+      }
+
+      activityFeed.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      const recentActivity = activityFeed.slice(0, 15);
+
+      res.json({
+        queueItems,
+        recentActivity
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.post("/api/projects", requireAuth, async (req, res) => {
     const schema = z.object({
       title: z.string().min(1),
@@ -545,6 +654,8 @@ const upload = multer({
       dialogue: z.string().optional(),
       notes: z.string().optional(),
       changeRequest: z.string().optional(),
+      status: z.string().optional(),
+      frameCount: z.number().int().optional(),
       imageData: z.string().nullable().optional(),
       r2Key: z.string().nullable().optional(),
     });

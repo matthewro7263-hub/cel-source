@@ -666,7 +666,10 @@ function StoryboardView({ board, projectId, onDelete }: { board: Storyboard & { 
   const [uploading, setUploading] = useState(false);
   const [panels, setPanels] = useState<Panel[]>(board.panels);
   const [reviewing, setReviewing] = useState(false);
+  const [selectedPanelId, setSelectedPanelId] = useState<number | null>(null);
   const { toast } = useToast();
+
+  const selectedPanel = panels.find((p) => p.id === selectedPanelId);
 
   useEffect(() => { setPanels(board.panels); }, [board.id, board.panels.length]);
 
@@ -788,46 +791,152 @@ function StoryboardView({ board, projectId, onDelete }: { board: Storyboard & { 
           No panels yet. Click <span className="font-medium text-foreground">Upload panels</span> to add images.
         </div>
       ) : (
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-          <SortableContext items={panels.map((p) => p.id)} strategy={rectSortingStrategy}>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {panels.map((p, i) => (
-                <SortablePanel
-                  key={p.id}
-                  panel={p}
-                  index={i}
-                  onDelete={() => delPanel.mutate(p.id)}
-                  onEdit={(patch) => editPanel.mutate({ id: p.id, patch })}
-                />
-              ))}
-            </div>
-          </SortableContext>
-        </DndContext>
+        <div className="flex gap-4 items-start">
+          <div className="flex-1 min-w-0">
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+              <SortableContext items={panels.map((p) => p.id)} strategy={rectSortingStrategy}>
+                <div className={`grid gap-4 ${selectedPanelId ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"}`}>
+                  {panels.map((p, i) => (
+                    <SortablePanel
+                      key={p.id}
+                      panel={p}
+                      index={i}
+                      onDelete={() => {
+                        delPanel.mutate(p.id);
+                        if (selectedPanelId === p.id) setSelectedPanelId(null);
+                      }}
+                      onEdit={(patch) => editPanel.mutate({ id: p.id, patch })}
+                      onClick={() => setSelectedPanelId(p.id)}
+                      isSelected={selectedPanelId === p.id}
+                    />
+                  ))}
+                </div>
+              </SortableContext>
+            </DndContext>
+          </div>
+          {selectedPanel && (
+            <StoryboardInspector
+              panel={selectedPanel}
+              index={panels.findIndex(p => p.id === selectedPanelId)}
+              onClose={() => setSelectedPanelId(null)}
+              onEdit={(patch) => editPanel.mutate({ id: selectedPanel.id, patch })}
+              onDelete={() => {
+                delPanel.mutate(selectedPanel.id);
+                setSelectedPanelId(null);
+              }}
+            />
+          )}
+        </div>
       )}
     </div>
     </>
   );
 }
 
-function SortablePanel({ panel, index, onDelete, onEdit }: { panel: Panel; index: number; onDelete: () => void; onEdit: (patch: Partial<Panel>) => void }) {
+function SortablePanel({
+  panel,
+  index,
+  onDelete,
+  onEdit,
+  onClick,
+  isSelected,
+}: {
+  panel: Panel;
+  index: number;
+  onDelete: () => void;
+  onEdit: (patch: Partial<Panel>) => void;
+  onClick: () => void;
+  isSelected: boolean;
+}) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: panel.id });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
   const [caption, setCaption] = useState(panel.caption || "");
+
+  useEffect(() => {
+    setCaption(panel.caption || "");
+  }, [panel]);
+
+  const panelImageUrl = panel.imageData || (panel.r2Key ? `/api/uploads/file?key=${encodeURIComponent(panel.r2Key)}` : "");
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`rounded-lg border bg-background overflow-hidden group transition-all duration-150 ${
+        isSelected ? "border-primary ring-1 ring-primary" : "border-border"
+      }`}
+      data-testid={`panel-${panel.id}`}
+    >
+      <div
+        {...attributes}
+        {...listeners}
+        onClick={onClick}
+        className="aspect-video bg-muted relative cursor-grab active:cursor-grabbing hover:brightness-95 transition-all duration-150"
+      >
+        <img
+          src={panelImageUrl}
+          alt={panel.caption || panel.dialogue || `Storyboard panel ${index + 1}`}
+          className="w-full h-full object-cover select-none pointer-events-none"
+        />
+        <div className="absolute top-2 left-2 text-[10px] font-mono bg-background/90 px-1.5 py-0.5 rounded">
+          #{String(index + 1).padStart(2, "0")}
+        </div>
+        <Button
+          size="icon"
+          variant="ghost"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+          onPointerDown={(e) => e.stopPropagation()}
+          className="absolute top-1.5 right-1.5 h-7 w-7 bg-background/90 opacity-0 group-hover:opacity-100 text-destructive hover:bg-destructive hover:text-white transition-all duration-150 shadow-sm"
+          data-testid={`button-delete-panel-${panel.id}`}
+        >
+          <Trash2 size={13} />
+        </Button>
+      </div>
+      <div className="p-3 space-y-2">
+        <Input
+          value={caption}
+          onChange={(e) => setCaption(e.target.value)}
+          onBlur={() => caption !== panel.caption && onEdit({ caption })}
+          className="text-xs h-8"
+          placeholder="Caption…"
+          data-testid={`input-caption-${panel.id}`}
+        />
+        {panel.dialogue && <div className="text-xs italic text-muted-foreground">"{panel.dialogue}"</div>}
+        {/* v4: pin layer */}
+        <V4PanelPinLayer panelId={panel.id} />
+      </div>
+    </div>
+  );
+}
+
+function StoryboardInspector({
+  panel,
+  index,
+  onClose,
+  onEdit,
+  onDelete,
+}: {
+  panel: Panel;
+  index: number;
+  onClose: () => void;
+  onEdit: (patch: Partial<Panel>) => void;
+  onDelete: () => void;
+}) {
+  const [caption, setCaption] = useState(panel.caption || "");
   const [notes, setNotes] = useState(panel.notes || "");
   const [changeRequest, setChangeRequest] = useState(panel.changeRequest || "");
-  const [isSheetOpen, setIsSheetOpen] = useState(false);
+  const [frameCount, setFrameCount] = useState<string>(String(panel.frameCount ?? 24));
   const replaceInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setCaption(panel.caption || "");
     setNotes(panel.notes || "");
     setChangeRequest(panel.changeRequest || "");
+    setFrameCount(String(panel.frameCount ?? 24));
   }, [panel]);
-
-  const handleOpenSheet = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setIsSheetOpen(true);
-  };
 
   const handleReplaceImage = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -842,119 +951,136 @@ function SortablePanel({ panel, index, onDelete, onEdit }: { panel: Panel; index
   const panelImageUrl = panel.imageData || (panel.r2Key ? `/api/uploads/file?key=${encodeURIComponent(panel.r2Key)}` : "");
 
   return (
-    <>
-      <div ref={setNodeRef} style={style} className="rounded-lg border border-border bg-background overflow-hidden group" data-testid={`panel-${panel.id}`}>
-        <div
-          {...attributes}
-          {...listeners}
-          onClick={handleOpenSheet}
-          className="aspect-video bg-muted relative cursor-grab active:cursor-grabbing hover:brightness-95 transition-all duration-150"
-        >
-          <img
-            src={panelImageUrl}
-            alt={panel.caption || panel.dialogue || `Storyboard panel ${index + 1}`}
-            className="w-full h-full object-cover select-none pointer-events-none"
-          />
-          <div className="absolute top-2 left-2 text-[10px] font-mono bg-background/90 px-1.5 py-0.5 rounded">
-            #{String(index + 1).padStart(2, "0")}
+    <div className="w-[320px] shrink-0 border border-border bg-background/50 backdrop-blur rounded-lg p-4 space-y-4 flex flex-col h-[calc(100vh-200px)] overflow-y-auto sticky top-4">
+      <div className="flex items-center justify-between">
+        <h4 className="font-semibold text-sm">
+          Panel #<span className="font-mono">{String(index + 1).padStart(2, "0")}</span>
+        </h4>
+        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={onClose}>
+          <X size={14} />
+        </Button>
+      </div>
+
+      <div className="space-y-4 flex-1">
+        {/* Panel Image Container */}
+        <div className="space-y-2">
+          <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Image</Label>
+          <div className="aspect-video bg-muted border border-border rounded overflow-hidden relative">
+            {panelImageUrl ? (
+              <img src={panelImageUrl} alt={caption} className="w-full h-full object-cover" />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center text-muted-foreground text-xs">
+                No image data
+              </div>
+            )}
           </div>
-          <Button
-            size="icon"
-            variant="ghost"
-            onClick={(e) => { e.stopPropagation(); onDelete(); }}
-            onPointerDown={(e) => e.stopPropagation()}
-            className="absolute top-1.5 right-1.5 h-7 w-7 bg-background/90 opacity-0 group-hover:opacity-100 text-destructive hover:bg-destructive hover:text-white transition-all duration-150 shadow-sm"
-            data-testid={`button-delete-panel-${panel.id}`}
-          >
-            <Trash2 size={13} />
-          </Button>
+          <div className="flex gap-2 justify-end">
+            <input
+              ref={replaceInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleReplaceImage}
+            />
+            <Button size="sm" variant="outline" className="text-xs h-7 px-2" onClick={() => replaceInputRef.current?.click()}>
+              Replace image
+            </Button>
+          </div>
         </div>
-        <div className="p-3 space-y-2">
+
+        {/* Panel Caption */}
+        <div className="space-y-1">
+          <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Caption</Label>
           <Input
             value={caption}
             onChange={(e) => setCaption(e.target.value)}
             onBlur={() => caption !== panel.caption && onEdit({ caption })}
+            placeholder="No caption..."
             className="text-xs h-8"
-            placeholder="Caption…"
-            data-testid={`input-caption-${panel.id}`}
           />
-          {panel.dialogue && <div className="text-xs italic text-muted-foreground">"{panel.dialogue}"</div>}
-          {/* v4: pin layer */}
-          <V4PanelPinLayer panelId={panel.id} />
+        </div>
+
+        {/* Dialogue */}
+        {panel.dialogue && (
+          <div className="space-y-1">
+            <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Dialogue</Label>
+            <div className="text-xs italic text-muted-foreground p-2 bg-muted/30 rounded border border-border/50">
+              "{panel.dialogue}"
+            </div>
+          </div>
+        )}
+
+        {/* Notes */}
+        <div className="space-y-1">
+          <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Notes</Label>
+          <Textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            onBlur={() => notes !== panel.notes && onEdit({ notes })}
+            rows={3}
+            placeholder="Add notes..."
+            className="text-xs resize-none"
+          />
+        </div>
+
+        {/* Status Dropdown */}
+        <div className="space-y-1">
+          <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Status</Label>
+          <Select
+            value={panel.status || "ROUGH"}
+            onValueChange={(val) => onEdit({ status: val })}
+          >
+            <SelectTrigger className="text-xs h-8">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ROUGH">Rough</SelectItem>
+              <SelectItem value="CLEAN">Clean</SelectItem>
+              <SelectItem value="FINAL">Final</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Frame Count Input */}
+        <div className="space-y-1">
+          <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Frame Count</Label>
+          <Input
+            type="number"
+            value={frameCount}
+            onChange={(e) => setFrameCount(e.target.value)}
+            onBlur={() => {
+              const val = parseInt(frameCount, 10);
+              if (!isNaN(val) && val !== panel.frameCount) {
+                onEdit({ frameCount: val });
+              }
+            }}
+            placeholder="24"
+            className="text-xs h-8 font-mono"
+          />
+        </div>
+
+        {/* Change Request */}
+        <div className="space-y-1">
+          <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground text-amber-500">Change Request</Label>
+          <Input
+            value={changeRequest}
+            onChange={(e) => setChangeRequest(e.target.value)}
+            onBlur={() => changeRequest !== panel.changeRequest && onEdit({ changeRequest })}
+            placeholder="Add a change request..."
+            className="text-xs h-8 border-amber-200 focus-visible:ring-amber-500"
+          />
         </div>
       </div>
 
-      <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
-        <SheetContent side="right" className="w-[400px] sm:w-[540px] overflow-y-auto flex flex-col gap-5 bg-background border-l border-border">
-          <SheetHeader>
-            <SheetTitle>Edit Storyboard Panel #{String(index + 1).padStart(2, "0")}</SheetTitle>
-          </SheetHeader>
-
-          <div className="space-y-4 flex-1">
-            {/* Panel Image Container */}
-            <div className="space-y-2">
-              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Image</Label>
-              <div className="aspect-video bg-muted border border-border rounded-lg overflow-hidden relative group">
-                {panelImageUrl ? (
-                  <img src={panelImageUrl} alt={caption} className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-muted-foreground text-xs">
-                    No image data
-                  </div>
-                )}
-              </div>
-              <div className="flex gap-2 justify-end">
-                <input
-                  ref={replaceInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={handleReplaceImage}
-                />
-                <Button size="sm" variant="outline" onClick={() => replaceInputRef.current?.click()}>
-                  Replace image
-                </Button>
-              </div>
-            </div>
-
-            {/* Panel Caption */}
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Caption</Label>
-              <Input
-                value={caption}
-                onChange={(e) => setCaption(e.target.value)}
-                onBlur={() => caption !== panel.caption && onEdit({ caption })}
-                placeholder="No caption..."
-              />
-            </div>
-
-            {/* Dialogue / Notes */}
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Notes</Label>
-              <Textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                onBlur={() => notes !== panel.notes && onEdit({ notes })}
-                rows={4}
-                placeholder="Add some notes about this storyboard panel..."
-              />
-            </div>
-
-            {/* Change Request */}
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground text-amber-500">Change Request</Label>
-              <Input
-                value={changeRequest}
-                onChange={(e) => setChangeRequest(e.target.value)}
-                onBlur={() => changeRequest !== panel.changeRequest && onEdit({ changeRequest })}
-                placeholder="Add a change request (e.g. 'Redraw characters with bigger smiles')..."
-                className="border-amber-200 focus-visible:ring-amber-500"
-              />
-            </div>
-          </div>
-        </SheetContent>
-      </Sheet>
-    </>
+      <div className="pt-2 border-t border-border flex justify-between gap-2">
+        <Button size="sm" variant="ghost" onClick={onClose} className="text-xs h-8">
+          Close
+        </Button>
+        <Button size="sm" variant="destructive" onClick={onDelete} className="text-xs h-8 px-2.5">
+          <Trash2 size={13} className="mr-1" /> Delete Panel
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -1027,7 +1153,9 @@ function AnimaticEditorSection({ projectId }: { projectId: number }) {
                 </div>
                 <div className="min-w-0">
                   <p className="text-sm font-medium truncate">{ap.title}</p>
-                  <p className="text-xs text-muted-foreground">{ap.fps}fps · {formatDuration(ap.totalDurationMs)}</p>
+                  <p className="text-xs text-muted-foreground">
+                    <span className="font-mono">{ap.fps}</span>fps · <span className="font-mono">{formatDuration(ap.totalDurationMs)}</span>
+                  </p>
                 </div>
               </div>
               <div className="flex items-center gap-2 shrink-0">
@@ -1603,7 +1731,9 @@ function ScenesGantt({ scenes, projectId }: { scenes: Scene[]; projectId: number
           const offset = Math.max(0, Math.ceil((d.getTime() - minDate.getTime()) / (1000 * 3600 * 24)));
           return (
             <div key={s.id} className="flex items-center gap-4">
-              <div className="w-32 text-xs font-medium truncate">{s.number}: {s.title}</div>
+              <div className="w-32 text-xs font-medium truncate">
+                <span className="font-mono">{s.number}</span>: {s.title}
+              </div>
               <div className="flex-1 bg-muted/30 h-6 rounded-full relative overflow-hidden">
                 <div 
                   className={`absolute h-full rounded-full ${statusClass(s.status)} opacity-80 border border-white/20`}
@@ -1688,7 +1818,7 @@ function NewSceneDialog({ open, setOpen, projectId }: { open: boolean; setOpen: 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label>Number</Label>
-              <Input value={number} onChange={(e) => setNumber(e.target.value)} placeholder="1A" data-testid="input-scene-number" />
+              <Input value={number} onChange={(e) => setNumber(e.target.value)} placeholder="1A" className="font-mono" data-testid="input-scene-number" />
             </div>
             <div className="space-y-1.5">
               <Label>Status</Label>

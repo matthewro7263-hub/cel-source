@@ -325,14 +325,22 @@ export default function InbetweenColorLab() {
                 max={24}
                 value={frameCount}
                 onChange={(event) => setFrameCount(clampInbetweenCount(Number(event.target.value)))}
-                className="mt-2"
+                className="mt-2 font-mono"
                 data-testid="input-inbetween-count"
               />
             </div>
             <div className="md:col-span-2">
               <div className="mb-2 flex items-center justify-between gap-3">
-                <Label className="text-xs">{currentFrame?.label ?? "Inbetween 1"}</Label>
-                <span className="text-xs text-muted-foreground">{Math.round((currentFrame?.alpha ?? 0.5) * 100)}%</span>
+                <Label className="text-xs">
+                  {currentFrame ? (
+                    <>
+                      Inbetween <span className="font-mono">{currentFrame.index}</span>
+                    </>
+                  ) : (
+                    "Inbetween 1"
+                  )}
+                </Label>
+                <span className="text-xs text-muted-foreground font-mono">{Math.round((currentFrame?.alpha ?? 0.5) * 100)}%</span>
               </div>
               <Slider
                 min={1}

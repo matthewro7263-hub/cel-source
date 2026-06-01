@@ -126,7 +126,7 @@ export default function BakTrashPage() {
               <CardContent className="space-y-4">
                 {trashItems?.scenes?.map((s: Scene) => (
                   <div key={s.id} className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
-                    <span>Scene {s.number}: {s.title}</span>
+                    <span>Scene <span className="font-mono">{s.number}</span>: {s.title}</span>
                     <div className="flex gap-2">
                       <Button size="sm" onClick={() => restoreMutation.mutate({ kind: 'scene', itemId: s.id })}>
                         <Undo className="w-4 h-4 mr-2" /> Restore
@@ -168,7 +168,7 @@ export default function BakTrashPage() {
               <CardContent className="space-y-4">
                 {trashItems?.panels?.map((p: Panel) => (
                   <div key={p.id} className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
-                    <span>Panel #{p.id}</span>
+                    <span>Panel #<span className="font-mono">{p.id}</span></span>
                     <div className="flex gap-2">
                       <Button size="sm" onClick={() => restoreMutation.mutate({ kind: 'panel', itemId: p.id })}>
                         <Undo className="w-4 h-4 mr-2" /> Restore

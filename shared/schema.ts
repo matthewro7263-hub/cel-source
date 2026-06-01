@@ -103,6 +103,8 @@ export const storyboardPanels = pgTable("storyboard_panels", {
   dialogue: text("dialogue").notNull().default(""),
   notes: text("notes").notNull().default(""),
   changeRequest: text("change_request").notNull().default(""),
+  status: text("status").notNull().default("ROUGH"),
+  frameCount: integer("frame_count").notNull().default(24),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
 }, (table) => {
   return {

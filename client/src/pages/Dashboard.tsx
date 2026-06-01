@@ -10,30 +10,70 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { GlassButton } from "@/components/ui/glass-button";
-import { MetalGlassButton } from "@/components/ui/metal-glass-button";
-import { Plus, Clapperboard, Calendar, ArrowRight, Sparkles, RotateCcw, BookOpen, Compass } from "lucide-react";
+import { Plus, Clapperboard, Calendar, ArrowRight, Activity, MessageSquare, Upload } from "lucide-react";
 import { formatDeadline } from "@/lib/utils-cel";
 import { useToast } from "@/hooks/use-toast";
-import type { Project } from "@shared/schema";
-import { getDailySketchPrompt, principleDrills } from "@/data/daily-drills";
 
 const COLORS = ["#6E4FE8", "#E8744F", "#4FBFE8", "#E84F9F", "#4FE89A", "#E8C44F", "#E84F4F"];
 
+interface QueueItem {
+  project: {
+    id: number;
+    title: string;
+    status: string;
+    coverColor: string;
+    deadline: string | null;
+  };
+  currentScene: {
+    id: number;
+    number: string;
+    title: string;
+    status: string;
+    deadline: string | null;
+  } | null;
+  lastPanel: {
+    id: number;
+    storyboardId: number;
+    orderIdx: number;
+    imageData: string | null;
+    r2Key: string | null;
+    caption: string;
+    dialogue: string;
+  } | null;
+  pendingItemsCount: number;
+}
+
+interface ActivityItem {
+  id: string;
+  projectId: number;
+  projectTitle: string;
+  type: "comment" | "asset";
+  user: {
+    name: string;
+    avatarColor: string;
+  };
+  content: string;
+  timestamp: string;
+}
+
 export default function Dashboard() {
-  const [useBibleTemplate, setUseBibleTemplate] = useState(false);
-  const { data: projects, isLoading } = useQuery<Project[]>({ queryKey: ["/api/projects"] });
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [deadline, setDeadline] = useState("");
   const [color, setColor] = useState(COLORS[0]);
-  const [promptOffset, setPromptOffset] = useState(0);
-  const [principleIndex, setPrincipleIndex] = useState(new Date().getDate() % principleDrills.length);
+  const [useBibleTemplate, setUseBibleTemplate] = useState(false);
+
   const { toast } = useToast();
   const [, setLocation] = useLocation();
-  const dailyPrompt = getDailySketchPrompt(new Date(), promptOffset);
-  const activePrinciple = principleDrills[principleIndex];
+
+  // Query our new aggregated endpoint
+  const { data: queueData, isLoading } = useQuery<{
+    queueItems: QueueItem[];
+    recentActivity: ActivityItem[];
+  }>({
+    queryKey: ["/api/production/queue"],
+  });
 
   const create = useMutation({
     mutationFn: async () => {
@@ -46,11 +86,13 @@ export default function Dashboard() {
       }
       return newProj;
     },
-    onSuccess: () => {
+    onSuccess: (newProj) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/production/queue"] });
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
       setOpen(false);
       setTitle(""); setDescription(""); setDeadline(""); setUseBibleTemplate(false);
       toast({ title: "Project created" });
+      setLocation(`/projects/${newProj.id}`);
     },
     onError: (err: any) => toast({ title: "Couldn't create", description: String(err.message || err), variant: "destructive" }),
   });
@@ -90,6 +132,7 @@ export default function Dashboard() {
       return project;
     },
     onSuccess: (project) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/production/queue"] });
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
       toast({ title: "Sandbox project created" });
       setLocation(`/projects/${project.id}`);
@@ -97,154 +140,334 @@ export default function Dashboard() {
     onError: (err: any) => toast({ title: "Couldn't create sandbox", description: String(err.message || err), variant: "destructive" }),
   });
 
+  const getPanelImageUrl = (panel: NonNullable<QueueItem["lastPanel"]>) => {
+    return panel.imageData || (panel.r2Key ? `/api/uploads/file?key=${encodeURIComponent(panel.r2Key)}` : "");
+  };
+
+  const getStatusColorClass = (status: string) => {
+    switch (status.toLowerCase()) {
+      case "storyboard":
+        return "border-[#9DD0FF]/35 bg-[#9DD0FF]/10 text-[#9DD0FF]";
+      case "animatic":
+        return "border-[#C4B5FD]/35 bg-[#C4B5FD]/10 text-[#C4B5FD]";
+      case "review":
+        return "border-[#FFD9A8]/35 bg-[#FFD9A8]/10 text-[#FFD9A8]";
+      case "done":
+        return "border-emerald-600/35 bg-emerald-600/10 text-emerald-400";
+      default:
+        return "border-neutral-700 bg-neutral-800/50 text-neutral-400";
+    }
+  };
+
   return (
-    <div className="px-6 lg:px-10 py-8 lg:py-12 max-w-6xl mx-auto">
-      <div className="flex items-end justify-between mb-10 gap-4">
+    <div 
+      className="relative z-10 min-h-screen text-[#e8ebf5] px-6 lg:px-10 py-8 lg:py-12"
+      style={{ backgroundColor: "#0F0F0C" }}
+    >
+      <div className="flex items-center justify-between mb-8 pb-4 border-b border-[#282822]">
         <div>
-          <p className="text-[11px] font-mono font-medium uppercase tracking-widest text-muted-foreground mb-2 opacity-70">
-            Workspace
+          <p className="text-[10px] font-mono font-medium uppercase tracking-widest text-[#8b8b84] mb-1">
+            Active Production Queue
           </p>
-          <h1 className="font-display text-xl font-bold tracking-tight">Projects</h1>
+          <h1 className="text-xl font-bold tracking-tight text-[#e8ebf5] uppercase font-mono">
+            Dashboard
+          </h1>
         </div>
 
-        <Dialog open={open} onOpenChange={(nextOpen) => { setOpen(nextOpen); if (!nextOpen) setUseBibleTemplate(false); }}>
-          <DialogTrigger asChild>
-            <MetalGlassButton variant="primary" size="pill" preset="silver" data-testid="button-new-project">
-              <Plus size={15} className="mr-0.5" /> New project
-            </MetalGlassButton>
-          </DialogTrigger>
-          <DialogContent className="glass-card border-0 rounded-2xl">
-            <DialogHeader>
-              <DialogTitle className="font-display tracking-tight">Create a new project</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4 pt-2">
-              <div className="space-y-1.5">
-                <Label>Title</Label>
-                <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="My Animation Project" data-testid="input-project-title" className="glass-input" />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Description</Label>
-                <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Brief description (optional)" rows={3} data-testid="input-project-description" />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Deadline</Label>
-                <Input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} data-testid="input-project-deadline" className="glass-input" />
-              </div>
-              <div className="flex items-center space-x-2 rounded-lg border border-border/60 px-3 py-2.5">
-                <Checkbox
-                  id="use-bible-template"
-                  checked={useBibleTemplate}
-                  onCheckedChange={(checked) => setUseBibleTemplate(checked === true)}
-                />
-                <Label htmlFor="use-bible-template" className="text-sm font-normal cursor-pointer">
-                  Seed project with Bible template
-                </Label>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Color</Label>
-                <div className="flex gap-2 flex-wrap">
-                  {COLORS.map((c) => (
-                    <button
-                      key={c}
-                      type="button"
-                      onClick={() => setColor(c)}
-                      className={`w-7 h-7 rounded-full border-2 transition-all ${
-                        color === c ? "border-foreground scale-110" : "border-transparent"
-                      }`}
-                      style={{ backgroundColor: c }}
-                      data-testid={`button-color-${c}`}
-                    />
-                  ))}
-                </div>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="ghost" onClick={() => { setOpen(false); setUseBibleTemplate(false); }}>Cancel</Button>
-              <GlassButton
-                variant="primary"
+        <div className="flex items-center gap-3">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => createSandbox.mutate()} 
+            disabled={createSandbox.isPending}
+            className="rounded-[4px] border-[#282822] bg-[#151511] text-[#e8ebf5] hover:bg-[#1f1f1a] font-mono text-xs h-9 px-4"
+          >
+            {createSandbox.isPending ? "Creating Sandbox…" : "Sandbox Project"}
+          </Button>
+
+          <Dialog open={open} onOpenChange={(nextOpen) => { setOpen(nextOpen); if (!nextOpen) setUseBibleTemplate(false); }}>
+            <DialogTrigger asChild>
+              <Button 
+                variant="default"
                 size="sm"
-                onClick={() => create.mutate()}
-                disabled={!title || create.isPending}
-                data-testid="button-create-project"
+                data-testid="button-new-project"
+                className="rounded-[4px] bg-[#3E63DD] hover:bg-[#3555c2] text-white font-mono text-xs h-9 px-4"
               >
-                {create.isPending ? "Creating…" : "Create"}
-              </GlassButton>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </div>
-
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
-        <div>
-          {isLoading ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="glass-card rounded-2xl p-5 h-44 animate-pulse" />
-              ))}
-            </div>
-          ) : projects && projects.length === 0 ? (
-            <EmptyState onNew={() => setOpen(true)} />
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              {projects?.map((p) => <ProjectCard key={p.id} p={p} />)}
-            </div>
-          )}
-        </div>
-
-        <aside className="space-y-4">
-          <SandboxConstellation creating={createSandbox.isPending} onCreate={() => createSandbox.mutate()} />
-
-          <div className="glass-card rounded-2xl p-5">
-            <div className="flex items-start justify-between gap-3 mb-4">
-              <div>
-                <div className="flex items-center gap-2 text-xs font-mono uppercase tracking-widest text-muted-foreground">
-                  <Sparkles size={13} className="text-primary" />
-                  Daily drill
-                </div>
-                <h2 className="font-display font-semibold mt-1">{dailyPrompt.title}</h2>
-              </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={() => setPromptOffset((value) => value + 1)}
-                data-testid="button-refresh-daily-prompt"
-              >
-                <RotateCcw size={14} />
+                <Plus size={14} className="mr-1" /> New Project
               </Button>
-            </div>
-            <p className="text-sm leading-relaxed">{dailyPrompt.prompt}</p>
-            <div className="mt-4 rounded-xl border border-card-border bg-white/40 p-3 text-xs text-muted-foreground dark:bg-white/5">
-              {dailyPrompt.constraint}
+            </DialogTrigger>
+            <DialogContent className="border border-[#282822] bg-[#151511] text-[#e8ebf5] rounded-[4px] max-w-md p-6">
+              <DialogHeader>
+                <DialogTitle className="font-mono text-sm uppercase tracking-wider text-[#e8ebf5]">Create new project</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 pt-4">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-mono text-[#8b8b84]">Title</Label>
+                  <Input 
+                    value={title} 
+                    onChange={(e) => setTitle(e.target.value)} 
+                    placeholder="Project title" 
+                    data-testid="input-project-title" 
+                    className="rounded-[4px] border-[#282822] bg-[#0F0F0C] text-[#e8ebf5]" 
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-mono text-[#8b8b84]">Description</Label>
+                  <Textarea 
+                    value={description} 
+                    onChange={(e) => setDescription(e.target.value)} 
+                    placeholder="Brief description (optional)" 
+                    rows={3} 
+                    data-testid="input-project-description" 
+                    className="rounded-[4px] border-[#282822] bg-[#0F0F0C] text-[#e8ebf5]"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-mono text-[#8b8b84]">Deadline</Label>
+                  <Input 
+                    type="date" 
+                    value={deadline} 
+                    onChange={(e) => setDeadline(e.target.value)} 
+                    data-testid="input-project-deadline" 
+                    className="rounded-[4px] border-[#282822] bg-[#0F0F0C] text-[#e8ebf5]" 
+                  />
+                </div>
+                <div className="flex items-center space-x-2 rounded-[4px] border border-[#282822] px-3 py-2.5 bg-[#0F0F0C]">
+                  <Checkbox
+                    id="use-bible-template"
+                    checked={useBibleTemplate}
+                    onCheckedChange={(checked) => setUseBibleTemplate(checked === true)}
+                    className="rounded-[2px] border-[#282822]"
+                  />
+                  <Label htmlFor="use-bible-template" className="text-xs font-mono text-[#8b8b84] cursor-pointer">
+                    Seed with Bible template
+                  </Label>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-mono text-[#8b8b84]">Color</Label>
+                  <div className="flex gap-2 flex-wrap">
+                    {COLORS.map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => setColor(c)}
+                        className={`w-6 h-6 rounded-full border-2 transition-all ${
+                          color === c ? "border-[#e8ebf5] scale-110" : "border-transparent"
+                        }`}
+                        style={{ backgroundColor: c }}
+                        data-testid={`button-color-${c}`}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <DialogFooter className="mt-6 flex gap-2">
+                <Button variant="ghost" className="rounded-[4px] text-xs font-mono" onClick={() => { setOpen(false); setUseBibleTemplate(false); }}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="default"
+                  onClick={() => create.mutate()}
+                  disabled={!title || create.isPending}
+                  data-testid="button-create-project"
+                  className="rounded-[4px] bg-[#3E63DD] hover:bg-[#3555c2] text-white text-xs font-mono"
+                >
+                  {create.isPending ? "Creating…" : "Create"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div className="grid gap-6 xl:grid-cols-[1fr_360px]">
+          <div className="space-y-4">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="h-28 bg-[#151511] border border-[#282822] rounded-[4px] animate-pulse" />
+            ))}
+          </div>
+          <div className="h-96 bg-[#151511] border border-[#282822] rounded-[4px] animate-pulse" />
+        </div>
+      ) : !queueData || queueData.queueItems.length === 0 ? (
+        <EmptyState onNew={() => setOpen(true)} />
+      ) : (
+        <div className="grid gap-6 xl:grid-cols-[1fr_360px]">
+          {/* LEFT: Active Production Queue */}
+          <div className="space-y-4">
+            <h2 className="text-xs font-mono uppercase tracking-widest text-[#8b8b84] mb-2 flex items-center gap-2">
+              <Activity size={12} className="text-[#3E63DD]" />
+              Queue ({queueData.queueItems.length} active projects)
+            </h2>
+
+            <div className="space-y-3">
+              {queueData.queueItems.map((item) => {
+                const deadlineInfo = formatDeadline(item.project.deadline);
+                const deadlineToneClass =
+                  deadlineInfo.tone === "red" ? "text-red-500" :
+                  deadlineInfo.tone === "amber" ? "text-amber-500" :
+                  deadlineInfo.tone === "green" ? "text-emerald-500" : "text-neutral-400";
+
+                const panelImgSrc = item.lastPanel ? getPanelImageUrl(item.lastPanel) : "";
+
+                return (
+                  <div
+                    key={item.project.id}
+                    className="border border-[#282822] bg-[#151511] p-4 rounded-[4px] flex flex-col lg:flex-row lg:items-center justify-between gap-4 transition-all hover:border-[#383832]"
+                  >
+                    {/* Project & Scene details */}
+                    <div className="flex-1 min-w-0 flex items-start gap-3">
+                      <div 
+                        className="w-1.5 h-12 shrink-0 rounded-[2px]" 
+                        style={{ backgroundColor: item.project.coverColor }}
+                      />
+                      <div className="space-y-1">
+                        <Link href={`/projects/${item.project.id}`}>
+                          <span className="font-mono font-bold text-sm tracking-tight text-[#e8ebf5] hover:text-[#3E63DD] cursor-pointer transition-colors block">
+                            {item.project.title}
+                          </span>
+                        </Link>
+                        
+                        {/* Current Shot / Scene */}
+                        <div className="flex flex-wrap items-center gap-2 text-xs">
+                          {item.currentScene ? (
+                            <>
+                              <span className="text-[#8b8b84]">Current:</span>
+                               <span className="text-[#e8ebf5] font-semibold">
+                                 Scene <span className="font-mono">{item.currentScene.number}</span> - {item.currentScene.title}
+                               </span>
+                              <span className={`border px-1.5 py-0.5 rounded-[2px] font-mono text-[10px] uppercase font-bold tracking-wider ${getStatusColorClass(item.currentScene.status)}`}>
+                                {item.currentScene.status}
+                              </span>
+                            </>
+                          ) : (
+                            <span className="text-[#8b8b84] italic">No active scene in work</span>
+                          )}
+
+                          {item.project.deadline && (
+                            <span className={`font-mono text-[11px] flex items-center gap-1 ml-1 ${deadlineToneClass}`}>
+                              <Calendar size={11} /> {deadlineInfo.text}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Last edited panel thumbnail */}
+                    <div className="flex items-center gap-3 shrink-0">
+                      <div className="space-y-1">
+                        <span className="text-[10px] uppercase font-mono tracking-wider text-[#8b8b84] block">Last edit</span>
+                        {item.lastPanel ? (
+                          <div className="flex items-center gap-2">
+                            {panelImgSrc ? (
+                              <img 
+                                src={panelImgSrc} 
+                                className="w-16 h-10 object-cover rounded-[4px] border border-[#282822] bg-black"
+                                alt="Last edit thumbnail"
+                              />
+                            ) : (
+                              <div className="w-16 h-10 bg-neutral-900 border border-[#282822] flex items-center justify-center text-[8px] text-neutral-600 rounded-[4px] font-mono">
+                                NO IMAGE
+                              </div>
+                            )}
+                            <div className="max-w-[120px] text-left">
+                              <div className="text-[10px] font-mono text-[#e8ebf5] truncate">
+                                Panel #{item.lastPanel.orderIdx + 1}
+                              </div>
+                              {item.lastPanel.caption && (
+                                <div className="text-[9px] text-[#8b8b84] truncate italic">
+                                  "{item.lastPanel.caption}"
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="w-32 h-10 border border-dashed border-[#282822] flex items-center justify-center rounded-[4px] text-[10px] font-mono text-[#8b8b84]">
+                            No panels created
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Pending count badge */}
+                      <div className="text-right flex items-center gap-3">
+                        <div className="space-y-0.5 min-w-[64px]">
+                          <span className="text-[10px] uppercase font-mono tracking-wider text-[#8b8b84] block">Pending</span>
+                          <span className="font-mono font-bold text-sm text-[#FFD9A8]">
+                            {item.pendingItemsCount} items
+                          </span>
+                        </div>
+
+                        <Link href={`/projects/${item.project.id}`}>
+                          <button 
+                            type="button"
+                            className="w-7 h-7 rounded-[4px] bg-[#1a1a15] hover:bg-[#282822] border border-[#282822] flex items-center justify-center text-[#8b8b84] hover:text-[#e8ebf5] transition-colors"
+                          >
+                            <ArrowRight size={13} />
+                          </button>
+                        </Link>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
-          <div className="glass-card rounded-2xl p-5">
-            <div className="flex items-center gap-2 text-xs font-mono uppercase tracking-widest text-muted-foreground mb-2">
-              <BookOpen size={13} className="text-primary" />
-              12 principles
-            </div>
-            <h2 className="font-display font-semibold">{activePrinciple.principle}</h2>
-            <div className="mt-1 text-xs text-muted-foreground">{activePrinciple.focus}</div>
-            <p className="mt-4 text-sm leading-relaxed">{activePrinciple.exercise}</p>
-            <PrincipleMotionDemo index={principleIndex} />
-            <div className="mt-4 grid grid-cols-6 gap-1.5" aria-label="Principle drill picker">
-              {principleDrills.map((drill, index) => (
-                <button
-                  key={drill.principle}
-                  type="button"
-                  aria-label={drill.principle}
-                  onClick={() => setPrincipleIndex(index)}
-                  className={`h-2.5 rounded-full transition-all ${
-                    index === principleIndex ? "bg-primary" : "bg-muted-foreground/25 hover:bg-muted-foreground/40"
-                  }`}
-                  data-testid={`button-principle-${index}`}
-                />
-              ))}
+          {/* RIGHT: Recent Activity Feed */}
+          <div className="space-y-4">
+            <h2 className="text-xs font-mono uppercase tracking-widest text-[#8b8b84] mb-2 flex items-center gap-2">
+              <Activity size={12} className="text-[#3E63DD]" />
+              Recent Activity
+            </h2>
+
+            <div className="border border-[#282822] bg-[#151511] p-4 rounded-[4px] space-y-4 min-h-[300px]">
+              {queueData.recentActivity.length === 0 ? (
+                <div className="text-center py-12 text-sm text-[#8b8b84] italic font-mono">
+                  No recent activity logged
+                </div>
+              ) : (
+                <div className="space-y-4 divide-y divide-[#282822]/60">
+                  {queueData.recentActivity.map((activity, idx) => {
+                    const isComment = activity.type === "comment";
+                    return (
+                      <div key={activity.id} className={`pt-3 first:pt-0 flex gap-2.5 text-xs`}>
+                        {/* Compact rounded 4px avatar */}
+                        <div 
+                          className="w-5 h-5 rounded-[4px] shrink-0 flex items-center justify-center font-mono font-bold text-[10px] text-white uppercase"
+                          style={{ backgroundColor: activity.user.avatarColor }}
+                        >
+                          {activity.user.name[0] || "?"}
+                        </div>
+
+                        <div className="flex-1 min-w-0 space-y-1">
+                          <div className="flex items-baseline justify-between gap-2">
+                            <span className="font-semibold text-[#e8ebf5] font-mono">{activity.user.name}</span>
+                            <span className="text-[10px] text-[#8b8b84] shrink-0 font-mono">
+                              {timeAgo(activity.timestamp)}
+                            </span>
+                          </div>
+
+                          <div className="text-xs text-[#8b8b84] leading-relaxed break-words">
+                            <span className="flex items-center gap-1 text-[10px] font-mono text-[#3E63DD] uppercase mb-0.5">
+                              {isComment ? (
+                                <MessageSquare size={10} />
+                              ) : (
+                                <Upload size={10} />
+                              )}
+                              {activity.projectTitle}
+                            </span>
+                            {activity.content}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
-        </aside>
-      </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -252,151 +475,51 @@ export default function Dashboard() {
 function sandboxPanelDataUrl(index: number): string {
   const colors = ["#9DD0FF", "#E8C44F", "#4FE89A"];
   const title = ["OPEN", "TRY", "DONE"][index] || "CEL";
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720"><rect width="1280" height="720" fill="#10131a"/><rect x="140" y="110" width="1000" height="500" rx="28" fill="${colors[index % colors.length]}" opacity="0.18" stroke="${colors[index % colors.length]}" stroke-width="8"/><circle cx="${360 + index * 170}" cy="350" r="92" fill="${colors[index % colors.length]}"/><rect x="560" y="292" width="360" height="116" rx="16" fill="#ffffff" opacity="0.9"/><text x="740" y="365" text-anchor="middle" font-family="Arial, sans-serif" font-size="54" font-weight="700" fill="#10131a">${title}</text></svg>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720"><rect width="1280" height="720" fill="#10131a"/><rect x="140" y="110" width="1000" height="500" rx="4" fill="${colors[index % colors.length]}" opacity="0.18" stroke="${colors[index % colors.length]}" stroke-width="8"/><circle cx="${360 + index * 170}" cy="350" r="92" fill="${colors[index % colors.length]}"/><rect x="560" y="292" width="360" height="116" rx="4" fill="#ffffff" opacity="0.9"/><text x="740" y="365" text-anchor="middle" font-family="Arial, sans-serif" font-size="54" font-weight="700" fill="#10131a">${title}</text></svg>`;
   return `data:image/svg+xml;base64,${btoa(svg)}`;
 }
 
-function SandboxConstellation({ creating, onCreate }: { creating: boolean; onCreate: () => void }) {
-  const nodes = ["Script", "Boards", "Compare", "Couch", "Palette", "Export"];
-  return (
-    <div className="glass-card rounded-2xl p-5">
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2 text-xs font-mono uppercase tracking-widest text-muted-foreground">
-            <Compass size={13} className="text-primary" />
-            Feature map
-          </div>
-          <h2 className="font-display font-semibold mt-1">Onboarding Sandbox</h2>
-        </div>
-      </div>
-      <div className="relative mb-4 grid grid-cols-3 gap-2">
-        {nodes.map((node, index) => (
-          <div key={node} className="rounded-xl border border-card-border bg-white/45 p-3 text-center text-xs font-medium dark:bg-white/5">
-            <div className="mx-auto mb-2 h-2.5 w-2.5 rounded-full bg-primary" style={{ opacity: 0.5 + index * 0.07 }} />
-            {node}
-          </div>
-        ))}
-      </div>
-      <p className="mb-4 text-sm text-muted-foreground">
-        Generate a throwaway project with sample script, panels, scenes, and bible data so every tool has something safe to chew on.
-      </p>
-      <Button className="w-full" onClick={onCreate} disabled={creating} data-testid="button-create-sandbox">
-        {creating ? "Building sandbox..." : "Create Sandbox Project"}
-      </Button>
-    </div>
-  );
-}
-
-function PrincipleMotionDemo({ index }: { index: number }) {
-  const accent = index % 3 === 0 ? "#9DD0FF" : index % 3 === 1 ? "#E8C44F" : "#4FE89A";
-  const scale = index % 4 === 0 ? ["scale-75", "scale-110", "scale-90", "scale-100"] : ["scale-100", "scale-95", "scale-105", "scale-100"];
-
-  return (
-    <div
-      className="mt-4 grid h-20 grid-cols-4 items-end gap-2 rounded-xl border border-card-border bg-white/40 p-3 dark:bg-white/5"
-      data-testid="principle-motion-demo"
-      aria-label="Principle motion example"
-    >
-      {[0, 1, 2, 3].map((frame) => (
-        <div key={frame} className="flex h-full items-end justify-center rounded-lg bg-background/60">
-          <div
-            className={`h-7 w-7 rounded-full transition-transform ${scale[frame]} ${frame === index % 4 ? "animate-bounce" : ""}`}
-            style={{
-              backgroundColor: accent,
-              boxShadow: "0 0 0 1px rgba(255,255,255,0.7), 0 8px 18px rgba(0,0,0,0.14)",
-              animationDuration: "1.2s",
-              animationDelay: `${frame * 90}ms`,
-            }}
-          />
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function ProjectCard({ p }: { p: Project }) {
-  const d = formatDeadline(p.deadline);
-  const toneClass =
-    d.tone === "red" ? "text-destructive" :
-    d.tone === "amber" ? "text-amber-600 dark:text-amber-400" :
-    d.tone === "green" ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground";
-
-  return (
-    <Link href={`/projects/${p.id}`}>
-      <div
-        className="glass-card group rounded-2xl p-5 cursor-pointer"
-        data-testid={`card-project-${p.id}`}
-      >
-        <div className="flex items-start justify-between mb-4">
-          <div
-            className="h-10 w-10 rounded-xl flex items-center justify-center ring-1 ring-white/60"
-            style={{ backgroundColor: p.coverColor + "20", color: p.coverColor }}
-          >
-            <Clapperboard size={18} />
-          </div>
-          {d.text !== "No deadline" && (
-            <span className={`text-[11px] font-mono flex items-center gap-1 ${toneClass}`}>
-              <Calendar size={11} />{d.text}
-            </span>
-          )}
-        </div>
-        <h3
-          className="font-display text-base font-semibold mb-1.5 line-clamp-1 tracking-tight"
-          data-testid={`text-project-title-${p.id}`}
-        >
-          {p.title}
-        </h3>
-        <p className="text-xs text-muted-foreground line-clamp-2 mb-4 min-h-[2.2em] leading-relaxed">
-          {p.description || "No description yet."}
-        </p>
-        <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <span
-            className="capitalize glass-status"
-            style={{ backgroundColor: `${p.coverColor}15`, borderColor: `${p.coverColor}35`, color: p.coverColor }}
-          >
-            {p.status}
-          </span>
-          <ArrowRight size={13} className="group-hover:translate-x-0.5 transition-transform opacity-50 group-hover:opacity-100" />
-        </div>
-      </div>
-    </Link>
-  );
+function timeAgo(dateString: string): string {
+  const now = new Date();
+  const date = new Date(dateString);
+  const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+  if (seconds < 60) return "just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
 }
 
 function EmptyState({ onNew }: { onNew: () => void }) {
   return (
-    <div className="glass rounded-2xl py-20 px-6 flex flex-col items-center text-center">
-      {/* Branded illustration - empty filmstrip */}
+    <div className="border border-[#282822] bg-[#151511] py-20 px-6 flex flex-col items-center text-center rounded-[4px]">
       <div className="mb-6">
-        <svg width="160" height="160" viewBox="0 0 160 160" className="opacity-70">
-          <defs>
-            <linearGradient id="emptyProjectGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#9DD0FF" />
-              <stop offset="50%" stopColor="#C4B5FD" />
-              <stop offset="100%" stopColor="#FFD9A8" />
-            </linearGradient>
-          </defs>
-          {/* Filmstrip frame */}
-          <rect x="20" y="30" width="120" height="100" rx="6" fill="none" stroke="url(#emptyProjectGradient)" strokeWidth="1.5" opacity="0.5" />
-          {/* Sprocket holes */}
-          <rect x="28" y="42" width="8" height="8" rx="2" fill="#9DD0FF" opacity="0.6" />
-          <rect x="124" y="42" width="8" height="8" rx="2" fill="#9DD0FF" opacity="0.6" />
-          <rect x="28" y="76" width="8" height="8" rx="2" fill="#C4B5FD" opacity="0.6" />
-          <rect x="124" y="76" width="8" height="8" rx="2" fill="#C4B5FD" opacity="0.6" />
-          <rect x="28" y="110" width="8" height="8" rx="2" fill="#FFD9A8" opacity="0.6" />
-          <rect x="124" y="110" width="8" height="8" rx="2" fill="#FFD9A8" opacity="0.6" />
-          {/* Plus sign in center */}
-          <line x1="80" y1="60" x2="80" y2="100" stroke="url(#emptyProjectGradient)" strokeWidth="3" strokeLinecap="round" />
-          <line x1="60" y1="80" x2="100" y2="80" stroke="url(#emptyProjectGradient)" strokeWidth="3" strokeLinecap="round" />
+        <svg width="120" height="120" viewBox="0 0 160 160" className="opacity-70">
+          <rect x="20" y="30" width="120" height="100" rx="4" fill="none" stroke="#3E63DD" strokeWidth="1.5" opacity="0.5" />
+          <rect x="28" y="42" width="8" height="8" rx="1" fill="#3E63DD" opacity="0.6" />
+          <rect x="124" y="42" width="8" height="8" rx="1" fill="#3E63DD" opacity="0.6" />
+          <rect x="28" y="76" width="8" height="8" rx="1" fill="#3E63DD" opacity="0.6" />
+          <rect x="124" y="76" width="8" height="8" rx="1" fill="#3E63DD" opacity="0.6" />
+          <rect x="28" y="110" width="8" height="8" rx="1" fill="#3E63DD" opacity="0.6" />
+          <rect x="124" y="110" width="8" height="8" rx="1" fill="#3E63DD" opacity="0.6" />
+          <line x1="80" y1="60" x2="80" y2="100" stroke="#3E63DD" strokeWidth="3" strokeLinecap="square" />
+          <line x1="60" y1="80" x2="100" y2="80" stroke="#3E63DD" strokeWidth="3" strokeLinecap="square" />
         </svg>
       </div>
-      <h3 className="font-display font-semibold mb-2 tracking-tight text-lg">No projects yet</h3>
-      <p className="text-sm text-muted-foreground mb-6 max-w-sm leading-relaxed">
-        Start by creating your first project. You'll get scripts, storyboards, animatics, and a scene tracker — all in one place.
+      <h3 className="font-mono text-sm uppercase tracking-wider text-[#e8ebf5] mb-2">No projects in production</h3>
+      <p className="text-xs text-[#8b8b84] mb-6 max-w-sm font-mono leading-relaxed">
+        Start by creating your first animation project. You will get scenes, scripts, storyboards, and activity feeds.
       </p>
-      <MetalGlassButton variant="primary" size="pill" preset="silver" onClick={onNew} data-testid="button-empty-new-project">
-        <Plus size={15} className="mr-0.5" /> Create your first project
-      </MetalGlassButton>
+      <Button 
+        variant="default" 
+        onClick={onNew} 
+        data-testid="button-empty-new-project"
+        className="rounded-[4px] bg-[#3E63DD] hover:bg-[#3555c2] text-white text-xs font-mono h-9 px-4"
+      >
+        <Plus size={14} className="mr-1" /> Create first project
+      </Button>
     </div>
   );
 }

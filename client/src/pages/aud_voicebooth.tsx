@@ -287,7 +287,7 @@ export default function VoiceBooth() {
                   voiceTakes.slice().reverse().map((take) => (
                     <div key={take.id} className="rounded-lg border border-white/10 bg-black/30 p-2">
                       <div className="mb-1 text-[11px] text-white/50">
-                        Take #{take.id} - {take.createdAt ? new Date(take.createdAt).toLocaleString() : "Saved"}
+                        Take #<span className="font-mono">{take.id}</span> - {take.createdAt ? new Date(take.createdAt).toLocaleString() : "Saved"}
                       </div>
                       <audio src={take.audioData} controls className="w-full" />
                     </div>

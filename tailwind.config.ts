@@ -83,9 +83,9 @@ export default {
         },
       },
       fontFamily: {
-        sans: ["var(--font-sans)"],
+        sans: ['Geist', 'Inter', 'system-ui'],
         serif: ["var(--font-serif)"],
-        mono: ["var(--font-mono)"],
+        mono: ['Geist Mono', 'JetBrains Mono', 'monospace'],
       },
       keyframes: {
         "accordion-down": {

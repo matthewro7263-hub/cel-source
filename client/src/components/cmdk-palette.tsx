@@ -161,7 +161,7 @@ export function CmdkPalette({ open, onOpenChange }: CmdkPaletteProps) {
                     onSelect={() => navigate(`/projects/${s.project_id ?? s.projectId}`)}
                   >
                     <Film size={14} className="mr-2 text-white/60" />
-                    <span>Scene {s.number} — {s.title}</span>
+                    <span>Scene <span className="font-mono">{s.number}</span> — {s.title}</span>
                   </CommandItem>
                 ))}
               </CommandGroup>
