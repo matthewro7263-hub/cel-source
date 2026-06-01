@@ -1,0 +1,31 @@
+:root {
+  --cel-bg: #0d0d0f;
+  --cel-panel: #111113;
+
+  --cel-surface-1: #161618;
+  --cel-surface-2: #1c1c1f;
+  --cel-surface-3: #232328;
+  --cel-surface-4: #2a2a30;
+
+  --cel-ink: #f2f2f4;
+  --cel-ink-muted: #c8c8d0;
+  --cel-ink-subtle: #86868f;
+  --cel-ink-ghost: #5a5a62;
+
+  --cel-accent: #6366f1;
+  --cel-accent-hover: #818cf8;
+  --cel-accent-dim: rgba(99,102,241,0.12);
+
+  --cel-state-todo: #6b7280;
+  --cel-state-progress: #f59e0b;
+  --cel-state-review: #60a5fa;
+  --cel-state-done: #34d399;
+  --cel-state-blocked: #f87171;
+
+  --cel-transition-panel: cubic-bezier(0.4, 0, 0.2, 1);
+  --cel-transition-toast: cubic-bezier(0.34, 1.3, 0.64, 1);
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
