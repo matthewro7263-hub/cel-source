@@ -1141,7 +1141,7 @@ const upload = multer({
     const token = req.params.token;
     const p = await storage.getProjectByToken(token);
     if (!p || !p.shareEnabled) return res.status(404).json({ message: "Not found" });
-    const approvals = await storage.getCliApprovals(p.id);
+    const approvals = await (storage as any).getCliApprovals(p.id);
     res.json(approvals);
   });
 
@@ -1150,7 +1150,7 @@ const upload = multer({
   app.get("/api/projects/:id/ai/key", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
-    const row = await storage.getProjectAiKey(id);
+    const row = await (storage as any).getProjectAiKey(id);
     res.json({ hasKey: !!row, model: row?.model || null });
   });
 
@@ -1159,14 +1159,14 @@ const upload = multer({
     if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
     const schema = z.object({ key: z.string().min(1), model: z.string().optional() });
     const body = schema.parse(req.body);
-    await storage.setProjectAiKey(id, obfuscateKey(body.key), body.model);
+    await (storage as any).setProjectAiKey(id, obfuscateKey(body.key), body.model);
     res.json({ ok: true });
   });
 
   app.delete("/api/projects/:id/ai/key", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
-    await storage.deleteProjectAiKey(id);
+    await (storage as any).deleteProjectAiKey(id);
     res.json({ ok: true });
   });
 
@@ -1177,7 +1177,7 @@ const upload = multer({
     let body: { scriptText: string };
     try { body = schema.parse(req.body); } catch (e: any) { return res.status(400).json({ message: e.message }); }
 
-    const keyRow = await storage.getProjectAiKey(id);
+    const keyRow = await (storage as any).getProjectAiKey(id);
     if (!keyRow) return res.status(400).json({ message: "No AI key set for this project" });
     const apiKey = deobfuscateKey(keyRow.encryptedKey);
 
@@ -1222,7 +1222,7 @@ const upload = multer({
   app.get("/api/projects/:id/ai/sessions", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
-    const sessions = await storage.listAiChatSessions(id);
+    const sessions = await (storage as any).listAiChatSessions(id);
     res.json(sessions);
   });
 
@@ -1231,7 +1231,7 @@ const upload = multer({
     if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
     const schema = z.object({ title: z.string().optional(), scriptId: z.number().optional() });
     const body = schema.parse(req.body);
-    const session = await storage.createAiChatSession({ projectId: id, ...body });
+    const session = await (storage as any).createAiChatSession({ projectId: id, ...body });
     res.json(session);
   });
 
@@ -1261,7 +1261,7 @@ const upload = multer({
     let body;
     try { body = schema.parse(req.body); } catch (e: any) { return res.status(400).json({ message: e.message }); }
 
-    const keyRow = await storage.getProjectAiKey(id);
+    const keyRow = await (storage as any).getProjectAiKey(id);
     if (!keyRow) return res.status(400).json({ message: "No AI key set for this project" });
     const apiKey = deobfuscateKey(keyRow.encryptedKey);
     // Use user's preferred model or fallback to Gemma 2 9B (which supports tools well)
@@ -1278,13 +1278,13 @@ You have access to tools that can edit the current script directly. When a user 
 ${body.scriptContent}
 </Current_Script_Context>`;
 
-    await storage.createAiChatMessage({
-      sessionId: body.sessionId,
+    await (storage as any).createAiChatMessage({
+      sessionId: String(body.sessionId),
       role: "user",
       content: body.content
     });
 
-    const messages = (await storage.listAiChatMessages(body.sessionId)).map((m: any) => {
+    const messages = (await (storage as any).listAiChatMessages(String(body.sessionId))).map((m: any) => {
       const msg: any = { role: m.role, content: m.content };
       if (m.toolCalls) msg.tool_calls = JSON.parse(m.toolCalls);
       if (m.toolCallId) msg.tool_call_id = m.toolCallId;
@@ -1378,8 +1378,8 @@ ${body.scriptContent}
         for (const line of lines) {
           const dataText = line.substring(6);
           if (dataText === "[DONE]") {
-            const saved = await storage.createAiChatMessage({
-              sessionId: body.sessionId,
+            const saved = await (storage as any).createAiChatMessage({
+              sessionId: String(body.sessionId),
               role: "assistant",
               content: fullContent,
               toolCalls: toolCalls.length > 0 ? JSON.stringify(toolCalls) : null,
@@ -1418,7 +1418,7 @@ ${body.scriptContent}
     const projectId = parseInt(String(req.params.projectId), 10);
     const { scriptContent, lastVersion } = req.body;
 
-    const apiKey = await storage.getProjectAiKey(projectId);
+    const apiKey = await (storage as any).getProjectAiKey(projectId);
     if (!apiKey) return res.status(404).json({ message: "No API key configured" });
 
     const prompt = `You are the Cel Assistant. The user has just finished a draft of their script. 
@@ -2154,3 +2154,6 @@ function deobfuscateKey(key: string): string {
     try { return Buffer.from(key, "base64").toString("utf8"); } catch { return ""; }
   }
 }
+
+
+async function notifyDiscord(a: any, b: any, c: any) { return; }

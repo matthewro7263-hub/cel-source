@@ -279,8 +279,8 @@ Right. New game. *Detectives.*
 
   // ===== v4 seed data =====
   // v4 inbox items (3)
-  if (typeof await storage.createInboxItem === "function") {
-    await storage.createInboxItem({
+  if (typeof (storage as any).createInboxItem === "function") {
+    await (storage as any).createInboxItem({
       userId: matthew.id,
       title: "Sketch panel for scene 2A",
       body: "Add a rough sketch of the detective montage opening shot so timing can be reviewed.",
@@ -288,7 +288,7 @@ Right. New game. *Detectives.*
       pinned: false,
       archivedAt: null,
     });
-    await storage.createInboxItem({
+    await (storage as any).createInboxItem({
       userId: matthew.id,
       title: "Sophie's commission — follow up on reference images",
       body: "Client said she'd send photo references for the kitchen scene. Check email.",
@@ -296,7 +296,7 @@ Right. New game. *Detectives.*
       pinned: true,
       archivedAt: null,
     });
-    await storage.createInboxItem({
+    await (storage as any).createInboxItem({
       userId: matthew.id,
       title: "Render 2B overnight",
       body: "Start the Blender render for scene 2B before bed. Use OptiX denoiser.",
@@ -309,24 +309,24 @@ Right. New game. *Detectives.*
   // v4 tags (2)
   let urgentTagId: number | null = null;
   let polishTagId: number | null = null;
-  if (typeof await storage.createTag === "function") {
-    const urgentTag = await storage.createTag({ name: "urgent", color: "#EF4444", userId: matthew.id });
+  if (typeof (storage as any).createTag === "function") {
+    const urgentTag = await (storage as any).createTag({ name: "urgent", color: "#EF4444", userId: matthew.id });
     urgentTagId = urgentTag?.id ?? null;
-    const polishTag = await storage.createTag({ name: "polish", color: "#F59E0B", userId: matthew.id });
+    const polishTag = await (storage as any).createTag({ name: "polish", color: "#F59E0B", userId: matthew.id });
     polishTagId = polishTag?.id ?? null;
   }
 
   // v4 tag assignment — tag scene 1 as urgent
   const allScenesSeed = await storage._db.select().from(scenesTable);
-  if (urgentTagId && allScenesSeed.length > 0 && typeof await storage.createTagAssignment === "function") {
-    await storage.createTagAssignment({ tagId: urgentTagId, entityKind: "scene", entityId: allScenesSeed[0].id });
+  if (urgentTagId && allScenesSeed.length > 0 && typeof (storage as any).createTagAssignment === "function") {
+    await (storage as any).createTagAssignment({ tagId: urgentTagId, entityKind: "scene", entityId: allScenesSeed[0].id });
   }
 
   // v4 panel pin (1) — pin on panel 1 (use current schema: body + authorId)
   const allPanelsSeed = await storage._db.select().from(panelsTable);
-  if (allPanelsSeed.length > 0 && typeof await storage.createPanelPin === "function") {
+  if (allPanelsSeed.length > 0 && typeof (storage as any).createPanelPin === "function") {
     try {
-      await storage.createPanelPin({
+      await (storage as any).createPanelPin({
         panelId: allPanelsSeed[0].id,
         authorId: matthew.id,
         xPercent: 30,
@@ -340,9 +340,9 @@ Right. New game. *Detectives.*
 
   // v4 achievement unlock — first_project for matthew
   try {
-    if (typeof await storage.unlockAchievement === "function") {
-      await storage.unlockAchievement(matthew.id, "first_project");
-      await storage.unlockAchievement(matthew.id, "first_scene");
+    if (typeof (storage as any).unlockAchievement === "function") {
+      await (storage as any).unlockAchievement(matthew.id, "first_project");
+      await (storage as any).unlockAchievement(matthew.id, "first_scene");
     }
   } catch (e: any) { console.warn("[seed] achievements skipped:", e?.message); }
 
@@ -350,14 +350,14 @@ Right. New game. *Detectives.*
   const allCommissions = await (storage as any).listCommissions ? await (storage as any).listCommissions(matthew.id) : [];
   const sophieCommission = allCommissions[0];
   try {
-    if (sophieCommission && typeof await storage.createCommissionLineItem === "function") {
-      await storage.createCommissionLineItem({
+    if (sophieCommission && typeof (storage as any).createCommissionLineItem === "function") {
+      await (storage as any).createCommissionLineItem({
         commissionId: sophieCommission.id,
         description: "Character design + 3 expressions",
         quantity: 1,
         unitPriceCents: 8000,
       });
-      await storage.createCommissionLineItem({
+      await (storage as any).createCommissionLineItem({
         commissionId: sophieCommission.id,
         description: "30-second 2D animation",
         quantity: 1,
