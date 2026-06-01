@@ -158,7 +158,7 @@ export function destroySession(sid: string) {
   // Stateless token destruction is handled by client-side token clearing
 }
 
-export const storage = {
+export const storage: any = {
   // ===== USERS =====
   async getUser(id: number) { return await db.select().from(users).where(eq(users.id, id)).then(r => r[0]); },
   async getUserByEmail(email: string) { return await db.select().from(users).where(eq(users.email, email)).then(r => r[0]); },
@@ -319,7 +319,7 @@ export const storage = {
         { kind: "music", name: "Music", orderIdx: 3 },
       ];
       for (const t of defaultTracks) {
-        await db.insert(animaticTracks).values({ animaticProjectId: ap.id, kind: t.kind, name: t.name, orderIdx: t.orderIdx, muted: false, volume: "1.0" });
+        await db.insert(animaticTracks).values({ animaticProjectId: ap.id, kind: t.kind, name: t.name, orderIdx: t.orderIdx, muted: false, volume: 1000 });
       }
       return ap;
     },
