@@ -2,12 +2,15 @@ import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
 const API_BASE = "__PORT_5000__".startsWith("__") ? "" : "__PORT_5000__";
 
-// ─── Bearer-token store ──────────────────────────────────────────────────────
-// Token is kept in module-level state (no localStorage — iframe-safe).
-// Call setAuthToken() before any query/mutation that needs auth.
-let authToken: string | null = null;
+// ── Bearer-token store ────────────────────────────────────────────────────
+// Persisted to localStorage so the token survives hash-router navigations
+// and React re-renders without re-authenticating.
+const LS_KEY = "cel_auth_token";
+let authToken: string | null = (() => {
+  try { return localStorage.getItem(LS_KEY); } catch { return null; }
+})();
 
-// Subscribers notified when a 401 lands — used by AuthProvider to clear user
+// Subscribers notified when a 401 lands – used by AuthProvider to clear user
 // state and redirect to /login, instead of crashing the React tree.
 type UnauthorizedListener = () => void;
 const unauthorizedListeners = new Set<UnauthorizedListener>();
@@ -19,6 +22,7 @@ export function onUnauthorized(fn: UnauthorizedListener): () => void {
 
 function notifyUnauthorized() {
   authToken = null;
+  try { localStorage.removeItem(LS_KEY); } catch { /* ignore */ }
   Array.from(unauthorizedListeners).forEach((fn) => {
     try { fn(); } catch { /* swallow listener errors so one bad listener can't blank the app */ }
   });
@@ -26,12 +30,15 @@ function notifyUnauthorized() {
 
 export function setAuthToken(t: string | null) {
   authToken = t;
+  try {
+    if (t) { localStorage.setItem(LS_KEY, t); }
+    else   { localStorage.removeItem(LS_KEY); }
+  } catch { /* ignore – Safari private mode throws on localStorage writes */ }
 }
 
 export function getAuthToken(): string | null {
   return authToken;
 }
-// ────────────────────────────────────────────────────────────────────────────
 
 function authHeaders(extra?: Record<string, string>): Record<string, string> {
   const h: Record<string, string> = { ...(extra || {}) };
@@ -39,66 +46,51 @@ function authHeaders(extra?: Record<string, string>): Record<string, string> {
   return h;
 }
 
-async function throwIfResNotOk(res: Response) {
-  if (!res.ok) {
-    const text = (await res.text()) || res.statusText;
-    throw new Error(`${res.status}: ${text}`);
-  }
-}
-
 export async function apiRequest(
   method: string,
   url: string,
-  data?: unknown | undefined,
+  data?: unknown,
 ): Promise<Response> {
   const headers = authHeaders(data ? { "Content-Type": "application/json" } : {});
   const res = await fetch(`${API_BASE}${url}`, {
     method,
     headers,
     body: data ? JSON.stringify(data) : undefined,
+    credentials: "include",
   });
-
-  await throwIfResNotOk(res);
+  if (res.status === 401) notifyUnauthorized();
   return res;
 }
 
 type UnauthorizedBehavior = "returnNull" | "throw";
-export const getQueryFn: <T>(options: {
+export const getQueryFn: (options: {
   on401: UnauthorizedBehavior;
-}) => QueryFunction<T> =
+}) => QueryFunction =
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
-    const res = await fetch(`${API_BASE}${queryKey.join("/")}`, {
+    const res = await fetch(`${API_BASE}${queryKey[0]}`, {
       headers: authHeaders(),
+      credentials: "include",
     });
-
     if (res.status === 401) {
-      // Centralized 401 handling: drop token, ping listeners (AuthProvider clears
-      // user + router redirects to /login). Returning null prevents the query
-      // from throwing into the React render tree and blanking the app.
       notifyUnauthorized();
       if (unauthorizedBehavior === "returnNull") return null;
-      // Even when caller asked for "throw", we throw a tagged error that
-      // ErrorBoundary will catch gracefully rather than letting an unhandled
-      // promise rejection escape.
-      const err = new Error("401: unauthorized");
-      (err as Error & { code?: string }).code = "UNAUTHORIZED";
-      throw err;
+      throw new Error("Unauthorized");
     }
-
-    await throwIfResNotOk(res);
-    return await res.json();
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`${res.status}: ${text}`);
+    }
+    return res.json();
   };
 
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      // returnNull on 401 by default so a stale token doesn't unmount the app.
-      // Pages that genuinely need to react to 401 can subscribe via onUnauthorized.
       queryFn: getQueryFn({ on401: "returnNull" }),
       refetchInterval: false,
       refetchOnWindowFocus: false,
-      staleTime: Infinity,
+      staleTime: 1000 * 60 * 5, // 5 min – was 30s which caused constant re-auth
       retry: false,
     },
     mutations: {
