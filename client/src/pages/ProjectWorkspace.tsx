@@ -59,6 +59,12 @@ import { SceneTimerButton, SceneTimeBreakdown } from "@/components/scene-timer";
 import { Pencil, MapPin, Sparkles, Tag, KeyRound, BookOpen, ClipboardCheck, Send, SunMedium } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ProjectFrame, ProjectQuickActions, type ProjectSection } from "@/components/layout/project-frame";
+import {
+  Tooltip as ShadcnTooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface ProjectDetail {
   project: Project;
@@ -751,9 +757,26 @@ function StoryboardView({ board, projectId, onDelete }: { board: Storyboard & { 
           {/* v4: sketch button */}
           <V4SketchButton storyboardId={board.id} projectId={projectId} />
           <BulkImportDialog storyboardId={board.id} projectId={projectId} onSuccess={() => {}} />
-          <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()} disabled={uploading} data-testid="button-upload-panels">
-            <Upload size={14} className="mr-1.5" />{uploading ? "Uploading…" : "Upload panels"}
-          </Button>
+          <TooltipProvider>
+            <ShadcnTooltip>
+              <TooltipTrigger asChild>
+                <span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={true}
+                    className="opacity-50 cursor-not-allowed"
+                    data-testid="button-upload-panels"
+                  >
+                    <Upload size={14} className="mr-1.5" />Upload panels
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Bulk PNG import coming soon</p>
+              </TooltipContent>
+            </ShadcnTooltip>
+          </TooltipProvider>
           <Button size="sm" variant="ghost" onClick={onDelete} className="text-destructive" data-testid="button-delete-storyboard">
             <Trash2 size={14} />
           </Button>
