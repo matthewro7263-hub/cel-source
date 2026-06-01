@@ -163,7 +163,7 @@ export function registerMcpRoutes(app: Express) {
       }
 
       const assets = await storage.listAssets(projectId, type);
-      const safe = assets.map(({ fileData, ...rest }) => rest);
+      const safe = assets.map(({ fileData, ...rest }: any) => rest);
       res.json({ assets: safe });
     } catch (e: any) {
       mcpError(res, e.message, "INVALID_REQUEST");

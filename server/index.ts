@@ -10,6 +10,9 @@ import { registerApprovalRoutes } from "./approval_routes";
 import { registerArchiveRoutes } from "./archive_routes";
 import { registerSpriteSheetRoutes } from "./spritesheet_routes";
 import { createServer } from "node:http";
+import { neon } from "@neondatabase/serverless";
+import { drizzle as drizzleHttp } from "drizzle-orm/neon-http";
+import { migrate } from "drizzle-orm/neon-http/migrator";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -109,7 +112,24 @@ app.use((req, res, next) => {
   next();
 });
 
+async function runMigrations() {
+  if (!process.env.DATABASE_URL) {
+    log("DATABASE_URL is not set; skipping database migrations", "migrations");
+    return;
+  }
+
+  try {
+    const sql = neon(process.env.DATABASE_URL);
+    const migrationDb = drizzleHttp(sql);
+    await migrate(migrationDb, { migrationsFolder: "migrations" });
+    log("database migrations completed", "migrations");
+  } catch (err) {
+    console.error("Database migration failed; continuing startup:", err);
+  }
+}
+
 (async () => {
+  await runMigrations();
   await seedIfEmpty();
   await registerRoutes(httpServer, app);
   registerLorRoutes(app);
