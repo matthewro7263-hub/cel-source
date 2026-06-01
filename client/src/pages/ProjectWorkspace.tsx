@@ -155,9 +155,25 @@ function OverviewTab({
   const done = scenes?.filter((s) => s.status === "done").length || 0;
   const pct = total === 0 ? 0 : Math.round((done / total) * 100);
 
+  const deadlineValue = d.tone === "overdue-amber" ? (
+    <span className="inline-block px-2.5 py-0.5 rounded text-xs font-semibold text-amber-500 bg-amber-500/10 border border-amber-500/20">
+      {d.text}
+    </span>
+  ) : d.tone === "overdue-orange" ? (
+    <span className="text-orange-500 font-bold text-lg">
+      {d.text}
+    </span>
+  ) : d.tone === "red" ? (
+    <span className="text-destructive font-bold text-lg">
+      {d.text}
+    </span>
+  ) : (
+    d.text
+  );
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-      <Stat title="Deadline" value={d.text} sub={project.deadline ?? "Not set"} />
+      <Stat title="Deadline" value={deadlineValue} sub={project.deadline ?? "Not set"} />
       <Stat title="Progress" value={`${pct}%`} sub={`${done} of ${total} scenes done`} />
       <Stat title="Team" value={String(members.length)} sub="collaborators" />
 
@@ -256,7 +272,7 @@ function OverviewLinkCard({ title, description, onClick }: { title: string; desc
   );
 }
 
-function Stat({ title, value, sub }: { title: string; value: string; sub: string }) {
+function Stat({ title, value, sub }: { title: string; value: React.ReactNode; sub: string }) {
   return (
     <div className="rounded-xl border border-card-border bg-card p-5">
       <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">{title}</div>
@@ -1353,7 +1369,25 @@ function ScenesTable({ scenes, projectId }: { scenes: Scene[]; projectId: number
                         </SelectContent>
                       </Select>
                     </td>
-                    <td className={`px-4 py-2.5 text-xs ${tone}`}>{d.text}</td>
+                    <td className="px-4 py-2.5 text-xs">
+                      {d.tone === "overdue-amber" ? (
+                        <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold text-amber-500 bg-amber-500/10 border border-amber-500/20 whitespace-nowrap">
+                          {d.text}
+                        </span>
+                      ) : d.tone === "overdue-orange" ? (
+                        <span className="font-semibold text-orange-500 whitespace-nowrap">
+                          {d.text}
+                        </span>
+                      ) : d.tone === "red" ? (
+                        <span className="text-destructive font-semibold whitespace-nowrap">
+                          {d.text}
+                        </span>
+                      ) : (
+                        <span className={`${tone} whitespace-nowrap`}>
+                          {d.text}
+                        </span>
+                      )}
+                    </td>
                     <td className="px-4 py-2.5">
                       {/* v4: scene timer */}
                       <SceneTimerButton sceneId={s.id} />

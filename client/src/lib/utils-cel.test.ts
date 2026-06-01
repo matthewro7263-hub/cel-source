@@ -72,8 +72,10 @@ assert.deepEqual(formatDeadline(null), { text: "No deadline", tone: "muted" });
 assert.deepEqual(formatDeadline(""), { text: "No deadline", tone: "muted" });
 
 // Overdue (< 0 days)
-assert.deepEqual(formatDeadline(getOffsetDateString(-5)), { text: "5d overdue", tone: "red" });
-assert.deepEqual(formatDeadline(getOffsetDateString(-1)), { text: "1d overdue", tone: "red" });
+assert.deepEqual(formatDeadline(getOffsetDateString(-5)), { text: "5d overdue", tone: "overdue-amber", daysOverdue: 5 });
+assert.deepEqual(formatDeadline(getOffsetDateString(-1)), { text: "1d overdue", tone: "overdue-amber", daysOverdue: 1 });
+assert.deepEqual(formatDeadline(getOffsetDateString(-8)), { text: "8d overdue", tone: "overdue-orange", daysOverdue: 8 });
+assert.deepEqual(formatDeadline(getOffsetDateString(-14)), { text: "14d overdue", tone: "red", daysOverdue: 14 });
 
 // Due today (0 days)
 assert.deepEqual(formatDeadline(getOffsetDateString(0)), { text: "Due today", tone: "red" });
