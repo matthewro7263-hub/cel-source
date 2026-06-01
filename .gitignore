@@ -14,3 +14,18 @@ data.db-journal
 
 *.log
 .DS_Store
+
+# AI tooling artifacts
+commit_body.txt
+commit_message.txt
+patch.diff
+patch2.diff
+pr_description.md
+pr_description.txt
+.Jules/
+
+# Package manager lockfile exclusion (uses pnpm)
+package-lock.json
+
+# Merge/diff backup files
+*.orig

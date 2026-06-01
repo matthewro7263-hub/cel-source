@@ -12,16 +12,29 @@ function required(name: string): string {
   return v;
 }
 
-export const R2_BUCKET = required("R2_BUCKET");
+let _r2: S3Client | null = null;
+let _bucket: string | null = null;
 
-export const r2 = new S3Client({
-  region: "auto",
-  endpoint: required("R2_ENDPOINT"),
-  credentials: {
-    accessKeyId: required("R2_ACCESS_KEY_ID"),
-    secretAccessKey: required("R2_SECRET_ACCESS_KEY"),
-  },
-});
+export function getR2Bucket(): string {
+  if (!_bucket) {
+    _bucket = required("R2_BUCKET");
+  }
+  return _bucket;
+}
+
+export function getR2Client(): S3Client {
+  if (!_r2) {
+    _r2 = new S3Client({
+      region: "auto",
+      endpoint: required("R2_ENDPOINT"),
+      credentials: {
+        accessKeyId: required("R2_ACCESS_KEY_ID"),
+        secretAccessKey: required("R2_SECRET_ACCESS_KEY"),
+      },
+    });
+  }
+  return _r2;
+}
 
 export interface PresignUploadOpts {
   userId: string;
@@ -49,11 +62,11 @@ export async function presignUpload(opts: PresignUploadOpts): Promise<PresignedU
   const folder = opts.prefix ? `${opts.prefix}/` : "";
   const key = `uploads/${opts.userId}/${folder}${randomUUID()}-${safeName(opts.filename)}`;
   const cmd = new PutObjectCommand({
-    Bucket: R2_BUCKET,
+    Bucket: getR2Bucket(),
     Key: key,
     ContentType: opts.contentType,
   });
-  const url = await getSignedUrl(r2, cmd, { expiresIn });
+  const url = await getSignedUrl(getR2Client(), cmd, { expiresIn });
   return {
     key,
     url,
@@ -64,20 +77,20 @@ export async function presignUpload(opts: PresignUploadOpts): Promise<PresignedU
 }
 
 export async function presignDownload(key: string, expiresIn = 300): Promise<string> {
-  return getSignedUrl(r2, new GetObjectCommand({ Bucket: R2_BUCKET, Key: key }), { expiresIn });
+  return getSignedUrl(getR2Client(), new GetObjectCommand({ Bucket: getR2Bucket(), Key: key }), { expiresIn });
 }
 
 export async function deleteObject(key: string): Promise<void> {
-  await r2.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: key }));
+  await getR2Client().send(new DeleteObjectCommand({ Bucket: getR2Bucket(), Key: key }));
 }
 
 export async function headObject(key: string) {
-  return r2.send(new HeadObjectCommand({ Bucket: R2_BUCKET, Key: key }));
+  return getR2Client().send(new HeadObjectCommand({ Bucket: getR2Bucket(), Key: key }));
 }
 
 export async function listUserObjects(userId: string, prefix?: string) {
   const Prefix = `uploads/${userId}/${prefix ? prefix + "/" : ""}`;
-  return r2.send(new ListObjectsV2Command({ Bucket: R2_BUCKET, Prefix }));
+  return getR2Client().send(new ListObjectsV2Command({ Bucket: getR2Bucket(), Prefix }));
 }
 
 export function isOwnedKey(userId: string, key: string): boolean {

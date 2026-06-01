@@ -139,8 +139,8 @@ export default function Share() {
                     {sb.panels.map((p, i) => (
                       <div key={p.id} className="rounded-lg border border-border overflow-hidden">
                         <div className="aspect-video bg-muted relative">
-                          <img
-                            src={p.imageData}
+                           <img
+                            src={p.imageData || undefined}
                             alt={p.caption || p.dialogue || `${sb.title} panel ${i + 1}`}
                             className="w-full h-full object-cover"
                           />
@@ -151,8 +151,8 @@ export default function Share() {
                           {i > 0 && (
                             <div className="absolute top-2 right-2 z-10">
                               <CliVersionCompareModal 
-                                currentUrl={p.imageData} 
-                                previousUrl={sb.panels[i-1].imageData} 
+                                currentUrl={p.imageData || ""} 
+                                previousUrl={sb.panels[i-1].imageData || ""} 
                                 isVideo={false} 
                               />
                             </div>

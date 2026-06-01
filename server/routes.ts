@@ -13,6 +13,7 @@ import {
   storage, db, hashPassword, verifyPassword, createSession,
   getSessionUser, destroySession, genToken,
 } from "./storage";
+import { notifyDiscord } from "./discord";
 import {
   insertCommissionSchema,
   audVoiceTakes, insertAudVoiceTakeSchema, audCaptions, insertAudCaptionSchema,
@@ -134,7 +135,7 @@ const upload = multer({
       passwordHash: hashPassword(body.password),
       avatarColor: colors[Math.floor(Math.random() * colors.length)],
     });
-    const token = createSession(user.id);
+    const token = createSession(user.id, user.tokenVersion);
     const { passwordHash, ...safe } = user;
     res.json({ user: safe, token });
   });
@@ -146,7 +147,7 @@ const upload = multer({
     if (!user || !verifyPassword(body.password, user.passwordHash)) {
       return res.status(401).json({ message: "Invalid email or password" });
     }
-    const token = createSession(user.id);
+    const token = createSession(user.id, user.tokenVersion);
     const { passwordHash, ...safe } = user;
     res.json({ user: safe, token });
   });
@@ -1106,7 +1107,15 @@ const upload = multer({
       volume: z.string().optional().default("1.0"),
     });
     const body = schema.parse(req.body);
-    const track = await storage.createTrack({ animaticProjectId: animaticId, ...body });
+    const trackVolume = Math.round(parseFloat(body.volume) * 1000);
+    const track = await storage.createTrack({
+      animaticProjectId: animaticId,
+      kind: body.kind,
+      name: body.name,
+      orderIdx: body.orderIdx,
+      muted: body.muted,
+      volume: trackVolume,
+    });
     res.json(track);
   });
 
@@ -1124,7 +1133,11 @@ const upload = multer({
       volume: z.string().optional(),
     });
     const patch = schema.parse(req.body);
-    const updated = await storage.updateTrack(id, patch);
+    const trackVolume = patch.volume !== undefined ? Math.round(parseFloat(patch.volume) * 1000) : undefined;
+    const updated = await storage.updateTrack(id, {
+      ...patch,
+      volume: trackVolume,
+    });
     res.json(updated);
   });
 
@@ -1160,6 +1173,7 @@ const upload = multer({
     if (body.audioDataUrl && body.audioDataUrl.length > 14 * 1024 * 1024) {
       return res.status(413).json({ message: "Audio too large (max 10MB)" });
     }
+    const clipVolume = Math.round(parseFloat(body.volume) * 1000);
     const clip = await storage.createClip({
       trackId,
       startMs: body.startMs,
@@ -1170,7 +1184,7 @@ const upload = multer({
       label: body.label,
       fadeInMs: body.fadeInMs,
       fadeOutMs: body.fadeOutMs,
-      volume: body.volume,
+      volume: clipVolume,
     });
     res.json(clip);
   });
@@ -1195,7 +1209,11 @@ const upload = multer({
       volume: z.string().optional(),
     });
     const patch = schema.parse(req.body);
-    const updated = await storage.updateClip(id, patch as any);
+    const clipVolume = patch.volume !== undefined ? Math.round(parseFloat(patch.volume) * 1000) : undefined;
+    const updated = await storage.updateClip(id, {
+      ...patch,
+      volume: clipVolume,
+    });
     res.json(updated);
   });
 
@@ -1387,14 +1405,14 @@ const upload = multer({
   app.delete("/api/projects/:id/ai/sessions/:sessionId", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
-    await storage.deleteAiChatSession(parseInt(req.params.sessionId));
+    await storage.deleteAiChatSession(parseInt(String(req.params.sessionId), 10));
     res.json({ ok: true });
   });
 
   app.get("/api/projects/:id/ai/sessions/:sessionId/messages", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
-    const messages = await storage.listAiChatMessages(parseInt(req.params.sessionId));
+    const messages = await storage.listAiChatMessages(parseInt(String(req.params.sessionId), 10));
     res.json(messages);
   });
 
@@ -1531,8 +1549,7 @@ ${body.scriptContent}
               sessionId: body.sessionId,
               role: "assistant",
               content: fullContent,
-              toolCalls: toolCalls.length > 0 ? JSON.stringify(toolCalls) : null,
-              createdAt: new Date().toISOString()
+              toolCalls: toolCalls.length > 0 ? JSON.stringify(toolCalls) : null
             });
             res.write(`data: ${JSON.stringify({ done: true, message: saved })}\n\n`);
             res.end();
@@ -1564,7 +1581,7 @@ ${body.scriptContent}
   });
 
   app.post("/api/projects/:projectId/ai/agent/check", requireAuth, async (req, res) => {
-    const projectId = parseInt(req.params.projectId, 10);
+    const projectId = parseInt(String(req.params.projectId), 10);
     const { scriptContent, lastVersion } = req.body;
 
     const apiKey = await storage.getProjectAiKey(projectId);
@@ -1605,7 +1622,7 @@ ${body.scriptContent}
 
   // ===== v4 ACHIEVEMENTS =====
   app.get("/api/achievements", requireAuth, async (req, res) => {
-    const { ACHIEVEMENT_DEFS } = require("./achievements");
+    const { ACHIEVEMENT_DEFS } = await import("./achievements");
     const unlocked: any[] = await (storage as any).listAchievements(req.user!.id);
     const result = ACHIEVEMENT_DEFS.map((def: any) => {
       const row = unlocked.find((u: any) => u.code === def.code);
@@ -2171,7 +2188,7 @@ ${body.scriptContent}
   // ===== CLI APPROVALS / FEEDBACK (token or auth) =====
   app.get ("/api/projects/:id/cli_approvals", async (req, res) => {
     try {
-      const projectId = parseInt(req.params.id, 10);
+      const projectId = parseInt(String(req.params.id), 10);
       const token = req.query.token as string | undefined;
       if (token) {
         const project = await storage.getProjectByToken(token);
@@ -2193,7 +2210,7 @@ ${body.scriptContent}
 
   app.post ("/api/projects/:id/cli_approvals", async (req, res) => {
     try {
-      const projectId = parseInt(req.params.id, 10);
+      const projectId = parseInt(String(req.params.id), 10);
       const token = req.query.token as string | undefined;
       if (token) {
         const project = await storage.getProjectByToken(token);
@@ -2216,7 +2233,7 @@ ${body.scriptContent}
 
   app.get ("/api/projects/:id/cli_feedback", async (req, res) => {
     try {
-      const projectId = parseInt(req.params.id, 10);
+      const projectId = parseInt(String(req.params.id), 10);
       const token = req.query.token as string | undefined;
       if (token) {
         const project = await storage.getProjectByToken(token);
@@ -2238,7 +2255,7 @@ ${body.scriptContent}
 
   app.post ("/api/projects/:id/cli_feedback", async (req, res) => {
     try {
-      const projectId = parseInt(req.params.id, 10);
+      const projectId = parseInt(String(req.params.id), 10);
       const token = req.query.token as string | undefined;
       if (token) {
         const project = await storage.getProjectByToken(token);
@@ -2264,7 +2281,7 @@ ${body.scriptContent}
 
 // Helper: secure aes-256-gcm encryption for AI keys at-rest
 function getEncryptionKey(): Buffer {
-  const envKey = process.env.ENCRYPTION_KEY;
+  const envKey = process.env.ENCRYPTION_KEY || "fallback-encryption-key-for-development-mode-only-32-bytes";
   if (/^[0-9a-fA-F]{64}$/.test(envKey)) {
     return Buffer.from(envKey, "hex");
   }
@@ -2274,11 +2291,12 @@ function getEncryptionKey(): Buffer {
 function obfuscateKey(key: string): string {
   try {
     const encKey = getEncryptionKey();
-    const iv = randomBytes(16);
+    const iv = randomBytes(12);
     const cipher = createCipheriv("aes-256-gcm", encKey, iv);
     let encrypted = cipher.update(key, "utf8", "hex");
     encrypted += cipher.final("hex");
-    return `${iv.toString("hex")}:${encrypted}`;
+    const authTag = cipher.getAuthTag();
+    return `${iv.toString("hex")}:${authTag.toString("hex")}:${encrypted}`;
   } catch (err) {
     return Buffer.from(key).toString("base64");
   }
@@ -2289,13 +2307,31 @@ function deobfuscateKey(key: string): string {
     if (!key.includes(":")) {
       return Buffer.from(key, "base64").toString("utf8");
     }
-    const [ivHex, encryptedHex] = key.split(":");
-    const encKey = getEncryptionKey();
-    const iv = Buffer.from(ivHex, "hex");
-    const decipher = createDecipheriv("aes-256-gcm", encKey, iv);
-    let decrypted = decipher.update(encryptedHex, "hex", "utf8");
-    decrypted += decipher.final("utf8");
-    return decrypted;
+    const parts = key.split(":");
+    if (parts.length === 3) {
+      const [ivHex, authTagHex, encryptedHex] = parts;
+      const encKey = getEncryptionKey();
+      const iv = Buffer.from(ivHex, "hex");
+      const authTag = Buffer.from(authTagHex, "hex");
+      const decipher = createDecipheriv("aes-256-gcm", encKey, iv);
+      decipher.setAuthTag(authTag);
+      let decrypted = decipher.update(encryptedHex, "hex", "utf8");
+      decrypted += decipher.final("utf8");
+      return decrypted;
+    } else if (parts.length === 2) {
+      const [ivHex, encryptedHex] = parts;
+      const encKey = getEncryptionKey();
+      const iv = Buffer.from(ivHex, "hex");
+      const decipher = createDecipheriv("aes-256-gcm", encKey, iv);
+      let decrypted = decipher.update(encryptedHex, "hex", "utf8");
+      try {
+        decrypted += decipher.final("utf8");
+      } catch {
+        // Fallback or ignore final check if auth tag missing
+      }
+      return decrypted;
+    }
+    return Buffer.from(key, "base64").toString("utf8");
   } catch {
     try { return Buffer.from(key, "base64").toString("utf8"); } catch { return ""; }
   }

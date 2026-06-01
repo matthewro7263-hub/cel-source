@@ -1,6 +1,0 @@
-🧹 [code health improvement] add return type to getErrorDetails
-
-🎯 What: The issue described ("unused hasError variable and eslint-disable comment") was already resolved in the codebase, as the hasError variable and the comment no longer existed. As an additional code health improvement, added an explicit string return type to getErrorDetails.
-💡 Why: Explicit return types improve readability and type safety, preventing accidental regressions.
-✅ Verification: Ran `pnpm run check` and `pnpm run test`. Checked that no unused variables or eslint-disable comments for no-unused-vars exist.
-✨ Result: Code health improved and verified safe.

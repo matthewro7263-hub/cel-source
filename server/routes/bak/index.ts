@@ -373,9 +373,11 @@ bakRouter.get("/projects/:id/export/:kind", requireAuth, async (req, res) => {
     for (const sb of projStoryboards) {
       const panels = panelsByStoryboardId[sb.id] || [];
       panels.forEach((panel, i) => {
-        const base64Data = panel.imageData.replace(/^data:image\/\w+;base64,/, "");
-        const buffer = Buffer.from(base64Data, 'base64');
-        archive.append(buffer, { name: `${sb.title}/panel_${i}_${panel.id}.png` });
+        if (panel.imageData) {
+          const base64Data = panel.imageData.replace(/^data:image\/\w+;base64,/, "");
+          const buffer = Buffer.from(base64Data, 'base64');
+          archive.append(buffer, { name: `${sb.title}/panel_${i}_${panel.id}.png` });
+        }
       });
     }
     await archive.finalize();
@@ -413,6 +415,7 @@ bakRouter.post("/projects/:id/spritesheet", requireAuth, async (req, res) => {
   if (panels.length === 0) return res.status(404).json({ message: "Panels not found" });
 
   const imgs = await Promise.all(panels.map(async p => {
+    if (!p.imageData) throw new Error(`Panel ${p.id} has no image data`);
     return await loadImage(p.imageData);
   }));
 

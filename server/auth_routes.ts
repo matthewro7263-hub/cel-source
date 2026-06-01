@@ -13,6 +13,7 @@
 // mounting this router.
 
 import { Router, type Request, type Response, type NextFunction } from "express";
+import "express-session";
 import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
 import { z } from "zod";
@@ -21,6 +22,7 @@ import { eq } from "drizzle-orm";
 // db is exported from await storage.ts — do NOT import from a non-existent ./db
 import { db, hashPassword, verifyPassword } from "./storage";
 import { users, type User } from "../shared/schema";
+import { checkAchievements } from "./achievements";
 
 export const authRouter = Router();
 
@@ -64,12 +66,22 @@ export function configurePassport() {
   });
 }
 
+import rateLimit from "express-rate-limit";
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20,
+  message: { error: "too_many_requests" },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 export function requireUser(req: Request, res: Response, next: NextFunction) {
-  if (!(req as any).user?.id) return res.status(401).json({ error: "unauthorized" });
+  if (!req.user?.id) return res.status(401).json({ error: "unauthorized" });
   next();
 }
 
-authRouter.post("/register", async (req, res) => {
+authRouter.post("/register", authLimiter, async (req, res) => {
   const parsed = RegisterSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "invalid_input", details: parsed.error.flatten() });
   const { email, password, displayName } = parsed.data;
@@ -82,8 +94,9 @@ authRouter.post("/register", async (req, res) => {
     const inserted = await db.insert(users).values({ email: normEmail, passwordHash, name }).returning();
     const u = inserted[0] as User;
     // Auto-login after register:
-    (req as any).login(u, (err: any) => {
+    req.login(u, async (err: any) => {
       if (err) return res.status(500).json({ error: "login_failed" });
+      await checkAchievements({ userId: u.id, event: "login" }).catch(e => console.error(e));
       res.status(201).json({ id: u.id, email: u.email, name: u.name });
     });
   } catch (err: any) {
@@ -91,28 +104,29 @@ authRouter.post("/register", async (req, res) => {
   }
 });
 
-authRouter.post("/login", (req, res, next) => {
+authRouter.post("/login", authLimiter, (req, res, next) => {
   const parsed = LoginSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "invalid_input" });
   passport.authenticate("local", (err: any, user: any, info: any) => {
     if (err) return next(err);
     if (!user) return res.status(401).json({ error: info?.message ?? "invalid_credentials" });
-    (req as any).login(user, (e: any) => {
+    req.login(user, async (e: any) => {
       if (e) return next(e);
+      await checkAchievements({ userId: user.id, event: "login" }).catch(err => console.error(err));
       res.json({ id: user.id, email: user.email, name: user.name });
     });
   })(req, res, next);
 });
 
 authRouter.post("/logout", (req, res, next) => {
-  (req as any).logout?.((err: any) => {
+  req.logout((err: any) => {
     if (err) return next(err);
-    (req as any).session?.destroy?.(() => res.json({ ok: true }));
+    req.session?.destroy(() => res.json({ ok: true }));
   });
 });
 
 authRouter.get("/me", (req, res) => {
-  const u = (req as any).user;
+  const u = req.user;
   if (!u) return res.status(401).json({ error: "unauthorized" });
   res.json(u);
 });

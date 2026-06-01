@@ -1,7 +1,7 @@
 import { Pool, neonConfig } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-serverless";
 import ws from "ws";
-import { eq, and, or, inArray, asc, desc, like } from "drizzle-orm";
+import { eq, and, or, inArray, asc, desc, like, sql, isNull } from "drizzle-orm";
 import { randomBytes, scryptSync, timingSafeEqual, createHmac } from "node:crypto";
 
 import * as mainSchema from "@shared/schema";
@@ -24,7 +24,7 @@ const {
   animatics, scenes, comments, assets, commissions, renders,
   animaticProjects, animaticTracks, animaticClips,
   projectAiKeys, aiChatSessions, aiChatMessages, achievements, panelPins,
-  commissionLineItems, inboxItems, tags, tagAssignments,
+  commissionLineItems, inboxItems, tags, tagAssignments, userActivityLog,
   sceneTimeEntries, commissionPricingPresets,
   audVoiceTakes, audCaptions,
   dltCommissionHours,
@@ -158,7 +158,7 @@ export function destroySession(sid: string) {
   // Stateless token destruction is handled by client-side token clearing
 }
 
-export const storage = {
+const coreStorage = {
   // ===== USERS =====
   async getUser(id: number) { return await db.select().from(users).where(eq(users.id, id)).then(r => r[0]); },
   async getUserByEmail(email: string) { return await db.select().from(users).where(eq(users.email, email)).then(r => r[0]); },
@@ -319,7 +319,7 @@ export const storage = {
         { kind: "music", name: "Music", orderIdx: 3 },
       ];
       for (const t of defaultTracks) {
-        await db.insert(animaticTracks).values({ animaticProjectId: ap.id, kind: t.kind, name: t.name, orderIdx: t.orderIdx, muted: false, volume: "1.0" });
+        await db.insert(animaticTracks).values({ animaticProjectId: ap.id, kind: t.kind, name: t.name, orderIdx: t.orderIdx, muted: false, volume: 1000 });
       }
       return ap;
     },
@@ -393,7 +393,43 @@ try {  } catch {}
 // ============================================================
 
 // Extend the storage object with v4 methods
-Object.assign(storage, {
+const extraStorage = {
+  // Helper to resolve all project IDs for a user (owned + member of)
+  async getProjectIdsForUser(userId: number): Promise<number[]> {
+    const memberRows = await db
+      .select({ projectId: projectMembers.projectId })
+      .from(projectMembers)
+      .where(eq(projectMembers.userId, userId));
+    const ids = memberRows.map((r) => r.projectId);
+    const owned = await db
+      .select({ id: projects.id })
+      .from(projects)
+      .where(eq(projects.ownerId, userId));
+    const allIds = new Set([...ids, ...owned.map(p => p.id)]);
+    return Array.from(allIds);
+  },
+  async countAllScenesForUser(userId: number): Promise<number> {
+    const ids = await this.getProjectIdsForUser(userId);
+    if (ids.length === 0) return 0;
+    const res = await db.select({ count: sql<number>`count(*)::int` }).from(scenes).where(and(inArray(scenes.projectId, ids), isNull(scenes.deletedAt)));
+    return res[0]?.count ?? 0;
+  },
+  async countAllPanelsForUser(userId: number): Promise<number> {
+    const ids = await this.getProjectIdsForUser(userId);
+    if (ids.length === 0) return 0;
+    const sbs = await db.select({ id: storyboards.id }).from(storyboards).where(inArray(storyboards.projectId, ids));
+    const sbIds = sbs.map(r => r.id);
+    if (sbIds.length === 0) return 0;
+    const res = await db.select({ count: sql<number>`count(*)::int` }).from(storyboardPanels).where(and(inArray(storyboardPanels.storyboardId, sbIds), isNull(storyboardPanels.deletedAt)));
+    return res[0]?.count ?? 0;
+  },
+  async countAllCommentsForUser(userId: number): Promise<number> {
+    const ids = await this.getProjectIdsForUser(userId);
+    if (ids.length === 0) return 0;
+    const res = await db.select({ count: sql<number>`count(*)::int` }).from(comments).where(inArray(comments.projectId, ids));
+    return res[0]?.count ?? 0;
+  },
+
   // v4 AI Keys
   async getProjectAiKey(projectId: number) { return await db.select().from(projectAiKeys).where(eq(projectAiKeys.projectId, projectId)).then(r => r[0]); },
   async setProjectAiKey(projectId: number, encryptedKey: string, model: string | null = null) {
@@ -420,6 +456,16 @@ Object.assign(storage, {
   async listAchievements(userId: number) { return await db.select().from(achievements).where(eq(achievements.userId, userId)); },
   async hasAchievement(userId: number, code: string) { return !!await db.select().from(achievements).where(and(eq(achievements.userId, userId), eq(achievements.code, code))).then(r => r[0]); },
   async unlockAchievement(userId: number, code: string) { return await db.insert(achievements).values({ userId, code, unlockedAt: new Date() }).returning().then(r => r[0] as any); },
+  async logUserActivity(userId: number, date: string) {
+    const existing = await db.select().from(userActivityLog).where(and(eq(userActivityLog.userId, userId), eq(userActivityLog.date, date))).then(r => r[0]);
+    if (!existing) {
+      await db.insert(userActivityLog).values({ userId, date });
+    }
+  },
+  async getUserActivityDates(userId: number): Promise<string[]> {
+    const rows = await db.select({ date: userActivityLog.date }).from(userActivityLog).where(eq(userActivityLog.userId, userId)).orderBy(asc(userActivityLog.date));
+    return rows.map(r => r.date);
+  },
 
   // v4 Panel Pins
   async listPanelPins(panelId: number) { return await db.select().from(panelPins).where(eq(panelPins.panelId, panelId)); },
@@ -682,6 +728,11 @@ Object.assign(storage, {
       }
     },
   // === LORE ADDITIONS END ===
-});
+};
+
+export const storage = {
+  ...coreStorage,
+  ...extraStorage,
+};
 
 export type Storage = typeof storage;

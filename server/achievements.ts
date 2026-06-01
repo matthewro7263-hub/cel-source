@@ -52,6 +52,24 @@ interface AchievementContext {
   projectId?: number;
 }
 
+function checkConsecutiveDays(dates: string[], count = 7): boolean {
+  if (dates.length < count) return false;
+  let currentStreak = 1;
+  for (let i = 1; i < dates.length; i++) {
+    const prev = new Date(dates[i - 1]);
+    const curr = new Date(dates[i]);
+    const diffTime = Math.abs(curr.getTime() - prev.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    if (diffDays === 1) {
+      currentStreak++;
+      if (currentStreak >= count) return true;
+    } else if (diffDays > 1) {
+      currentStreak = 1;
+    }
+  }
+  return currentStreak >= count;
+}
+
 export async function checkAchievements(ctx: AchievementContext): Promise<string[]> {
   const { userId, event } = ctx;
   const unlocked: string[] = [];
@@ -63,10 +81,12 @@ export async function checkAchievements(ctx: AchievementContext): Promise<string
     }
   }
 
-  // Time-based achievements
-  const hour = new Date().getHours();
-  if (hour >= 0 && hour < 5) await tryUnlock("night_owl");
-  if (hour >= 5 && hour < 7) await tryUnlock("early_bird");
+  // Time-based achievements (only gate on login event)
+  if (event === "login") {
+    const hour = new Date().getHours();
+    if (hour >= 0 && hour < 5) await tryUnlock("night_owl");
+    if (hour >= 5 && hour < 7) await tryUnlock("early_bird");
+  }
 
   switch (event) {
     case "create_project": {
@@ -75,24 +95,13 @@ export async function checkAchievements(ctx: AchievementContext): Promise<string
       break;
     }
     case "create_scene": {
-      const userProjects = await storage.listProjectsForUser(userId);
-      let totalScenes = 0;
-      for (const p of userProjects) {
-        totalScenes += (await storage.listScenes(p.id)).length;
-      }
+      const totalScenes = await (storage as any).countAllScenesForUser(userId);
       if (totalScenes >= 1) await tryUnlock("first_scene");
       break;
     }
     case "create_panel": {
       await tryUnlock("first_storyboard");
-      const userProjects = await storage.listProjectsForUser(userId);
-      let totalPanels = 0;
-      for (const p of userProjects) {
-        const sbs = await storage.listStoryboards(p.id);
-        for (const sb of sbs) {
-          totalPanels += (await storage.listPanels(sb.id)).length;
-        }
-      }
+      const totalPanels = await (storage as any).countAllPanelsForUser(userId);
       if (totalPanels >= 10) await tryUnlock("ten_panels");
       if (totalPanels >= 50) await tryUnlock("fifty_panels");
       if (totalPanels >= 100) await tryUnlock("hundred_panels");
@@ -119,20 +128,17 @@ export async function checkAchievements(ctx: AchievementContext): Promise<string
       break;
     }
     case "create_comment": {
-      const userProjects = await storage.listProjectsForUser(userId);
-      let totalComments = 0;
-      for (const p of userProjects) {
-        totalComments += (await storage.listComments(p.id)).length;
-      }
+      const totalComments = await (storage as any).countAllCommentsForUser(userId);
       if (totalComments >= 20) await tryUnlock("polished");
       break;
     }
     case "login": {
-      const dates = await (storage as any).getAchievementUnlockDates?.(userId) ?? [];
-      const activityDays: Set<string> = new Set(
-        dates.map((d: string) => new Date(d).toDateString())
-      );
-      if (activityDays.size >= 7) await tryUnlock("week_streak");
+      const todayStr = new Date().toISOString().split("T")[0];
+      await (storage as any).logUserActivity(userId, todayStr);
+      const activityDates = await (storage as any).getUserActivityDates(userId);
+      if (checkConsecutiveDays(activityDates, 7)) {
+        await tryUnlock("week_streak");
+      }
       break;
     }
   }

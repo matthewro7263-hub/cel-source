@@ -14,21 +14,21 @@ import type {
 } from "@shared/lor_schema";
 
 type LorStorage = typeof storage & {
-  listLorFacts(projectId: number): LorContinuityFact[];
-  createLorFact(fact: InsertLorContinuityFact): LorContinuityFact;
-  updateLorFact(id: number, patch: Partial<InsertLorContinuityFact>): LorContinuityFact | undefined;
-  deleteLorFact(id: number): unknown;
-  getLorFact(id: number): LorContinuityFact | undefined;
-  listLorPalettes(projectId: number): LorPalette[];
-  createLorPalette(palette: InsertLorPalette): LorPalette;
-  deleteLorPalette(id: number): unknown;
-  getLorPalette(id: number): LorPalette | undefined;
-  listLorAssetVersions(assetId: number): LorAssetVersion[];
-  createLorAssetVersion(version: InsertLorAssetVersion): LorAssetVersion;
-  updateLorAssetVersionsForAsset(assetId: number, patch: Partial<LorAssetVersion>): unknown;
-  updateLorAssetVersion(id: number, patch: Partial<LorAssetVersion>): LorAssetVersion | undefined;
-  listLorCasting(projectId: number): LorCastingMatrix[];
-  upsertLorCasting(projectId: number, sceneId: number, entityId: number, present: boolean): unknown;
+  listLorFacts(projectId: number): Promise<LorContinuityFact[]>;
+  createLorFact(fact: InsertLorContinuityFact): Promise<LorContinuityFact>;
+  updateLorFact(id: number, patch: Partial<InsertLorContinuityFact>): Promise<LorContinuityFact | undefined>;
+  deleteLorFact(id: number): Promise<unknown>;
+  getLorFact(id: number): Promise<LorContinuityFact | undefined>;
+  listLorPalettes(projectId: number): Promise<LorPalette[]>;
+  createLorPalette(palette: InsertLorPalette): Promise<LorPalette>;
+  deleteLorPalette(id: number): Promise<unknown>;
+  getLorPalette(id: number): Promise<LorPalette | undefined>;
+  listLorAssetVersions(assetId: number): Promise<LorAssetVersion[]>;
+  createLorAssetVersion(version: InsertLorAssetVersion): Promise<LorAssetVersion>;
+  updateLorAssetVersionsForAsset(assetId: number, patch: Partial<LorAssetVersion>): Promise<unknown>;
+  updateLorAssetVersion(id: number, patch: Partial<LorAssetVersion>): Promise<LorAssetVersion | undefined>;
+  listLorCasting(projectId: number): Promise<LorCastingMatrix[]>;
+  upsertLorCasting(projectId: number, sceneId: number, entityId: number, present: boolean): Promise<unknown>;
 };
 
 const lorStorage = storage as LorStorage;
@@ -71,14 +71,14 @@ export function registerLorRoutes(app: Express) {
   app.get("/api/projects/:id/lor_facts", requireAuth, async (req, res) => {
     const projectId = parseInt(String(req.params.id), 10);
     if (!canAccessProject(projectId, (req as any).user.id)) return res.status(403).json({ message: "No access" });
-    const facts = lorStorage.listLorFacts(projectId);
+    const facts = await lorStorage.listLorFacts(projectId);
     res.json(facts);
   });
 
   app.post("/api/projects/:id/lor_facts", requireAuth, async (req, res) => {
     const projectId = parseInt(String(req.params.id), 10);
     if (!canAccessProject(projectId, (req as any).user.id)) return res.status(403).json({ message: "No access" });
-    const fact = lorStorage.createLorFact({
+    const fact = await lorStorage.createLorFact({
       projectId,
       category: req.body.category || 'character',
       title: req.body.title,
@@ -90,21 +90,21 @@ export function registerLorRoutes(app: Express) {
 
   app.put("/api/lor_facts/:id", requireAuth, async (req, res) => {
     const factId = parseInt(String(req.params.id), 10);
-    const row = lorStorage.getLorFact(factId);
+    const row = await lorStorage.getLorFact(factId);
     if (!row) return res.status(404).json({ message: "Not found" });
     if (!canAccessProject(row.projectId, (req as any).user.id)) return res.status(403).json({ message: "No access" });
     let patch: any;
     try { patch = lorFactPutSchema.parse(req.body); } catch (e: any) { return res.status(400).json({ message: e.message }); }
-    const fact = lorStorage.updateLorFact(factId, patch);
+    const fact = await lorStorage.updateLorFact(factId, patch);
     res.json(fact);
   });
 
   app.delete("/api/lor_facts/:id", requireAuth, async (req, res) => {
     const factId = parseInt(String(req.params.id), 10);
-    const row = lorStorage.getLorFact(factId);
+    const row = await lorStorage.getLorFact(factId);
     if (!row) return res.status(404).json({ message: "Not found" });
     if (!canAccessProject(row.projectId, (req as any).user.id)) return res.status(403).json({ message: "No access" });
-    lorStorage.deleteLorFact(factId);
+    await lorStorage.deleteLorFact(factId);
     res.json({ success: true });
   });
 
@@ -113,7 +113,7 @@ export function registerLorRoutes(app: Express) {
     const projectId = parseInt(String(req.params.id), 10);
     if (!canAccessProject(projectId, (req as any).user.id)) return res.status(403).json({ message: "No access" });
     for (const item of LOR_EPISODE_BIBLE_SEED) {
-      lorStorage.createLorFact({
+      await lorStorage.createLorFact({
         projectId,
         ...item as any,
       });
@@ -125,14 +125,14 @@ export function registerLorRoutes(app: Express) {
   app.get("/api/projects/:id/lor_palettes", requireAuth, async (req, res) => {
     const projectId = parseInt(String(req.params.id), 10);
     if (!canAccessProject(projectId, (req as any).user.id)) return res.status(403).json({ message: "No access" });
-    const palettes = lorStorage.listLorPalettes(projectId);
+    const palettes = await lorStorage.listLorPalettes(projectId);
     res.json(palettes);
   });
 
   app.post("/api/projects/:id/lor_palettes", requireAuth, async (req, res) => {
     const projectId = parseInt(String(req.params.id), 10);
     if (!canAccessProject(projectId, (req as any).user.id)) return res.status(403).json({ message: "No access" });
-    const palette = lorStorage.createLorPalette({
+    const palette = await lorStorage.createLorPalette({
       projectId,
       name: req.body.name || 'Palette',
       colors: JSON.stringify(req.body.colors || []),
@@ -142,10 +142,10 @@ export function registerLorRoutes(app: Express) {
 
   app.delete("/api/lor_palettes/:id", requireAuth, async (req, res) => {
     const paletteId = parseInt(String(req.params.id), 10);
-    const row = lorStorage.getLorPalette(paletteId);
+    const row = await lorStorage.getLorPalette(paletteId);
     if (!row) return res.status(404).json({ message: "Not found" });
     if (!canAccessProject(row.projectId, (req as any).user.id)) return res.status(403).json({ message: "No access" });
-    lorStorage.deleteLorPalette(paletteId);
+    await lorStorage.deleteLorPalette(paletteId);
     res.json({ success: true });
   });
 
@@ -155,7 +155,7 @@ export function registerLorRoutes(app: Express) {
     const asset = await storage.getAsset(assetId);
     if (!asset) return res.status(404).json({ message: "Not found" });
     if (!canAccessProject(asset.projectId, (req as any).user.id)) return res.status(403).json({ message: "No access" });
-    const versions = lorStorage.listLorAssetVersions(assetId);
+    const versions = await lorStorage.listLorAssetVersions(assetId);
     res.json(versions);
   });
 
@@ -165,15 +165,15 @@ export function registerLorRoutes(app: Express) {
     if (!asset) return res.status(404).json({ message: "Not found" });
     if (!canAccessProject(asset.projectId, (req as any).user.id)) return res.status(403).json({ message: "No access" });
     // find max version
-    const existing = lorStorage.listLorAssetVersions(assetId);
+    const existing = await lorStorage.listLorAssetVersions(assetId);
     const nextVer = existing.length > 0 ? Math.max(...existing.map(v => v.versionNum)) + 1 : 1;
     
     // auto-approve the newest version by un-approving others
     if (existing.length > 0) {
-      lorStorage.updateLorAssetVersionsForAsset(assetId, { approved: false });
+      await lorStorage.updateLorAssetVersionsForAsset(assetId, { approved: false });
     }
 
-    const newVersion = lorStorage.createLorAssetVersion({
+    const newVersion = await lorStorage.createLorAssetVersion({
       assetId,
       versionNum: nextVer,
       fileData: req.body.fileData,
@@ -195,8 +195,8 @@ export function registerLorRoutes(app: Express) {
     if (!asset) return res.status(404).json({ message: "Not found" });
     if (!canAccessProject(asset.projectId, (req as any).user.id)) return res.status(403).json({ message: "No access" });
     
-    lorStorage.updateLorAssetVersionsForAsset(assetId, { approved: false });
-    const approvedVer = lorStorage.updateLorAssetVersion(versionId, { approved: true });
+    await lorStorage.updateLorAssetVersionsForAsset(assetId, { approved: false });
+    const approvedVer = await lorStorage.updateLorAssetVersion(versionId, { approved: true });
     
     // update base asset
     if (approvedVer) {
@@ -211,7 +211,7 @@ export function registerLorRoutes(app: Express) {
   app.get("/api/projects/:id/lor_casting", requireAuth, async (req, res) => {
     const projectId = parseInt(String(req.params.id), 10);
     if (!canAccessProject(projectId, (req as any).user.id)) return res.status(403).json({ message: "No access" });
-    const matrix = lorStorage.listLorCasting(projectId);
+    const matrix = await lorStorage.listLorCasting(projectId);
     res.json(matrix);
   });
 
@@ -220,7 +220,7 @@ export function registerLorRoutes(app: Express) {
     const projectId = parseInt(String(req.params.id), 10);
     if (!canAccessProject(projectId, (req as any).user.id)) return res.status(403).json({ message: "No access" });
     
-    lorStorage.upsertLorCasting(projectId, sceneId, entityId, present);
+    await lorStorage.upsertLorCasting(projectId, sceneId, entityId, present);
     
     res.json({ success: true });
   });
@@ -231,7 +231,7 @@ export function registerLorRoutes(app: Express) {
     if (!canAccessProject(projectId, (req as any).user.id)) return res.status(403).json({ message: "No access" });
     const { scriptContent } = req.body;
     if (typeof scriptContent !== 'string') return res.status(400).json({ message: "scriptContent must be a string" });
-    const facts = lorStorage.listLorFacts(projectId);
+    const facts = await lorStorage.listLorFacts(projectId);
     
     // Very basic NLP extraction of capitalized words not at start of sentences
     const words = scriptContent.match(/\b[A-Z][a-z]+\b/g) || [];

@@ -170,7 +170,7 @@ export default function CouchModePage() {
         {panel ? (
           <div className="absolute inset-0 flex items-center justify-center p-12">
             <img 
-              src={panel.imageData} 
+              src={panel.imageData || undefined} 
               alt={`${panel.storyboardTitle} panel ${panel.panelNumber}`} 
               className="max-w-full max-h-full object-contain shadow-2xl rounded-sm"
               draggable={false}

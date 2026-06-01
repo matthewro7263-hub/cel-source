@@ -257,54 +257,42 @@ Right. New game. *Detectives.*
     totalDurationMs: 8000,
   });
   // getAnimaticProject returns full assembly with tracks
-  const fullAnimatic = await storage.getAnimaticProject(sampleAnimatic.id)!;
-  const panelTrack = fullAnimatic.tracks.find((t) => t.kind === "panel");
-  if (panelTrack && allPanels.length >= 4) {
-    // Place 4 panel clips at 0, 2000, 4000, 6000ms
-    for (let i = 0; i < 4; i++) {
-      await storage.createClip({
-        trackId: panelTrack.id,
-        startMs: i * 2000,
-        durationMs: 2000,
-        sourceKind: "panel_ref",
-        sourceId: allPanels[i].id,
-        audioDataUrl: null,
-        label: allPanels[i].caption || `Panel ${i + 1}`,
-        fadeInMs: 0,
-        fadeOutMs: 0,
-        volume: "1.0",
-      });
+  const fullAnimatic = await storage.getAnimaticProject(sampleAnimatic.id);
+  if (fullAnimatic) {
+    const panelTrack = fullAnimatic.tracks.find((t) => t.kind === "panel");
+    if (panelTrack && allPanels.length >= 4) {
+      // Place 4 panel clips at 0, 2000, 4000, 6000ms
+      for (let i = 0; i < 4; i++) {
+        await storage.createClip({
+          trackId: panelTrack.id,
+          startMs: i * 2000,
+          durationMs: 2000,
+          sourceKind: "panel_ref",
+          sourceId: allPanels[i].id,
+          audioDataUrl: null,
+          label: allPanels[i].caption || `Panel ${i + 1}`,
+          fadeInMs: 0,
+          fadeOutMs: 0,
+          volume: 1000,
+        });
+      }
     }
   }
 
   // ===== v4 seed data =====
   // v4 inbox items (3)
-  if (typeof await storage.createInboxItem === "function") {
     await storage.createInboxItem({
       userId: matthew.id,
-      title: "Sketch panel for scene 2A",
-      body: "Add a rough sketch of the detective montage opening shot so timing can be reviewed.",
-      kind: "task",
-      pinned: false,
-      archivedAt: null,
+      body: "Sketch panel for scene 2A: Add a rough sketch of the detective montage opening shot so timing can be reviewed.",
     });
     await storage.createInboxItem({
       userId: matthew.id,
-      title: "Sophie's commission — follow up on reference images",
-      body: "Client said she'd send photo references for the kitchen scene. Check email.",
-      kind: "note",
-      pinned: true,
-      archivedAt: null,
+      body: "Sophie's commission — follow up on reference images: Client said she'd send photo references for the kitchen scene. Check email.",
     });
     await storage.createInboxItem({
       userId: matthew.id,
-      title: "Render 2B overnight",
-      body: "Start the Blender render for scene 2B before bed. Use OptiX denoiser.",
-      kind: "task",
-      pinned: false,
-      archivedAt: null,
+      body: "Render 2B overnight: Start the Blender render for scene 2B before bed. Use OptiX denoiser.",
     });
-  }
 
   // v4 tags (2)
   let urgentTagId: number | null = null;

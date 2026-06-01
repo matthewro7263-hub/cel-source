@@ -125,7 +125,7 @@ function useLiquidGL() {
 }
 // ────────────────────────────────────────────────────────────────────────────
 
-function ProtectedShell({ children }: { children: React.ReactNode }) {
+function Protected({ children, fullscreen = false }: { children: React.ReactNode; fullscreen?: boolean }) {
   const { user, isLoading } = useAuth();
   if (isLoading) {
     return (
@@ -135,20 +135,15 @@ function ProtectedShell({ children }: { children: React.ReactNode }) {
     );
   }
   if (!user) return <Redirect to="/login" />;
-  return <AppShell>{children}</AppShell>;
+  return fullscreen ? <>{children}</> : <AppShell>{children}</AppShell>;
+}
+
+function ProtectedShell({ children }: { children: React.ReactNode }) {
+  return <Protected>{children}</Protected>;
 }
 
 function ProtectedFullscreen({ children }: { children: React.ReactNode }) {
-  const { user, isLoading } = useAuth();
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center text-muted-foreground">
-        Loading…
-      </div>
-    );
-  }
-  if (!user) return <Redirect to="/login" />;
-  return <>{children}</>;
+  return <Protected fullscreen>{children}</Protected>;
 }
 
 function ReviewRoomRoute() {
@@ -286,11 +281,11 @@ function AppRouter() {
         </Route>
         {/* animatic editor */}
         <Route path="/projects/:projectId/animatic/:animaticId">
-          <AnimaticEditor />
+          <ProtectedFullscreen><AnimaticEditor /></ProtectedFullscreen>
         </Route>
         {/* video editor — timeline for storyboards + animatics */}
         <Route path="/projects/:id/video">
-          {() => <ProtectedShell><VideoEditor /></ProtectedShell>}
+          {(params) => <Redirect to={`/projects/${params.id}/video-editor`} />}
         </Route>
         <Route path="/projects/:id/video-editor">
           {() => <ProtectedShell><VideoEditor /></ProtectedShell>}
