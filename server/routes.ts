@@ -61,6 +61,7 @@ import { registerChallengeRoutes } from "./challenge_routes";
 import { registerReviewRoom } from "./review_room";
 import { registerMcpRoutes } from "./mcp_routes";
 import { registerBizRoutes } from "./biz_routes";
+import { uploadsRouter } from "./uploads_routes";
 
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
 
@@ -73,6 +74,7 @@ const upload = multer({
   registerMcpRoutes(app);
 
   app.use("/api", bakRouter);
+  app.use("/api/uploads", requireAuth, uploadsRouter);
 
   registerBizRoutes(app);
 
@@ -497,6 +499,39 @@ const upload = multer({
       dialogue: body.dialogue || "",
     });
     res.json(panel);
+  });
+  app.post ("/api/storyboards/:sbId/panels/bulk", requireAuth, async (req, res) => {
+    const sbId = parseInt(String(req.params.sbId), 10);
+    const sb = await storage.getStoryboard(sbId);
+    if (!sb) return res.status(404).json({ message: "Storyboard not found" });
+    if (!(await canAccessProject(sb.projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
+
+    const schema = z.object({
+      panels: z.array(z.object({
+        r2Key: z.string().optional(),
+        imageData: z.string().optional(),
+        caption: z.string().optional().default(""),
+        dialogue: z.string().optional().default(""),
+        sceneId: z.number().int().nullable().optional(),
+      })).min(1),
+    });
+
+    const body = schema.parse(req.body);
+    const existingPanels = await storage.listPanels(sbId);
+    const startIdx = existingPanels.length;
+
+    const panelsToCreate = body.panels.map((p, index) => ({
+      storyboardId: sbId,
+      orderIdx: startIdx + index,
+      r2Key: p.r2Key || null,
+      imageData: p.imageData || null,
+      caption: p.caption || "",
+      dialogue: p.dialogue || "",
+      sceneId: p.sceneId || null,
+    }));
+
+    const created = await storage.createPanelsBulk(panelsToCreate);
+    res.json(created);
   });
   app.patch ("/api/panels/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);

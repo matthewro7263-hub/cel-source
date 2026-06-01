@@ -241,6 +241,10 @@ export const storage = {
   // ===== PANELS =====
   async listPanels(storyboardId: number) { return await db.select().from(storyboardPanels).where(eq(storyboardPanels.storyboardId, storyboardId)).orderBy(asc(storyboardPanels.orderIdx)); },
   async createPanel(p: InsertPanel) { return await db.insert(storyboardPanels).values(p).returning().then(r => r[0] as any); },
+  async createPanelsBulk(panels: InsertPanel[]) {
+    if (panels.length === 0) return [];
+    return await db.insert(storyboardPanels).values(panels).returning();
+  },
   async updatePanel(id: number, patch: Partial<InsertPanel>) { return await db.update(storyboardPanels).set(patch).where(eq(storyboardPanels.id, id)).returning().then(r => r[0] as any); },
   async deletePanel(id: number) { return await db.delete(storyboardPanels).where(eq(storyboardPanels.id, id)); },
   async getPanel(id: number) { return await db.select().from(storyboardPanels).where(eq(storyboardPanels.id, id)).then(r => r[0]); },

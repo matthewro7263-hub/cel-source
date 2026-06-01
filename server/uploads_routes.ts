@@ -4,8 +4,16 @@
 // Requires the request to be authenticated (req.user with .id).
 
 import { Router, type Request, type Response, type NextFunction } from "express";
-import { presignUpload, presignDownload, deleteObject, listUserObjects, isOwnedKey } from "./r2";
+import { presignUpload, presignDownload, deleteObject, listUserObjects, isOwnedKey, R2_BUCKET } from "./r2";
 import type { User as AppUser } from "@shared/schema";
+import multer from "multer";
+import { randomUUID } from "node:crypto";
+import sharp from "sharp";
+
+const localUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 25 * 1024 * 1024 }, // 25MB for HEIC conversion
+});
 
 declare global {
   namespace Express {
@@ -79,6 +87,44 @@ uploadsRouter.get("/list", requireUser, async (req, res) => {
     res.json({ items });
   } catch (err: any) {
     res.status(500).json({ error: err?.message ?? "list_failed" });
+  }
+});
+
+uploadsRouter.post("/convert-heic", requireUser, localUpload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: "No file uploaded" });
+    }
+
+    // Convert HEIC buffer to WebP buffer using sharp
+    const webpBuffer = await sharp(req.file.buffer)
+      .webp({ quality: 80 })
+      .toBuffer();
+
+    // Import S3 client & PutObjectCommand
+    const { S3Client, PutObjectCommand } = await import("@aws-sdk/client-s3");
+    const s3 = new S3Client({
+      region: "auto",
+      endpoint: process.env.R2_ENDPOINT!,
+      credentials: {
+        accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+        secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+      },
+    });
+
+    // Save under user's directory in R2
+    const key = `uploads/${req.user!.id}/storyboards/${randomUUID()}-${Date.now()}.webp`;
+    await s3.send(new PutObjectCommand({
+      Bucket: R2_BUCKET,
+      Key: key,
+      ContentType: "image/webp",
+      Body: webpBuffer,
+    }));
+
+    res.json({ key });
+  } catch (err: any) {
+    console.error("HEIC conversion failed:", err);
+    res.status(500).json({ error: err?.message ?? "conversion_failed" });
   }
 });
 

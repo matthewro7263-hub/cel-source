@@ -43,6 +43,7 @@ import { StoryboardReviewer } from "@/components/storyboard-reviewer";
 import { AssetsTab } from "@/pages/AssetsTab";
 import { BakSettingsExports } from "@/components/bak-settings-panel";
 import { ScriptUploadDialog } from "@/components/script-upload-dialog";
+import { BulkImportDialog } from "@/components/bulk-panel-import-dialog";
 
 import { CliBrandSettings } from "@/components/cli-brand-settings";
 import ContinuityTab from "./lor/ContinuityTab";
@@ -733,6 +734,7 @@ function StoryboardView({ board, projectId, onDelete }: { board: Storyboard & { 
           <input ref={fileRef} type="file" multiple accept="image/*" className="hidden" onChange={(e) => handleFiles(e.target.files)} data-testid="input-upload-panel" />
           {/* v4: sketch button */}
           <V4SketchButton storyboardId={board.id} projectId={projectId} />
+          <BulkImportDialog storyboardId={board.id} projectId={projectId} onSuccess={() => {}} />
           <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()} disabled={uploading} data-testid="button-upload-panels">
             <Upload size={14} className="mr-1.5" />{uploading ? "Uploading…" : "Upload panels"}
           </Button>
