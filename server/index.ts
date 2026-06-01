@@ -14,43 +14,51 @@ import { createServer } from "node:http";
 const app = express();
 app.set("trust proxy", 1);
 
-// CORS: only allow known origins. In development allow localhost on any port.
-// Set ALLOWED_ORIGINS env var as a comma-separated list for production.
-const ALLOWED_ORIGINS: Set<string> = new Set(
-  (process.env.ALLOWED_ORIGINS ?? "")
-    .split(",")
-    .map((o) => o.trim())
-    .filter(Boolean)
-);
+const DEFAULT_ALLOWED_ORIGINS = [
+  "https://cel-source.onrender.com",
+  "http://localhost:5173",
+  "http://localhost:3000",
+];
 
-function isAllowedOrigin(origin: string | undefined): boolean {
-  if (!origin) return false;
-  if (ALLOWED_ORIGINS.has(origin)) return true;
-  // Allow any localhost origin in development
-  if (process.env.NODE_ENV !== "production") {
-    try {
-      const u = new URL(origin);
-      if (u.hostname === "localhost" || u.hostname === "127.0.0.1") return true;
-    } catch {
-      // ignore malformed
-    }
-  }
-  return false;
+function parseAllowedOrigins(value: string | undefined): Set<string> {
+  const origins = value
+    ?.split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+  return new Set(origins && origins.length > 0 ? origins : DEFAULT_ALLOWED_ORIGINS);
 }
+
+// CORS: allow credentials only for explicit origins.
+// Set CEL_ALLOWED_ORIGINS as a comma-separated list to override the defaults.
+const ALLOWED_ORIGINS = parseAllowedOrigins(process.env.CEL_ALLOWED_ORIGINS);
 
 app.use((req, res, next) => {
   const origin = req.headers.origin as string | undefined;
-  if (isAllowedOrigin(origin)) {
-    res.header("Access-Control-Allow-Origin", origin);
-    res.header("Vary", "Origin");
-    res.header("Access-Control-Allow-Credentials", "true");
-    res.header("Access-Control-Allow-Methods", "GET,POST,PATCH,PUT,DELETE,OPTIONS");
-    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+
+  if (!origin) {
+    if (req.method === "OPTIONS") {
+      return res.sendStatus(204);
+    }
+    return next();
   }
+
+  res.header("Vary", "Origin");
+
+  if (!ALLOWED_ORIGINS.has(origin)) {
+    return res.status(403).json({ message: "CORS origin forbidden" });
+  }
+
+  res.header("Access-Control-Allow-Origin", origin);
+  res.header("Access-Control-Allow-Credentials", "true");
+  res.header("Access-Control-Allow-Methods", "GET,POST,PATCH,PUT,DELETE,OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+
   if (req.method === "OPTIONS") {
     return res.sendStatus(204);
   }
-  next();
+
+  return next();
 });
 
 const httpServer = createServer(app);
