@@ -158,8 +158,25 @@ export default function CommissionsQueue() {
     >
       {!list || list.length === 0 ? (
         <DataSurface className="border-dashed py-16 text-center">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
-            <DollarSign size={20} />
+          {/* Branded illustration - empty queue */}
+          <div className="mx-auto mb-4">
+            <svg width="120" height="120" viewBox="0 0 120 120" className="opacity-70">
+              <defs>
+                <linearGradient id="emptyCommissionGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#FFD9A8" />
+                  <stop offset="50%" stopColor="#C4B5FD" />
+                  <stop offset="100%" stopColor="#9DD0FF" />
+                </linearGradient>
+              </defs>
+              {/* Queue cards */}
+              <rect x="15" y="20" width="90" height="25" rx="4" fill="none" stroke="url(#emptyCommissionGradient)" strokeWidth="1.5" opacity="0.4" />
+              <rect x="15" y="50" width="90" height="25" rx="4" fill="none" stroke="url(#emptyCommissionGradient)" strokeWidth="1.5" opacity="0.5" />
+              <rect x="15" y="80" width="90" height="25" rx="4" fill="none" stroke="url(#emptyCommissionGradient)" strokeWidth="1.5" opacity="0.6" />
+              {/* Plus sign */}
+              <circle cx="60" cy="62" r="12" fill="url(#emptyCommissionGradient)" opacity="0.2" />
+              <line x1="60" y1="56" x2="60" y2="68" stroke="url(#emptyCommissionGradient)" strokeWidth="2" strokeLinecap="round" />
+              <line x1="54" y1="62" x2="66" y2="62" stroke="url(#emptyCommissionGradient)" strokeWidth="2" strokeLinecap="round" />
+            </svg>
           </div>
           <h3 className="mb-1.5 font-display font-semibold">No commissions yet</h3>
           <p className="mb-4 text-sm text-muted-foreground">Share your intake link and commissions will appear here.</p>

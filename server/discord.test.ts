@@ -3,7 +3,7 @@ import { notifyDiscord } from "./discord";
 import { storage } from "./storage";
 
 async function runTests() {
-  const originalGetProject = await storage.getProject;
+  const originalGetProject = storage.getProject;
   const originalFetch = global.fetch;
   const originalConsoleError = console.error;
 

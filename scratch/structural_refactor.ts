@@ -1,4 +1,4 @@
-import { Project, SyntaxKind, ObjectLiteralExpression, PropertyAssignment, MethodDeclaration, ArrowFunction } from "ts-morph";
+import { Project, SyntaxKind, ObjectLiteralExpression, PropertyAssignment, MethodDeclaration, ArrowFunction, FunctionExpression } from "ts-morph";
 import * as fs from 'fs';
 
 const project = new Project();
@@ -17,8 +17,8 @@ sourceFile.getDescendantsOfKind(SyntaxKind.ObjectLiteralExpression).forEach(obj 
             const name = pa.getName();
             const init = pa.getInitializer();
             if (init && (init.getKind() === SyntaxKind.ArrowFunction || init.getKind() === SyntaxKind.FunctionExpression)) {
-                const func = init as any;
-                const params = func.getParameters().map((p: any) => p.getText()).join(", ");
+                const func = init as ArrowFunction | FunctionExpression;
+                const params = func.getParameters().map(p => p.getText()).join(", ");
                 const body = func.getBody();
                 const bodyText = body.getKind() === SyntaxKind.Block ? body.getText() : `{ return ${body.getText()}; }`;
                 const isAsync = propText.includes("async") || bodyText.includes("await");

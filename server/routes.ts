@@ -4,7 +4,7 @@ const pdfParse = (pdfParseModule as any).default || pdfParseModule;
 import mammoth from "mammoth";
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { randomUUID } from "node:crypto";
+import { randomUUID, createCipheriv, createDecipheriv, randomBytes, createHash } from "node:crypto";
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer } from "node:http";
 import type { Server } from "node:http";
@@ -61,6 +61,7 @@ import { registerChallengeRoutes } from "./challenge_routes";
 import { registerReviewRoom } from "./review_room";
 import { registerMcpRoutes } from "./mcp_routes";
 import { registerBizRoutes } from "./biz_routes";
+import { notifyDiscord } from "./discord";
 
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
 
@@ -83,8 +84,40 @@ const upload = multer({
 
   // No cookie-parser — we use Authorization: Bearer <token> only
 
+  // ===== RATE LIMITER =====
+  const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
+  function rateLimiter(options: { windowMs: number; max: number; message: string }) {
+    return (req: any, res: any, next: any) => {
+      const ip = req.ip || req.headers["x-forwarded-for"] || req.socket.remoteAddress || "unknown-ip";
+      const now = Date.now();
+      let bucket = rateLimitMap.get(ip);
+      if (!bucket || now > bucket.resetTime) {
+        bucket = { count: 1, resetTime: now + options.windowMs };
+        rateLimitMap.set(ip, bucket);
+        return next();
+      }
+      bucket.count++;
+      if (bucket.count > options.max) {
+        return res.status(429).json({ message: options.message });
+      }
+      next();
+    };
+  }
+
+  const signupLimiter = rateLimiter({
+    windowMs: 60 * 60 * 1000, // 1 hour
+    max: 10,
+    message: "Too many registrations from this IP, please try again in an hour."
+  });
+
+  const loginLimiter = rateLimiter({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 20,
+    message: "Too many login attempts, please try again in 15 minutes."
+  });
+
   // ===== AUTH =====
-  app.post("/api/auth/signup", async (req, res) => {
+  app.post("/api/auth/signup", signupLimiter, async (req, res) => {
     const schema = z.object({
       email: z.string().email(),
       name: z.string().min(1).max(80),
@@ -100,19 +133,19 @@ const upload = multer({
       passwordHash: hashPassword(body.password),
       avatarColor: colors[Math.floor(Math.random() * colors.length)],
     });
-    const token = createSession(user.id);
+    const token = createSession(user.id, user.tokenVersion);
     const { passwordHash, ...safe } = user;
     res.json({ user: safe, token });
   });
 
-  app.post("/api/auth/login", async (req, res) => {
+  app.post("/api/auth/login", loginLimiter, async (req, res) => {
     const schema = z.object({ email: z.string().email(), password: z.string() });
     const body = schema.parse(req.body);
     const user = await storage.getUserByEmail(body.email);
     if (!user || !verifyPassword(body.password, user.passwordHash)) {
       return res.status(401).json({ message: "Invalid email or password" });
     }
-    const token = createSession(user.id);
+    const token = createSession(user.id, user.tokenVersion);
     const { passwordHash, ...safe } = user;
     res.json({ user: safe, token });
   });
@@ -173,7 +206,7 @@ const upload = multer({
     const id = parseInt(String(req.params.id), 10);
     if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
     const p = await storage.getProject(id);
-    const members = (await storage.listMembers(id)).map((m) => ({
+    const members = (await storage.listMembers(id)).map((m: any) => ({
       ...m,
       user: m.user ? { id: m.user.id, name: m.user.name, email: m.user.email, avatarColor: m.user.avatarColor } : null,
     }));
@@ -422,7 +455,7 @@ const upload = multer({
     const id = parseInt(String(req.params.id), 10);
     if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
     const sbs = await storage.listStoryboards(id);
-    const out = await Promise.all(sbs.map(async (sb) => ({ ...sb, panels: await storage.listPanels(sb.id) })));
+    const out = await Promise.all(sbs.map(async (sb: any) => ({ ...sb, panels: await storage.listPanels(sb.id) })));
     res.json(out);
   });
   app.post("/api/projects/:id/storyboards", requireAuth, async (req, res) => {
@@ -584,7 +617,7 @@ const upload = multer({
     const id = parseInt(String(req.params.id), 10);
     if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
     const list = await storage.listComments(id);
-    const enriched = await Promise.all(list.map(async (c) => ({ ...c, author: await storage.getUser(c.authorId) || null })));
+    const enriched = await Promise.all(list.map(async (c: any) => ({ ...c, author: await storage.getUser(c.authorId) || null })));
     res.json(enriched.map((c) => ({
       ...c,
       author: c.author ? { id: c.author.id, name: c.author.name, avatarColor: c.author.avatarColor } : null,
@@ -618,7 +651,7 @@ const upload = multer({
     const category = req.query.category as string | undefined;
     // Exclude fileData from listing for performance; client fetches individual for download
     const list = await storage.listAssets(id, category);
-    const safe = list.map(({ fileData, ...rest }) => rest);
+    const safe = list.map(({ fileData, ...rest }: any) => rest);
     res.json(safe);
   });
 
@@ -737,7 +770,7 @@ const upload = multer({
   app.get ("/api/commissions", requireAuth, async (req, res) => {
     const list = await storage.listCommissions(req.user!.id);
     // Omit large reference images from list view
-    const safe = list.map(({ referenceImage, ...rest }) => ({ ...rest, hasReferenceImage: !!referenceImage }));
+    const safe = list.map(({ referenceImage, ...rest }: any) => ({ ...rest, hasReferenceImage: !!referenceImage }));
     res.json(safe);
   });
 
@@ -921,7 +954,7 @@ const upload = multer({
       name: z.string().optional().default("New Track"),
       orderIdx: z.number().int().optional().default(99),
       muted: z.boolean().optional().default(false),
-      volume: z.string().optional().default("1.0"),
+      volume: z.coerce.number().int().optional().default(1000),
     });
     const body = schema.parse(req.body);
     const track = await storage.createTrack({ animaticProjectId: animaticId, ...body });
@@ -939,7 +972,7 @@ const upload = multer({
       name: z.string().optional(),
       orderIdx: z.number().int().optional(),
       muted: z.boolean().optional(),
-      volume: z.string().optional(),
+      volume: z.coerce.number().int().optional(),
     });
     const patch = schema.parse(req.body);
     const updated = await storage.updateTrack(id, patch);
@@ -972,7 +1005,7 @@ const upload = multer({
       label: z.string().optional().default(""),
       fadeInMs: z.number().int().optional().default(0),
       fadeOutMs: z.number().int().optional().default(0),
-      volume: z.string().optional().default("1.0"),
+      volume: z.coerce.number().int().optional().default(1000),
     });
     const body = schema.parse(req.body);
     if (body.audioDataUrl && body.audioDataUrl.length > 14 * 1024 * 1024) {
@@ -1010,7 +1043,7 @@ const upload = multer({
       label: z.string().optional(),
       fadeInMs: z.number().int().optional(),
       fadeOutMs: z.number().int().optional(),
-      volume: z.string().optional(),
+      volume: z.coerce.number().int().optional(),
     });
     const patch = schema.parse(req.body);
     const updated = await storage.updateClip(id, patch as any);
@@ -1083,7 +1116,7 @@ const upload = multer({
     if (!p || !p.shareEnabled) return res.status(404).json({ message: "Share link not found or disabled" });
     const owner = await storage.getUser(p.ownerId);
     const scripts = await storage.listScripts(p.id);
-    const storyboards = await Promise.all((await storage.listStoryboards(p.id)).map(async (sb) => ({
+    const storyboards = await Promise.all((await storage.listStoryboards(p.id)).map(async (sb: any) => ({
       ...sb, panels: await storage.listPanels(sb.id),
     })));
     const animatics = await storage.listAnimatics(p.id);
@@ -1205,14 +1238,14 @@ const upload = multer({
   app.delete("/api/projects/:id/ai/sessions/:sessionId", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
-    await (storage as any).deleteAiChatSession(parseInt(String(req.params.sessionId)));
+    await storage.deleteAiChatSession(parseInt(String(req.params.sessionId), 10));
     res.json({ ok: true });
   });
 
   app.get("/api/projects/:id/ai/sessions/:sessionId/messages", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
-    const messages = await (storage as any).listAiChatMessages(parseInt(String(req.params.sessionId)));
+    const messages = await storage.listAiChatMessages(parseInt(String(req.params.sessionId), 10));
     res.json(messages);
   });
 
@@ -2080,12 +2113,46 @@ ${body.scriptContent}
   return httpServer;
 }
 
-// Helper: simple base64 obfuscation (NOT real encryption — for note-keeping only)
-function obfuscateKey(key: string): string {
-  return Buffer.from(key).toString("base64");
+// Helper: secure aes-256-gcm encryption for AI keys at-rest
+function getEncryptionKey(): Buffer | null {
+  const envKey = process.env.ENCRYPTION_KEY;
+  if (!envKey) return null;
+  if (/^[0-9a-fA-F]{64}$/.test(envKey)) {
+    return Buffer.from(envKey, "hex");
+  }
+  return createHash("sha256").update(envKey).digest();
 }
+
+function obfuscateKey(key: string): string {
+  try {
+    const encKey = getEncryptionKey();
+    if (!encKey) return Buffer.from(key).toString("base64");
+    const iv = randomBytes(16);
+    const cipher = createCipheriv("aes-256-gcm", encKey, iv);
+    let encrypted = cipher.update(key, "utf8", "hex");
+    encrypted += cipher.final("hex");
+    return `${iv.toString("hex")}:${encrypted}`;
+  } catch (err) {
+    return Buffer.from(key).toString("base64");
+  }
+}
+
 function deobfuscateKey(key: string): string {
-  try { return Buffer.from(key, "base64").toString("utf8"); } catch { return ""; }
+  try {
+    if (!key.includes(":")) {
+      return Buffer.from(key, "base64").toString("utf8");
+    }
+    const [ivHex, encryptedHex] = key.split(":");
+    const encKey = getEncryptionKey();
+    if (!encKey) return Buffer.from(key, "base64").toString("utf8");
+    const iv = Buffer.from(ivHex, "hex");
+    const decipher = createDecipheriv("aes-256-gcm", encKey, iv);
+    let decrypted = decipher.update(encryptedHex, "hex", "utf8");
+    decrypted += decipher.final("utf8");
+    return decrypted;
+  } catch {
+    try { return Buffer.from(key, "base64").toString("utf8"); } catch { return ""; }
+  }
 }
 
 

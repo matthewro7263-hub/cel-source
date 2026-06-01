@@ -257,8 +257,8 @@ Right. New game. *Detectives.*
     totalDurationMs: 8000,
   });
   // getAnimaticProject returns full assembly with tracks
-  const fullAnimatic = (await storage.getAnimaticProject(sampleAnimatic.id))!;
-  const panelTrack = fullAnimatic.tracks.find((t) => t.kind === "panel");
+  const fullAnimatic = await storage.getAnimaticProject(sampleAnimatic.id)!;
+  const panelTrack = fullAnimatic.tracks.find((t: any) => t.kind === "panel");
   if (panelTrack && allPanels.length >= 4) {
     // Place 4 panel clips at 0, 2000, 4000, 6000ms
     for (let i = 0; i < 4; i++) {

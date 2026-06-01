@@ -1826,9 +1826,27 @@ function SettingsSection({ title, children, tone }: { title: string; children: R
 // ===== SHARED EMPTY STATE =====
 function EmptyTabState({ icon, title, body, ctaLabel, onCta }: { icon: React.ReactNode; title: string; body: string; ctaLabel: string; onCta: () => void }) {
   return (
-    <div className="border border-dashed border-border rounded-xl py-12 px-6 flex flex-col items-center text-center bg-card">
-      <div className="h-11 w-11 rounded-full bg-primary/10 text-primary flex items-center justify-center mb-3">{icon}</div>
-      <h3 className="font-display font-semibold mb-1.5">{title}</h3>
+    <div className="glass rounded-xl py-12 px-6 flex flex-col items-center text-center">
+      {/* Branded illustration - onion-skin layers */}
+      <div className="mb-4">
+        <svg width="140" height="140" viewBox="0 0 140 140" className="opacity-70">
+          <defs>
+            <linearGradient id="emptyTabGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#9DD0FF" />
+              <stop offset="50%" stopColor="#C4B5FD" />
+              <stop offset="100%" stopColor="#FFD9A8" />
+            </linearGradient>
+          </defs>
+          {/* Onion-skin layers */}
+          <path d="M70 20 C110 20 110 120 70 120" fill="none" stroke="url(#emptyTabGradient)" strokeWidth="1.5" opacity="0.3" />
+          <path d="M60 30 C95 30 95 110 60 110" fill="none" stroke="url(#emptyTabGradient)" strokeWidth="1.5" opacity="0.4" />
+          <path d="M50 40 C80 40 80 100 50 100" fill="none" stroke="url(#emptyTabGradient)" strokeWidth="1.5" opacity="0.5" />
+          {/* Plus sign in center */}
+          <line x1="70" y1="50" x2="70" y2="90" stroke="url(#emptyTabGradient)" strokeWidth="2.5" strokeLinecap="round" />
+          <line x1="50" y1="70" x2="90" y2="70" stroke="url(#emptyTabGradient)" strokeWidth="2.5" strokeLinecap="round" />
+        </svg>
+      </div>
+      <h3 className="font-display font-semibold mb-1.5 text-lg">{title}</h3>
       <p className="text-sm text-muted-foreground mb-5 max-w-sm">{body}</p>
       <Button onClick={onCta}><Plus size={14} className="mr-1.5" />{ctaLabel}</Button>
     </div>
