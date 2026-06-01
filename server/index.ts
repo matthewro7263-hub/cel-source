@@ -11,9 +11,9 @@ import { registerApprovalRoutes } from "./approval_routes";
 import { registerArchiveRoutes } from "./archive_routes";
 import { registerSpriteSheetRoutes } from "./spritesheet_routes";
 import { createServer } from "node:http";
-import { neon } from "@neondatabase/serverless";
-import { drizzle as drizzleHttp } from "drizzle-orm/neon-http";
-import { migrate } from "drizzle-orm/neon-http/migrator";
+import { Pool, neonConfig } from "@neondatabase/serverless";
+import ws from "ws";
+import { drizzle } from "drizzle-orm/neon-serverless"; import { migrate } from "drizzle-orm/neon-serverless/migrator";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -128,10 +128,11 @@ async function runMigrations() {
   }
 
   try {
-    const sql = neon(process.env.DATABASE_URL);
-    const migrationDb = drizzleHttp(sql);
+        neonConfig.webSocketConstructor = ws;
+        const pool = new Pool({ connectionString: process.env.DATABASE_URL }); const migrationDb = drizzle(pool);
         await migrate(migrationDb, { migrationsFolder: path.join(__dirname, "../migrations") });
     log("database migrations completed", "migrations");
+        await pool.end();
   } catch (err) {
     console.error("Database migration failed; continuing startup:", err);
   }
