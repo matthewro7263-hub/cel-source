@@ -139,7 +139,7 @@ export function getSessionUser(sid: string | undefined): number | undefined {
   if (isNaN(userId) || isNaN(expiresAt)) return undefined;
   if (Date.now() > expiresAt) return undefined; // Session expired
   
-  const payload = `${userIdStr}:${expiresAtStr}`;
+    const payload = `${userIdStr}:${expiresAtStr}:${tokenVersionStr}`;
   const hmac = createHmac("sha256", SESSION_SECRET);
   hmac.update(payload);
   const expectedSignature = hmac.digest("hex");
