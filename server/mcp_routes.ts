@@ -47,7 +47,7 @@ export function registerMcpRoutes(app: Express) {
       const schema = z.object({ projectId: z.number() });
       const { projectId } = schema.parse(req.body);
 
-      if (!canAccessProject(projectId, req.user!.id)) {
+      if (!await canAccessProject(projectId, req.user!.id)) {
         return mcpError(res, "Forbidden", "FORBIDDEN", 403);
       }
 
@@ -68,7 +68,7 @@ export function registerMcpRoutes(app: Express) {
       });
       const { projectId, shotId, status } = schema.parse(req.body);
 
-      if (!canAccessProject(projectId, req.user!.id)) {
+      if (!await canAccessProject(projectId, req.user!.id)) {
         return mcpError(res, "Forbidden", "FORBIDDEN", 403);
       }
 
@@ -95,7 +95,7 @@ export function registerMcpRoutes(app: Express) {
       });
       const { projectId, entityType, entityId, body } = schema.parse(req.body);
 
-      if (!canAccessProject(projectId, req.user!.id)) {
+      if (!await canAccessProject(projectId, req.user!.id)) {
         return mcpError(res, "Forbidden", "FORBIDDEN", 403);
       }
 
@@ -127,7 +127,7 @@ export function registerMcpRoutes(app: Express) {
       });
       const { projectId, filename, fileData, metadata } = schema.parse(req.body);
 
-      if (!canAccessProject(projectId, req.user!.id)) {
+      if (!await canAccessProject(projectId, req.user!.id)) {
         return mcpError(res, "Forbidden", "FORBIDDEN", 403);
       }
 
@@ -158,7 +158,7 @@ export function registerMcpRoutes(app: Express) {
       });
       const { projectId, type } = schema.parse(req.body);
 
-      if (!canAccessProject(projectId, req.user!.id)) {
+      if (!await canAccessProject(projectId, req.user!.id)) {
         return mcpError(res, "Forbidden", "FORBIDDEN", 403);
       }
 
