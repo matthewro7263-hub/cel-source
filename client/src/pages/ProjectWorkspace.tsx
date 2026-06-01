@@ -773,44 +773,149 @@ function StoryboardView({ board, projectId, onDelete }: { board: Storyboard & { 
 function SortablePanel({ panel, index, onDelete, onEdit }: { panel: Panel; index: number; onDelete: () => void; onEdit: (patch: Partial<Panel>) => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: panel.id });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
-  const [caption, setCaption] = useState(panel.caption);
+  const [caption, setCaption] = useState(panel.caption || "");
+  const [notes, setNotes] = useState(panel.notes || "");
+  const [changeRequest, setChangeRequest] = useState(panel.changeRequest || "");
+  const [isSheetOpen, setIsSheetOpen] = useState(false);
+  const replaceInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setCaption(panel.caption || "");
+    setNotes(panel.notes || "");
+    setChangeRequest(panel.changeRequest || "");
+  }, [panel]);
+
+  const handleOpenSheet = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsSheetOpen(true);
+  };
+
+  const handleReplaceImage = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      onEdit({ imageData: reader.result as string, r2Key: null });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const panelImageUrl = panel.imageData || (panel.r2Key ? `/api/uploads/file?key=${encodeURIComponent(panel.r2Key)}` : "");
 
   return (
-    <div ref={setNodeRef} style={style} className="rounded-lg border border-border bg-background overflow-hidden group" data-testid={`panel-${panel.id}`}>
-      <div {...attributes} {...listeners} className="aspect-video bg-muted relative cursor-grab active:cursor-grabbing">
-        <img
-          src={panel.imageData}
-          alt={panel.caption || panel.dialogue || `Storyboard panel ${index + 1}`}
-          className="w-full h-full object-cover"
-        />
-        <div className="absolute top-2 left-2 text-[10px] font-mono bg-background/90 px-1.5 py-0.5 rounded">
-          #{String(index + 1).padStart(2, "0")}
-        </div>
-        <Button
-          size="icon"
-          variant="ghost"
-          onClick={(e) => { e.stopPropagation(); onDelete(); }}
-          onPointerDown={(e) => e.stopPropagation()}
-          className="absolute top-1.5 right-1.5 h-7 w-7 bg-background/90 opacity-0 group-hover:opacity-100 text-destructive"
-          data-testid={`button-delete-panel-${panel.id}`}
+    <>
+      <div ref={setNodeRef} style={style} className="rounded-lg border border-border bg-background overflow-hidden group" data-testid={`panel-${panel.id}`}>
+        <div
+          {...attributes}
+          {...listeners}
+          onClick={handleOpenSheet}
+          className="aspect-video bg-muted relative cursor-grab active:cursor-grabbing hover:brightness-95 transition-all duration-150"
         >
-          <X size={14} />
-        </Button>
+          <img
+            src={panelImageUrl}
+            alt={panel.caption || panel.dialogue || `Storyboard panel ${index + 1}`}
+            className="w-full h-full object-cover select-none pointer-events-none"
+          />
+          <div className="absolute top-2 left-2 text-[10px] font-mono bg-background/90 px-1.5 py-0.5 rounded">
+            #{String(index + 1).padStart(2, "0")}
+          </div>
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={(e) => { e.stopPropagation(); onDelete(); }}
+            onPointerDown={(e) => e.stopPropagation()}
+            className="absolute top-1.5 right-1.5 h-7 w-7 bg-background/90 opacity-0 group-hover:opacity-100 text-destructive hover:bg-destructive hover:text-white transition-all duration-150 shadow-sm"
+            data-testid={`button-delete-panel-${panel.id}`}
+          >
+            <Trash2 size={13} />
+          </Button>
+        </div>
+        <div className="p-3 space-y-2">
+          <Input
+            value={caption}
+            onChange={(e) => setCaption(e.target.value)}
+            onBlur={() => caption !== panel.caption && onEdit({ caption })}
+            className="text-xs h-8"
+            placeholder="Caption…"
+            data-testid={`input-caption-${panel.id}`}
+          />
+          {panel.dialogue && <div className="text-xs italic text-muted-foreground">"{panel.dialogue}"</div>}
+          {/* v4: pin layer */}
+          <V4PanelPinLayer panelId={panel.id} />
+        </div>
       </div>
-      <div className="p-3 space-y-2">
-        <Input
-          value={caption}
-          onChange={(e) => setCaption(e.target.value)}
-          onBlur={() => caption !== panel.caption && onEdit({ caption })}
-          className="text-xs h-8"
-          placeholder="Caption…"
-          data-testid={`input-caption-${panel.id}`}
-        />
-        {panel.dialogue && <div className="text-xs italic text-muted-foreground">"{panel.dialogue}"</div>}
-        {/* v4: pin layer */}
-        <V4PanelPinLayer panelId={panel.id} />
-      </div>
-    </div>
+
+      <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
+        <SheetContent side="right" className="w-[400px] sm:w-[540px] overflow-y-auto flex flex-col gap-5 bg-background border-l border-border">
+          <SheetHeader>
+            <SheetTitle>Edit Storyboard Panel #{String(index + 1).padStart(2, "0")}</SheetTitle>
+          </SheetHeader>
+
+          <div className="space-y-4 flex-1">
+            {/* Panel Image Container */}
+            <div className="space-y-2">
+              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Image</Label>
+              <div className="aspect-video bg-muted border border-border rounded-lg overflow-hidden relative group">
+                {panelImageUrl ? (
+                  <img src={panelImageUrl} alt={caption} className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-muted-foreground text-xs">
+                    No image data
+                  </div>
+                )}
+              </div>
+              <div className="flex gap-2 justify-end">
+                <input
+                  ref={replaceInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleReplaceImage}
+                />
+                <Button size="sm" variant="outline" onClick={() => replaceInputRef.current?.click()}>
+                  Replace image
+                </Button>
+              </div>
+            </div>
+
+            {/* Panel Caption */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Caption</Label>
+              <Input
+                value={caption}
+                onChange={(e) => setCaption(e.target.value)}
+                onBlur={() => caption !== panel.caption && onEdit({ caption })}
+                placeholder="No caption..."
+              />
+            </div>
+
+            {/* Dialogue / Notes */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Notes</Label>
+              <Textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                onBlur={() => notes !== panel.notes && onEdit({ notes })}
+                rows={4}
+                placeholder="Add some notes about this storyboard panel..."
+              />
+            </div>
+
+            {/* Change Request */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground text-amber-500">Change Request</Label>
+              <Input
+                value={changeRequest}
+                onChange={(e) => setChangeRequest(e.target.value)}
+                onBlur={() => changeRequest !== panel.changeRequest && onEdit({ changeRequest })}
+                placeholder="Add a change request (e.g. 'Redraw characters with bigger smiles')..."
+                className="border-amber-200 focus-visible:ring-amber-500"
+              />
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
+    </>
   );
 }
 

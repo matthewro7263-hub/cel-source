@@ -65,6 +65,18 @@ uploadsRouter.get("/download", requireUser, async (req, res) => {
   }
 });
 
+uploadsRouter.get("/file", requireUser, async (req, res) => {
+  try {
+    const key = String(req.query.key ?? "");
+    const userId = req.user!.id.toString();
+    if (!key || !isOwnedKey(userId, key)) return res.status(404).json({ error: "not_found" });
+    const url = await presignDownload(key, 300);
+    res.redirect(url);
+  } catch (err: any) {
+    res.status(500).send(err?.message ?? "Failed to redirect to R2 file");
+  }
+});
+
 uploadsRouter.delete("/object", requireUser, async (req, res) => {
   try {
     const key = String(req.query.key ?? "");

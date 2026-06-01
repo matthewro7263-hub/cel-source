@@ -101,6 +101,8 @@ export const storyboardPanels = pgTable("storyboard_panels", {
   sceneId: integer("scene_id"), // optional target scene attachment
   caption: text("caption").notNull().default(""),
   dialogue: text("dialogue").notNull().default(""),
+  notes: text("notes").notNull().default(""),
+  changeRequest: text("change_request").notNull().default(""),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
 }, (table) => {
   return {

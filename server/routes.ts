@@ -543,6 +543,10 @@ const upload = multer({
       orderIdx: z.number().int().optional(),
       caption: z.string().optional(),
       dialogue: z.string().optional(),
+      notes: z.string().optional(),
+      changeRequest: z.string().optional(),
+      imageData: z.string().nullable().optional(),
+      r2Key: z.string().nullable().optional(),
     });
     const patch = schema.parse(req.body);
     res.json(await storage.updatePanel(id, patch));
