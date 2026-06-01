@@ -25,11 +25,8 @@ export default function Login() {
     },
     onSuccess: async (data: { user: any; token: string }) => {
       applyToken(data.token, data.user);
-      // Defer navigation to next tick so React commits the AuthProvider state
-      // update (tokenUser) BEFORE wouter re-renders ProtectedShell. Without
-      // this, ProtectedShell can mount with stale user=null and bounce back
-      // to /login — the classic "double-click sign in" race.
-      setTimeout(() => setLocation("/dashboard"), 0);
+              // applyToken now persists to localStorage synchronously — safe to navigate immediately
+              setLocation("/dashboard");
     },
     onError: (err: any) => {
       toast({ title: "Couldn't sign in", description: String(err.message || err), variant: "destructive" });
