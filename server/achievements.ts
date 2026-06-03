@@ -75,8 +75,8 @@ export async function checkAchievements(ctx: AchievementContext): Promise<string
   const unlocked: string[] = [];
 
   async function tryUnlock(code: string) {
-    if (!await (storage as any).hasAchievement(userId, code)) {
-      await (storage as any).unlockAchievement(userId, code);
+    if (!await storage.hasAchievement(userId, code)) {
+      await storage.unlockAchievement(userId, code);
       unlocked.push(code);
     }
   }
@@ -95,13 +95,13 @@ export async function checkAchievements(ctx: AchievementContext): Promise<string
       break;
     }
     case "create_scene": {
-      const totalScenes = await (storage as any).countAllScenesForUser(userId);
+      const totalScenes = await storage.countAllScenesForUser(userId);
       if (totalScenes >= 1) await tryUnlock("first_scene");
       break;
     }
     case "create_panel": {
       await tryUnlock("first_storyboard");
-      const totalPanels = await (storage as any).countAllPanelsForUser(userId);
+      const totalPanels = await storage.countAllPanelsForUser(userId);
       if (totalPanels >= 10) await tryUnlock("ten_panels");
       if (totalPanels >= 50) await tryUnlock("fifty_panels");
       if (totalPanels >= 100) await tryUnlock("hundred_panels");
@@ -128,14 +128,14 @@ export async function checkAchievements(ctx: AchievementContext): Promise<string
       break;
     }
     case "create_comment": {
-      const totalComments = await (storage as any).countAllCommentsForUser(userId);
+      const totalComments = await storage.countAllCommentsForUser(userId);
       if (totalComments >= 20) await tryUnlock("polished");
       break;
     }
     case "login": {
       const todayStr = new Date().toISOString().split("T")[0];
-      await (storage as any).logUserActivity(userId, todayStr);
-      const activityDates = await (storage as any).getUserActivityDates(userId);
+      await storage.logUserActivity(userId, todayStr);
+      const activityDates = await storage.getUserActivityDates(userId);
       if (checkConsecutiveDays(activityDates, 7)) {
         await tryUnlock("week_streak");
       }

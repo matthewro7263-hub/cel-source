@@ -1,4 +1,5 @@
 import type { Express, Request, Response, NextFunction } from "express";
+import express from "express";
 import { db, getSessionUser, storage } from "./storage";
 import { eq, inArray } from "drizzle-orm";
 import { storyboardPanels, storyboards } from "@shared/schema";
@@ -27,7 +28,7 @@ async function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!userId) return res.status(401).json({ message: "Not authenticated" });
   const user = await storage.getUser(userId);
   if (!user) return res.status(401).json({ message: "User not found" });
-  (req as any).user = user;
+  req.user = user;
   next();
 }
 
@@ -90,9 +91,9 @@ function generateMinimalGLTF(b64Data: string, bufferLength: number) {
 }
 
 export function registerSpriteSheetRoutes(app: Express) {
-  app.post("/api/projects/:id/spritesheet", requireAuth, async (req, res) => {
+  app.post("/api/projects/:id/spritesheet", express.json({ limit: "50mb" }), requireAuth, async (req, res) => {
     const projectId = parseInt(String(req.params.id), 10);
-    if (!(await canAccessProject(projectId, (req as any).user.id))) {
+    if (!(await canAccessProject(projectId, req.user!.id))) {
       return res.status(403).json({ message: "No access" });
     }
 

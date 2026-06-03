@@ -53,7 +53,7 @@ export function configurePassport() {
     })
   );
 
-  passport.serializeUser((user: any, done) => done(null, user.id));
+  passport.serializeUser((user: User, done) => done(null, user.id));
   passport.deserializeUser(async (id: number, done) => {
     try {
       const found = await db.select().from(users).where(eq(users.id, id)).limit(1);
