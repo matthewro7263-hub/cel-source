@@ -2,7 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { db, getSessionUser, storage } from "./storage";
 import { eq, inArray } from "drizzle-orm";
 import archiver from "archiver";
-import { createCanvas } from "canvas";
+import { getCanvasModule } from "./canvas_lazy";
 import { 
   scripts, storyboards, storyboardPanels, animatics, scenes, comments, 
   assets, animaticProjects, animaticTracks, animaticClips,
@@ -254,6 +254,16 @@ export function registerArchiveRoutes(app: Express) {
       }
 
       if (kind === "credit-roll-png") {
+        let canvasModule: typeof import("canvas");
+        try {
+          canvasModule = await getCanvasModule();
+        } catch {
+          return res.status(503).json({
+            message: "Credit roll PNG export needs the optional canvas native dependency to be built on the server.",
+          });
+        }
+        const { createCanvas } = canvasModule;
+
         const entries = await db.select().from(studio_credit_entries).where(eq(studio_credit_entries.projectId, projectId));
         
         const cast = entries.filter(e => e.section === "cast").sort((a, b) => a.orderIdx - b.orderIdx);

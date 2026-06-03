@@ -141,7 +141,11 @@ async function runMigrations() {
 
 (async () => {
   await runMigrations();
-  await seedIfEmpty();
+  try {
+    await seedIfEmpty();
+  } catch (err) {
+    console.error("Seed failed; continuing startup:", err);
+  }
   startLeaderboardCron();
   await registerRoutes(httpServer, app);
   registerLorRoutes(app);

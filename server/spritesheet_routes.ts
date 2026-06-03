@@ -5,7 +5,7 @@ import { eq, inArray } from "drizzle-orm";
 import { storyboardPanels, storyboards } from "@shared/schema";
 import { z } from "zod";
 import archiver from "archiver";
-import { createCanvas, loadImage } from "canvas";
+import { getCanvasModule } from "./canvas_lazy";
 
 async function canAccessProject(projectId: number, userId: number): Promise<boolean> {
   const p = await storage.getProject(projectId);
@@ -108,6 +108,16 @@ export function registerSpriteSheetRoutes(app: Express) {
     } catch (e: any) {
       return res.status(400).json({ message: e.message });
     }
+
+    let canvasModule: typeof import("canvas");
+    try {
+      canvasModule = await getCanvasModule();
+    } catch {
+      return res.status(503).json({
+        message: "Sprite-sheet export needs the optional canvas native dependency to be built on the server.",
+      });
+    }
+    const { createCanvas, loadImage } = canvasModule;
 
     try {
       // Verify panels belong to storyboards in this project
