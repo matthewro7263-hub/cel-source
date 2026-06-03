@@ -527,7 +527,7 @@ Copy this into your working notes and check off as you go:
 - [x] H4 — Fix `week_streak` to track real login activity, not achievement dates ✅ COMPLETED
 - [x] H5 — Gate `night_owl`/`early_bird` on `login` event only ✅ COMPLETED
 - [x] H6 — Remove duplicate `/video` route (redirect to `/video-editor`) ✅ COMPLETED
-- [ ] H7 — Migrate assets from base64-in-Postgres to R2 storage keys (PENDING - Complex migration)
+- [ ] H7 — Migrate assets from base64-in-Postgres to R2 storage keys (PARTIAL — `r2Key` column exists; upload paths still accept legacy `fileData`)
 
 ### 🟡 Medium
 - [x] M1 — Delete junk files from repo root (`commit_body.txt`, `patch.diff`, etc.) ✅ COMPLETED
