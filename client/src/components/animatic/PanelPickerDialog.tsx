@@ -66,7 +66,7 @@ export function PanelPickerDialog({ open, onClose, projectId, onSelectPanel }: P
                 >
                   <div className="aspect-video bg-black/50 overflow-hidden">
                     <img
-                      src={panel.imageData}
+                      src={panel.imageData || undefined}
                       alt={panel.caption || "Panel"}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                     />

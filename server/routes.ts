@@ -196,9 +196,9 @@ const upload = multer({
         return info;
       };
 
-      const queueItems = await Promise.all(userProjects.map(async (project) => {
+      const queueItems = await Promise.all(userProjects.map(async (project: any) => {
         const projectScenes = await storage.listScenes(project.id);
-        const activeScenes = projectScenes.filter(s => s.status !== "done" && !s.deletedAt);
+        const activeScenes = projectScenes.filter((s: any) => s.status !== "done" && !s.deletedAt);
         const currentScene = activeScenes[0] || null;
 
         const projectStoryboards = await storage.listStoryboards(project.id);
@@ -206,7 +206,7 @@ const upload = multer({
         const allPanels: any[] = [];
         for (const sb of projectStoryboards) {
           const panels = await storage.listPanels(sb.id);
-          allPanels.push(...panels.filter(p => !p.deletedAt));
+          allPanels.push(...panels.filter((p: any) => !p.deletedAt));
         }
 
         if (allPanels.length > 0) {
@@ -249,7 +249,7 @@ const upload = multer({
       const activityFeed: any[] = [];
       for (const project of userProjects) {
         const commentsList = await storage.listComments(project.id);
-        const enrichedComments = await Promise.all(commentsList.map(async (c) => {
+        const enrichedComments = await Promise.all(commentsList.map(async (c: any) => {
           const user = await getUserInfo(c.authorId);
           return {
             id: `comment-${c.id}`,
@@ -264,7 +264,7 @@ const upload = multer({
         activityFeed.push(...enrichedComments);
 
         const assetsList = await storage.listAssets(project.id);
-        const enrichedAssets = await Promise.all(assetsList.map(async (a) => {
+        const enrichedAssets = await Promise.all(assetsList.map(async (a: any) => {
           const user = await getUserInfo(a.uploaderId);
           return {
             id: `asset-${a.id}`,
@@ -2304,6 +2304,3 @@ function deobfuscateKey(key: string): string {
     try { return Buffer.from(key, "base64").toString("utf8"); } catch { return ""; }
   }
 }
-
-
-async function notifyDiscord(a: any, b: any, c: any) { return; }

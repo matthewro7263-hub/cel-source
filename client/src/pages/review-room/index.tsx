@@ -169,7 +169,9 @@ export default function ReviewRoomPage() {
       if (i > 0) doc.addPage("landscape");
       doc.text(p.label, 10, 10);
       try {
-        doc.addImage(p.imageData, "JPEG", 10, 15, 277, 155);
+        if (p.imageData) {
+          doc.addImage(p.imageData, "JPEG", 10, 15, 277, 155);
+        }
       } catch (e) {
         doc.text("Image load failed", 10, 20);
       }
@@ -226,7 +228,7 @@ export default function ReviewRoomPage() {
       main={
         <ToolSurface className="relative aspect-video bg-black">
           {panel ? (
-            <img src={panel.imageData} alt={panel.label} className="absolute inset-0 h-full w-full object-contain" />
+            <img src={panel.imageData || undefined} alt={panel.label} className="absolute inset-0 h-full w-full object-contain" />
           ) : (
             <div className="absolute inset-0 grid place-items-center text-sm text-white/45">No panels available for review.</div>
           )}

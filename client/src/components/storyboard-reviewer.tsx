@@ -98,7 +98,7 @@ export function StoryboardReviewer({ panels, onClose }: StoryboardReviewerProps)
         >
           <div className="relative max-w-4xl w-full">
             <img
-              src={panel.imageData}
+              src={panel.imageData || undefined}
               alt={`Panel ${current + 1}`}
               className="w-full rounded-xl shadow-2xl"
               style={{

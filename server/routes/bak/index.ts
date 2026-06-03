@@ -373,6 +373,7 @@ bakRouter.get("/projects/:id/export/:kind", requireAuth, async (req, res) => {
     for (const sb of projStoryboards) {
       const panels = panelsByStoryboardId[sb.id] || [];
       panels.forEach((panel, i) => {
+        if (!panel.imageData) return;
         const base64Data = panel.imageData.replace(/^data:image\/\w+;base64,/, "");
         const buffer = Buffer.from(base64Data, 'base64');
         archive.append(buffer, { name: `${sb.title}/panel_${i}_${panel.id}.png` });
@@ -412,9 +413,10 @@ bakRouter.post("/projects/:id/spritesheet", requireAuth, async (req, res) => {
 
   if (panels.length === 0) return res.status(404).json({ message: "Panels not found" });
 
-  const imgs = await Promise.all(panels.map(async p => {
+  const imgs = (await Promise.all(panels.map(async p => {
+    if (!p.imageData) return null;
     return await loadImage(p.imageData);
-  }));
+  }))).filter((img): img is any => img !== null);
 
   const cellW = imgs[0].width;
   const cellH = imgs[0].height;
@@ -434,7 +436,7 @@ bakRouter.post("/projects/:id/spritesheet", requireAuth, async (req, res) => {
   
   const manifest: any = { frames: {} };
 
-  imgs.forEach((img, i) => {
+  imgs.forEach((img: any, i: number) => {
     const col = i % cols;
     const row = Math.floor(i / cols);
     const x = col * cellW;
