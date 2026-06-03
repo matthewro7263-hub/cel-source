@@ -196,9 +196,9 @@ const upload = multer({
         return info;
       };
 
-      const queueItems = await Promise.all(userProjects.map(async (project) => {
+      const queueItems = await Promise.all(userProjects.map(async (project: any) => {
         const projectScenes = await storage.listScenes(project.id);
-        const activeScenes = projectScenes.filter(s => s.status !== "done" && !s.deletedAt);
+        const activeScenes = projectScenes.filter((s: any) => s.status !== "done" && !s.deletedAt);
         const currentScene = activeScenes[0] || null;
 
         const projectStoryboards = await storage.listStoryboards(project.id);
@@ -206,7 +206,7 @@ const upload = multer({
         const allPanels: any[] = [];
         for (const sb of projectStoryboards) {
           const panels = await storage.listPanels(sb.id);
-          allPanels.push(...panels.filter(p => !p.deletedAt));
+          allPanels.push(...panels.filter((p: any) => !p.deletedAt));
         }
 
         if (allPanels.length > 0) {
@@ -249,7 +249,7 @@ const upload = multer({
       const activityFeed: any[] = [];
       for (const project of userProjects) {
         const commentsList = await storage.listComments(project.id);
-        const enrichedComments = await Promise.all(commentsList.map(async (c) => {
+        const enrichedComments = await Promise.all(commentsList.map(async (c: any) => {
           const user = await getUserInfo(c.authorId);
           return {
             id: `comment-${c.id}`,
@@ -264,7 +264,7 @@ const upload = multer({
         activityFeed.push(...enrichedComments);
 
         const assetsList = await storage.listAssets(project.id);
-        const enrichedAssets = await Promise.all(assetsList.map(async (a) => {
+        const enrichedAssets = await Promise.all(assetsList.map(async (a: any) => {
           const user = await getUserInfo(a.uploaderId);
           return {
             id: `asset-${a.id}`,
@@ -317,7 +317,7 @@ const upload = multer({
     const id = parseInt(String(req.params.id), 10);
     if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
     const p = await storage.getProject(id);
-    const members = (await storage.listMembers(id)).map((m) => ({
+    const members = (await storage.listMembers(id)).map((m: any) => ({
       ...m,
       user: m.user ? { id: m.user.id, name: m.user.name, email: m.user.email, avatarColor: m.user.avatarColor } : null,
     }));
@@ -566,7 +566,7 @@ const upload = multer({
     const id = parseInt(String(req.params.id), 10);
     if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
     const sbs = await storage.listStoryboards(id);
-    const out = await Promise.all(sbs.map(async (sb) => ({ ...sb, panels: await storage.listPanels(sb.id) })));
+    const out = await Promise.all(sbs.map(async (sb: any) => ({ ...sb, panels: await storage.listPanels(sb.id) })));
     res.json(out);
   });
   app.post("/api/projects/:id/storyboards", requireAuth, async (req, res) => {
@@ -767,7 +767,7 @@ const upload = multer({
     const id = parseInt(String(req.params.id), 10);
     if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
     const list = await storage.listComments(id);
-    const enriched = await Promise.all(list.map(async (c) => ({ ...c, author: await storage.getUser(c.authorId) || null })));
+    const enriched = await Promise.all(list.map(async (c: any) => ({ ...c, author: await storage.getUser(c.authorId) || null })));
     res.json(enriched.map((c) => ({
       ...c,
       author: c.author ? { id: c.author.id, name: c.author.name, avatarColor: c.author.avatarColor } : null,
@@ -801,7 +801,7 @@ const upload = multer({
     const category = req.query.category as string | undefined;
     // Exclude fileData from listing for performance; client fetches individual for download
     const list = await storage.listAssets(id, category);
-    const safe = list.map(({ fileData, ...rest }) => rest);
+    const safe = list.map(({ fileData, ...rest }: any) => rest);
     res.json(safe);
   });
 
@@ -920,7 +920,7 @@ const upload = multer({
   app.get ("/api/commissions", requireAuth, async (req, res) => {
     const list = await storage.listCommissions(req.user!.id);
     // Omit large reference images from list view
-    const safe = list.map(({ referenceImage, ...rest }) => ({ ...rest, hasReferenceImage: !!referenceImage }));
+    const safe = list.map(({ referenceImage, ...rest }: any) => ({ ...rest, hasReferenceImage: !!referenceImage }));
     res.json(safe);
   });
 
@@ -1104,17 +1104,16 @@ const upload = multer({
       name: z.string().optional().default("New Track"),
       orderIdx: z.number().int().optional().default(99),
       muted: z.boolean().optional().default(false),
-      volume: z.string().optional().default("1.0"),
+      volume: z.coerce.number().int().optional().default(1000),
     });
     const body = schema.parse(req.body);
-    const trackVolume = Math.round(parseFloat(body.volume) * 1000);
     const track = await storage.createTrack({
       animaticProjectId: animaticId,
       kind: body.kind,
       name: body.name,
       orderIdx: body.orderIdx,
       muted: body.muted,
-      volume: trackVolume,
+      volume: body.volume,
     });
     res.json(track);
   });
@@ -1130,14 +1129,10 @@ const upload = multer({
       name: z.string().optional(),
       orderIdx: z.number().int().optional(),
       muted: z.boolean().optional(),
-      volume: z.string().optional(),
+      volume: z.coerce.number().int().optional(),
     });
     const patch = schema.parse(req.body);
-    const trackVolume = patch.volume !== undefined ? Math.round(parseFloat(patch.volume) * 1000) : undefined;
-    const updated = await storage.updateTrack(id, {
-      ...patch,
-      volume: trackVolume,
-    });
+    const updated = await storage.updateTrack(id, patch);
     res.json(updated);
   });
 
@@ -1167,13 +1162,12 @@ const upload = multer({
       label: z.string().optional().default(""),
       fadeInMs: z.number().int().optional().default(0),
       fadeOutMs: z.number().int().optional().default(0),
-      volume: z.string().optional().default("1.0"),
+      volume: z.coerce.number().int().optional().default(1000),
     });
     const body = schema.parse(req.body);
     if (body.audioDataUrl && body.audioDataUrl.length > 14 * 1024 * 1024) {
       return res.status(413).json({ message: "Audio too large (max 10MB)" });
     }
-    const clipVolume = Math.round(parseFloat(body.volume) * 1000);
     const clip = await storage.createClip({
       trackId,
       startMs: body.startMs,
@@ -1184,7 +1178,7 @@ const upload = multer({
       label: body.label,
       fadeInMs: body.fadeInMs,
       fadeOutMs: body.fadeOutMs,
-      volume: clipVolume,
+      volume: body.volume,
     });
     res.json(clip);
   });
@@ -1206,14 +1200,10 @@ const upload = multer({
       label: z.string().optional(),
       fadeInMs: z.number().int().optional(),
       fadeOutMs: z.number().int().optional(),
-      volume: z.string().optional(),
+      volume: z.coerce.number().int().optional(),
     });
     const patch = schema.parse(req.body);
-    const clipVolume = patch.volume !== undefined ? Math.round(parseFloat(patch.volume) * 1000) : undefined;
-    const updated = await storage.updateClip(id, {
-      ...patch,
-      volume: clipVolume,
-    });
+    const updated = await storage.updateClip(id, patch);
     res.json(updated);
   });
 
@@ -1283,7 +1273,7 @@ const upload = multer({
     if (!p || !p.shareEnabled) return res.status(404).json({ message: "Share link not found or disabled" });
     const owner = await storage.getUser(p.ownerId);
     const scripts = await storage.listScripts(p.id);
-    const storyboards = await Promise.all((await storage.listStoryboards(p.id)).map(async (sb) => ({
+    const storyboards = await Promise.all((await storage.listStoryboards(p.id)).map(async (sb: any) => ({
       ...sb, panels: await storage.listPanels(sb.id),
     })));
     const animatics = await storage.listAnimatics(p.id);
@@ -1308,7 +1298,7 @@ const upload = multer({
     const token = req.params.token;
     const p = await storage.getProjectByToken(token);
     if (!p || !p.shareEnabled) return res.status(404).json({ message: "Not found" });
-    const approvals = await storage.getCliApprovals(p.id);
+    const approvals = await (storage as any).getCliApprovals(p.id);
     res.json(approvals);
   });
 
@@ -1317,7 +1307,7 @@ const upload = multer({
   app.get("/api/projects/:id/ai/key", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
-    const row = await storage.getProjectAiKey(id);
+    const row = await (storage as any).getProjectAiKey(id);
     res.json({ hasKey: !!row, model: row?.model || null });
   });
 
@@ -1326,14 +1316,14 @@ const upload = multer({
     if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
     const schema = z.object({ key: z.string().min(1), model: z.string().optional() });
     const body = schema.parse(req.body);
-    await storage.setProjectAiKey(id, obfuscateKey(body.key), body.model);
+    await (storage as any).setProjectAiKey(id, obfuscateKey(body.key), body.model);
     res.json({ ok: true });
   });
 
   app.delete("/api/projects/:id/ai/key", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
-    await storage.deleteProjectAiKey(id);
+    await (storage as any).deleteProjectAiKey(id);
     res.json({ ok: true });
   });
 
@@ -1344,7 +1334,7 @@ const upload = multer({
     let body: { scriptText: string };
     try { body = schema.parse(req.body); } catch (e: any) { return res.status(400).json({ message: e.message }); }
 
-    const keyRow = await storage.getProjectAiKey(id);
+    const keyRow = await (storage as any).getProjectAiKey(id);
     if (!keyRow) return res.status(400).json({ message: "No AI key set for this project" });
     const apiKey = deobfuscateKey(keyRow.encryptedKey);
 
@@ -1389,7 +1379,7 @@ const upload = multer({
   app.get("/api/projects/:id/ai/sessions", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
-    const sessions = await storage.listAiChatSessions(id);
+    const sessions = await (storage as any).listAiChatSessions(id);
     res.json(sessions);
   });
 
@@ -1398,7 +1388,7 @@ const upload = multer({
     if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
     const schema = z.object({ title: z.string().optional(), scriptId: z.number().optional() });
     const body = schema.parse(req.body);
-    const session = await storage.createAiChatSession({ projectId: id, ...body });
+    const session = await (storage as any).createAiChatSession({ projectId: id, ...body });
     res.json(session);
   });
 
@@ -1428,7 +1418,7 @@ const upload = multer({
     let body;
     try { body = schema.parse(req.body); } catch (e: any) { return res.status(400).json({ message: e.message }); }
 
-    const keyRow = await storage.getProjectAiKey(id);
+    const keyRow = await (storage as any).getProjectAiKey(id);
     if (!keyRow) return res.status(400).json({ message: "No AI key set for this project" });
     const apiKey = deobfuscateKey(keyRow.encryptedKey);
     // Use user's preferred model or fallback to Gemma 2 9B (which supports tools well)
@@ -1445,13 +1435,13 @@ You have access to tools that can edit the current script directly. When a user 
 ${body.scriptContent}
 </Current_Script_Context>`;
 
-    await storage.createAiChatMessage({
-      sessionId: body.sessionId,
+    await (storage as any).createAiChatMessage({
+      sessionId: String(body.sessionId),
       role: "user",
       content: body.content
     });
 
-    const messages = (await storage.listAiChatMessages(body.sessionId)).map((m: any) => {
+    const messages = (await (storage as any).listAiChatMessages(String(body.sessionId))).map((m: any) => {
       const msg: any = { role: m.role, content: m.content };
       if (m.toolCalls) msg.tool_calls = JSON.parse(m.toolCalls);
       if (m.toolCallId) msg.tool_call_id = m.toolCallId;
@@ -1545,8 +1535,8 @@ ${body.scriptContent}
         for (const line of lines) {
           const dataText = line.substring(6);
           if (dataText === "[DONE]") {
-            const saved = await storage.createAiChatMessage({
-              sessionId: body.sessionId,
+            const saved = await (storage as any).createAiChatMessage({
+              sessionId: String(body.sessionId),
               role: "assistant",
               content: fullContent,
               toolCalls: toolCalls.length > 0 ? JSON.stringify(toolCalls) : null
@@ -1584,7 +1574,7 @@ ${body.scriptContent}
     const projectId = parseInt(String(req.params.projectId), 10);
     const { scriptContent, lastVersion } = req.body;
 
-    const apiKey = await storage.getProjectAiKey(projectId);
+    const apiKey = await (storage as any).getProjectAiKey(projectId);
     if (!apiKey) return res.status(404).json({ message: "No API key configured" });
 
     const prompt = `You are the Cel Assistant. The user has just finished a draft of their script. 
@@ -2280,8 +2270,9 @@ ${body.scriptContent}
 }
 
 // Helper: secure aes-256-gcm encryption for AI keys at-rest
-function getEncryptionKey(): Buffer {
-  const envKey = process.env.ENCRYPTION_KEY || "fallback-encryption-key-for-development-mode-only-32-bytes";
+function getEncryptionKey(): Buffer | null {
+  const envKey = process.env.ENCRYPTION_KEY;
+  if (!envKey) return null;
   if (/^[0-9a-fA-F]{64}$/.test(envKey)) {
     return Buffer.from(envKey, "hex");
   }
@@ -2291,6 +2282,7 @@ function getEncryptionKey(): Buffer {
 function obfuscateKey(key: string): string {
   try {
     const encKey = getEncryptionKey();
+    if (!encKey) return Buffer.from(key).toString("base64");
     const iv = randomBytes(12);
     const cipher = createCipheriv("aes-256-gcm", encKey, iv);
     let encrypted = cipher.update(key, "utf8", "hex");
@@ -2308,9 +2300,10 @@ function deobfuscateKey(key: string): string {
       return Buffer.from(key, "base64").toString("utf8");
     }
     const parts = key.split(":");
+    const encKey = getEncryptionKey();
+    if (!encKey) return Buffer.from(key, "base64").toString("utf8");
     if (parts.length === 3) {
       const [ivHex, authTagHex, encryptedHex] = parts;
-      const encKey = getEncryptionKey();
       const iv = Buffer.from(ivHex, "hex");
       const authTag = Buffer.from(authTagHex, "hex");
       const decipher = createDecipheriv("aes-256-gcm", encKey, iv);
@@ -2318,16 +2311,16 @@ function deobfuscateKey(key: string): string {
       let decrypted = decipher.update(encryptedHex, "hex", "utf8");
       decrypted += decipher.final("utf8");
       return decrypted;
-    } else if (parts.length === 2) {
+    }
+    if (parts.length === 2) {
       const [ivHex, encryptedHex] = parts;
-      const encKey = getEncryptionKey();
       const iv = Buffer.from(ivHex, "hex");
       const decipher = createDecipheriv("aes-256-gcm", encKey, iv);
       let decrypted = decipher.update(encryptedHex, "hex", "utf8");
       try {
         decrypted += decipher.final("utf8");
       } catch {
-        // Fallback or ignore final check if auth tag missing
+        // legacy format without auth tag
       }
       return decrypted;
     }

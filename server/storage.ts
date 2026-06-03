@@ -7,6 +7,7 @@ import { randomBytes, scryptSync, timingSafeEqual, createHmac } from "node:crypt
 import * as mainSchema from "@shared/schema";
 import * as a11ySchema from "@shared/a11y_schema";
 import * as challengeSchema from "@shared/challenge_schema";
+import * as challengeLeaderboardSchema from "@shared/challenge_leaderboard_schema";
 import * as lorSchema from "@shared/lor_schema";
 import * as studioSchema from "@shared/studio_schema";
 
@@ -14,6 +15,7 @@ const schema = {
   ...mainSchema,
   ...a11ySchema,
   ...challengeSchema,
+  ...challengeLeaderboardSchema,
   ...lorSchema,
   ...studioSchema,
 };
@@ -139,7 +141,7 @@ export function getSessionUser(sid: string | undefined): number | undefined {
   if (isNaN(userId) || isNaN(expiresAt)) return undefined;
   if (Date.now() > expiresAt) return undefined; // Session expired
   
-  const payload = `${userIdStr}:${expiresAtStr}`;
+    const payload = `${userIdStr}:${expiresAtStr}:${tokenVersionStr}`;
   const hmac = createHmac("sha256", SESSION_SECRET);
   hmac.update(payload);
   const expectedSignature = hmac.digest("hex");

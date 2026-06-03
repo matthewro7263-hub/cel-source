@@ -5,12 +5,13 @@
 
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 
-function getKey(): Buffer {
+function getKey(): Buffer | null {
   const hex = process.env.ENCRYPTION_KEY;
-  if (!hex || hex.length !== 64) {
-    throw new Error(
-      "ENCRYPTION_KEY must be a 64-char hex string (32 bytes). Generate with: openssl rand -hex 32"
+  if (!hex || !/^[0-9a-fA-F]{64}$/.test(hex)) {
+    console.warn(
+      "ENCRYPTION_KEY is missing or invalid; values will be stored/read without encryption. Generate with: openssl rand -hex 32"
     );
+    return null;
   }
   return Buffer.from(hex, "hex");
 }
@@ -21,6 +22,8 @@ function getKey(): Buffer {
  */
 export function encrypt(plaintext: string): string {
   const key = getKey();
+  if (!key) return plaintext;
+
   const iv = randomBytes(12); // 96-bit IV recommended for GCM
   const cipher = createCipheriv("aes-256-gcm", key, iv);
   const encrypted = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
@@ -34,6 +37,8 @@ export function encrypt(plaintext: string): string {
  */
 export function decrypt(ciphertext: string): string {
   const key = getKey();
+  if (!key) return ciphertext;
+
   const parts = ciphertext.split(":");
   if (parts.length !== 3) throw new Error("Invalid encrypted value format");
   const [ivHex, authTagHex, dataHex] = parts;

@@ -11,7 +11,7 @@ export function useSpeedrunParticipants(
 ): { count: number; isLoading: boolean } {
   const { data, isLoading } = useQuery<{ count: number }>({
     queryKey: ["/api/challenges/prompts", String(promptId), "participants"],
-    queryFn: getQueryFn({ on401: "returnNull" }),
+    queryFn: getQueryFn({ on401: "returnNull" }) as () => Promise<{ count: number }>,
     enabled,
     refetchInterval: 30_000, // 30 seconds
     staleTime: 25_000,

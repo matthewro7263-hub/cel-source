@@ -6,8 +6,10 @@ import {
   challenge_submissions,
   challenge_prompts,
 } from "../shared/challenge_schema";
-import { eq, countDistinct } from "drizzle-orm";
+import { eq, and, desc, asc } from "drizzle-orm";
 import { z } from "zod";
+import { challenge_leaderboard_snapshots } from "@shared/challenge_leaderboard_schema";
+import { getLiveLeaderboard, snapshotWeekLeaderboard } from "./leaderboard_cron";
 
 // ---------------------------------------------------------------------------
 // Local auth helpers — mirror the pattern used in biz_routes.ts.
@@ -118,6 +120,97 @@ export function registerChallengeRoutes(app: Express) {
       .returning()
       .then((r) => r[0]);
     res.status(201).json(prompt);
+  });
+
+  // ── Leaderboard (live + snapshots) ─────────────────────────────────────────
+  app.get("/api/challenges/leaderboard", async (req, res) => {
+    const weekSchema = z.object({
+      week: z.string().regex(/^\d{1,3}$/).transform(Number),
+      limit: z.string().regex(/^\d{1,3}$/).optional().default("10").transform(Number),
+    });
+    let params: { week: number; limit: number };
+    try {
+      params = weekSchema.parse(req.query);
+    } catch (e: any) {
+      return res.status(400).json({ message: e.errors?.[0]?.message ?? "Invalid query params" });
+    }
+    const limit = Math.min(Math.max(params.limit, 1), 50);
+    try {
+      res.json(await getLiveLeaderboard(params.week, limit));
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/challenges/leaderboard/snapshot", async (req, res) => {
+    const weekSchema = z.object({
+      week: z.string().regex(/^\d{1,3}$/).transform(Number),
+    });
+    let params: { week: number };
+    try {
+      params = weekSchema.parse(req.query);
+    } catch (e: any) {
+      return res.status(400).json({ message: e.errors?.[0]?.message ?? "Invalid query params" });
+    }
+    try {
+      const latestRun = await db
+        .select({ snapshotAt: challenge_leaderboard_snapshots.snapshotAt })
+        .from(challenge_leaderboard_snapshots)
+        .where(eq(challenge_leaderboard_snapshots.weekNumber, params.week))
+        .orderBy(desc(challenge_leaderboard_snapshots.snapshotAt))
+        .limit(1);
+      if (latestRun.length === 0) return res.json([]);
+      const latestAt = latestRun[0].snapshotAt;
+      const rows = await db
+        .select()
+        .from(challenge_leaderboard_snapshots)
+        .where(
+          and(
+            eq(challenge_leaderboard_snapshots.weekNumber, params.week),
+            eq(challenge_leaderboard_snapshots.snapshotAt, latestAt),
+          ),
+        )
+        .orderBy(asc(challenge_leaderboard_snapshots.rank));
+      res.json(rows);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/challenges/leaderboard/snapshot", requireAuth, async (req, res) => {
+    const schema = z.object({ week: z.number().int().min(1).max(53) });
+    let body: { week: number };
+    try {
+      body = schema.parse(req.body);
+    } catch (e: any) {
+      return res.status(400).json({ message: e.errors?.[0]?.message ?? "Invalid body" });
+    }
+    try {
+      await snapshotWeekLeaderboard(body.week);
+      const latestRun = await db
+        .select({ snapshotAt: challenge_leaderboard_snapshots.snapshotAt })
+        .from(challenge_leaderboard_snapshots)
+        .where(eq(challenge_leaderboard_snapshots.weekNumber, body.week))
+        .orderBy(desc(challenge_leaderboard_snapshots.snapshotAt))
+        .limit(1);
+      const n =
+        latestRun.length > 0
+          ? (
+              await db
+                .select()
+                .from(challenge_leaderboard_snapshots)
+                .where(
+                  and(
+                    eq(challenge_leaderboard_snapshots.weekNumber, body.week),
+                    eq(challenge_leaderboard_snapshots.snapshotAt, latestRun[0].snapshotAt),
+                  ),
+                )
+            ).length
+          : 0;
+      res.json({ ok: true, week: body.week, rows: n });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
   });
 
   // ── Public: participant count for a single prompt ─────────────────────────

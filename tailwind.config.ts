@@ -81,11 +81,40 @@ export default {
           busy: "rgb(239 68 68)",
           offline: "rgb(156 163 175)",
         },
+        cel: {
+          bg: "#0d0d0f",
+          panel: "#111113",
+          surface: {
+            1: "#161618",
+            2: "#1c1c1f",
+            3: "#232328",
+            4: "#2a2a30",
+          },
+          ink: {
+            DEFAULT: "#f2f2f4",
+            muted: "#c8c8d0",
+            subtle: "#86868f",
+            ghost: "#5a5a62",
+          },
+          accent: {
+            DEFAULT: "#6366f1",
+            hover: "#818cf8",
+            dim: "rgba(99,102,241,0.12)",
+          },
+          state: {
+            todo: "#6b7280",
+            progress: "#f59e0b",
+            review: "#60a5fa",
+            done: "#34d399",
+            blocked: "#f87171",
+          },
+        },
       },
       fontFamily: {
         sans: ['Geist', 'Inter', 'system-ui'],
         serif: ["var(--font-serif)"],
-        mono: ['Geist Mono', 'JetBrains Mono', 'monospace'],
+          mono: ['Geist Mono', 'JetBrains Mono', 'var(--font-mono)', 'monospace'],
+                  celmono: ["JetBrains Mono", "Fira Code", "monospace"],
       },
       keyframes: {
         "accordion-down": {

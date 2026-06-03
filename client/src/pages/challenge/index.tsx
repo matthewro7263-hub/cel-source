@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import ChallengeLeaderboard from "./Leaderboard";
 import { Sparkles, Zap, Users } from "lucide-react";
 import { SpeedrunCountdown } from "@/components/SpeedrunCountdown";
 import { useSpeedrunParticipants } from "@/hooks/useSpeedrunParticipants";
@@ -91,6 +92,7 @@ export default function ChallengeFeed() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/challenges/feed"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/challenges/leaderboard"] });
     },
   });
 
@@ -100,6 +102,9 @@ export default function ChallengeFeed() {
 
   const isSubmitted = (promptId: number) =>
     submissions?.some((s) => s.promptId === promptId);
+
+  const currentWeek =
+    prompts && prompts.length > 0 ? prompts[prompts.length - 1].weekNumber : null;
 
   return (
     <div className="p-8 max-w-5xl mx-auto">
@@ -123,6 +128,12 @@ export default function ChallengeFeed() {
           />
         ))}
       </div>
+
+      {currentWeek !== null && (
+        <div className="mt-10">
+          <ChallengeLeaderboard weekNumber={currentWeek} useSnapshot={false} />
+        </div>
+      )}
 
       <div className="mt-10">
         <div className="mb-4 flex items-center justify-between">
