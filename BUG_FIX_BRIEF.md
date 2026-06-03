@@ -20,7 +20,7 @@
 
 ## 🔴 CRITICAL — Fix These First
 
-### C1 — Schema syntax error: broken `users` table definition
+### C1 — Schema syntax error: broken `users` table definition ✅ COMPLETED
 
 **File:** `shared/schema.ts`  
 **Line:** `passwordHash` column definition  
@@ -39,7 +39,7 @@ tokenVersion: integer("token_version").notNull().default(0),
 
 ---
 
-### C2 — `deletedAt` defaults to `now()` instead of `null`
+### C2 — `deletedAt` defaults to `now()` instead of `null` ✅ COMPLETED
 
 **File:** `shared/schema.ts`  
 **Affected tables:** `scripts`, `storyboardPanels`, `scenes`, `assets`  
@@ -65,7 +65,7 @@ After fixing the schema, run: `pnpm drizzle-kit push` to apply the migration.
 
 ---
 
-### C3 — Missing `await` on `canAccessProject` — ALL MCP endpoints bypass authorization
+### C3 — Missing `await` on `canAccessProject` — ALL MCP endpoints bypass authorization ✅ COMPLETED
 
 **File:** `server/mcp_routes.ts`  
 **Problem:** `canAccessProject` is an `async` function returning `Promise<boolean>`, but every call is missing `await`. Without it, the `if` check receives a truthy `Promise` object and NEVER blocks access.
@@ -88,7 +88,7 @@ This affects all 5 MCP route handlers: `list_shots`, `update_shot_status`, `add_
 
 ---
 
-### C4 — AI keys stored as base64 (not real encryption)
+### C4 — AI keys stored as base64 (not real encryption) ✅ COMPLETED
 
 **File:** `shared/schema.ts` — `projectAiKeys` table  
 **Problem:** The comment literally says `// base64 obfuscation (NOT real encryption)`. API keys stored in the database as base64 are essentially plaintext.
@@ -101,7 +101,7 @@ This affects all 5 MCP route handlers: `list_shots`, `update_shot_status`, `add_
 
 ---
 
-### C5 — `AnimaticEditor` route is missing auth guard
+### C5 — `AnimaticEditor` route is missing auth guard ✅ COMPLETED
 
 **File:** `client/src/App.tsx`  
 **Problem:** The animatic editor route mounts the component with no `ProtectedShell` or `ProtectedFullscreen` wrapper, allowing unauthenticated access.
@@ -124,7 +124,7 @@ This affects all 5 MCP route handlers: `list_shots`, `update_shot_status`, `add_
 
 ## 🟠 HIGH PRIORITY
 
-### H1 — `r2.ts` crashes the server on startup if R2 env vars are missing
+### H1 — `r2.ts` crashes the server on startup if R2 env vars are missing ✅ COMPLETED
 
 **File:** `server/r2.ts`  
 **Problem:** `required()` is called at module import time. If any R2 env var is absent (common in local dev without R2 configured), the entire server crashes before a single route is registered.
@@ -157,7 +157,7 @@ function getR2Bucket(): string {
 
 ---
 
-### H2 — No rate limiting on auth routes (brute force vulnerability)
+### H2 — No rate limiting on auth routes (brute force vulnerability) ✅ COMPLETED
 
 **File:** `server/auth_routes.ts`  
 **Problem:** `POST /api/auth/login` and `POST /api/auth/register` have no rate limiting. Anyone can attempt unlimited logins. The register endpoint also leaks email existence via a 409 status.
@@ -182,7 +182,7 @@ authRouter.post("/register", authLimiter, async (req, res) => { ... });
 
 ---
 
-### H3 — Achievement `create_panel` check is N+1 queries
+### H3 — Achievement `create_panel` check is N+1 queries ✅ COMPLETED
 
 **File:** `server/achievements.ts`  
 **Problem:** On every panel creation, the code:
@@ -215,7 +215,7 @@ Apply the same single-query pattern to `create_scene` and `create_comment`.
 
 ---
 
-### H4 — `week_streak` achievement logic is incorrect
+### H4 — `week_streak` achievement logic is incorrect ✅ COMPLETED
 
 **File:** `server/achievements.ts`  
 **Problem:** The streak check counts unique days from achievement **unlock dates**, not actual login dates. A user who unlocked 7 achievements on 7 different days gets the streak badge even if they only logged in twice.
@@ -237,7 +237,7 @@ export const userActivityLog = pgTable("user_activity_log", {
 
 ---
 
-### H5 — `night_owl` and `early_bird` fire on every API call
+### H5 — `night_owl` and `early_bird` fire on every API call ✅ COMPLETED
 
 **File:** `server/achievements.ts`  
 **Problem:** The time-based achievement checks run at the top of `checkAchievements` regardless of the event type:
@@ -259,7 +259,7 @@ if (event === "login") {
 
 ---
 
-### H6 — Duplicate video editor routes
+### H6 — Duplicate video editor routes ✅ COMPLETED
 
 **File:** `client/src/App.tsx`  
 **Problem:** Two routes render the exact same component:
@@ -298,7 +298,7 @@ Note: This is a larger migration. Add a migration that keeps the old `fileData` 
 
 ## 🟡 MEDIUM PRIORITY
 
-### M1 — Junk files committed to repo root
+### M1 — Junk files committed to repo root ✅ COMPLETED
 
 **Files to delete:**
 - `commit_body.txt`
@@ -323,7 +323,7 @@ pr_description.txt
 
 ---
 
-### M2 — `aud_web_audio.ts.orig` committed
+### M2 — `aud_web_audio.ts.orig` committed ✅ COMPLETED
 
 **File:** `client/src/lib/aud_web_audio.ts.orig`  
 **Problem:** A `.orig` merge conflict backup file is tracked in git.
@@ -332,7 +332,7 @@ pr_description.txt
 
 ---
 
-### M3 — Dual lockfiles (`package-lock.json` + `pnpm-lock.yaml`)
+### M3 — Dual lockfiles (`package-lock.json` + `pnpm-lock.yaml`) ✅ COMPLETED
 
 **Files:** `package-lock.json` and `pnpm-lock.yaml` both exist at repo root.  
 **Problem:** The project uses pnpm (per `pnpm-workspace.yaml`). Having both confuses CI/CD pipelines and developers.
@@ -346,7 +346,7 @@ package-lock.json
 
 ---
 
-### M4 — `ENCRYPTION_KEY` missing from `.env.example`
+### M4 — `ENCRYPTION_KEY` missing from `.env.example` ✅ COMPLETED
 
 **File:** `.env.example`  
 **Problem:** The README states `ENCRYPTION_KEY` is critical for AES-256 encryption, but it's absent from `.env.example`. New devs will miss it.
@@ -360,7 +360,7 @@ ENCRYPTION_KEY=replace-with-64-char-hex-string
 
 ---
 
-### M5 — `DISCORD_WEBHOOK_URL` in `.env.example` doesn't match implementation
+### M5 — `DISCORD_WEBHOOK_URL` in `.env.example` doesn't match implementation ✅ COMPLETED
 
 **File:** `.env.example`  
 **Problem:** The `.env.example` lists `DISCORD_WEBHOOK_URL` as a server-level env var, but the actual implementation in `server/discord.ts` reads `project.dltDiscordWebhookUrl` from the database per-project. The env var is misleading.
@@ -371,7 +371,7 @@ ENCRYPTION_KEY=replace-with-64-char-hex-string
 
 ---
 
-### M6 — Pervasive `(req as any)` and `(storage as any)` casts defeat TypeScript
+### M6 — Pervasive `(req as any)` and `(storage as any)` casts defeat TypeScript ✅ COMPLETED
 
 **Files:** `server/auth_routes.ts`, `server/achievements.ts`, `server/mcp_routes.ts`  
 **Problem:** Using `(req as any).user`, `(req as any).login`, `(req as any).logout`, `(storage as any).hasAchievement`, etc. means TypeScript provides no type safety on these critical paths.
@@ -394,7 +394,7 @@ declare global {
 
 ---
 
-### M7 — `ProtectedShell` and `ProtectedFullscreen` are nearly identical
+### M7 — `ProtectedShell` and `ProtectedFullscreen` are nearly identical ✅ COMPLETED
 
 **File:** `client/src/App.tsx`  
 **Problem:** Both components duplicate the same `useAuth` check and loading spinner. The only difference is one wraps in `<AppShell>` and one doesn't.
@@ -418,7 +418,7 @@ Then replace all `<ProtectedShell>` with `<Protected>` and all `<ProtectedFullsc
 
 ---
 
-### M8 — Express body limit of 50MB applied globally
+### M8 — Express body limit of 50MB applied globally ✅ COMPLETED
 
 **File:** `server/index.ts`  
 **Problem:** `express.json({ limit: "50mb" })` is applied to ALL routes. Most routes only handle small JSON payloads. The 50MB limit exists only for spritesheet uploads but applies everywhere, making the server vulnerable to large payload attacks on every endpoint.
@@ -437,7 +437,7 @@ Do the same for any other route that legitimately handles large payloads (asset 
 
 ## 🟢 MINOR / CLEANUP
 
-### N1 — `(table: any)` in Drizzle table index callbacks
+### N1 — `(table: any)` in Drizzle table index callbacks ✅ COMPLETED
 
 **File:** `shared/schema.ts`  
 **Problem:** Every table's index callback uses `(table: any)` instead of the proper inferred type.
@@ -454,7 +454,7 @@ Apply this to all table definitions in `shared/schema.ts`.
 
 ---
 
-### N2 — `animaticTracks.volume` stored as text
+### N2 — `animaticTracks.volume` stored as text ✅ COMPLETED
 
 **File:** `shared/schema.ts`  
 **Problem:** `volume: text("volume").notNull().default("1.0")` — the comment says this avoids float precision issues, but the right fix is to use an integer column storing the value * 1000 (milliunits) or just use a `real` / `numeric` Postgres type.
@@ -467,7 +467,7 @@ Or use Drizzle's `numeric` type if available. Update all read/write code to divi
 
 ---
 
-### N3 — `.Jules/` directory and `CODEX_BACKLOG.md` in repo root
+### N3 — `.Jules/` directory and `CODEX_BACKLOG.md` in repo root ✅ COMPLETED
 
 **Directory/File:** `.Jules/` and potentially `CODEX_BACKLOG.md`  
 **Problem:** `.Jules/` is an AI tooling config directory that should not be committed. `CODEX_BACKLOG.md` is an internal planning doc — it's fine to keep if intentional, but `.Jules/` should not be in version control.
@@ -480,7 +480,7 @@ Then remove the `.Jules/` directory from the repo with `git rm -r --cached .Jule
 
 ---
 
-### N4 — `index.css` is 34KB
+### N4 — `index.css` is 34KB ✅ COMPLETED
 
 **File:** `client/src/index.css`  
 **Problem:** A 34KB global CSS file suggests accumulated dead styles and duplicated utility classes that Tailwind already handles. This inflates the initial CSS bundle.
@@ -492,7 +492,7 @@ Then remove the `.Jules/` directory from the repo with `git rm -r --cached .Jule
 
 ---
 
-### N5 — Missing `sceneId` index on `cli_feedback` table
+### N5 — Missing `sceneId` index on `cli_feedback` table ✅ COMPLETED
 
 **File:** `shared/schema.ts`  
 **Problem:** `cli_feedback` has a `sceneId` column that's likely used in queries but has no index defined.
@@ -514,37 +514,37 @@ export const cli_feedback = pgTable("cli_feedback", {
 Copy this into your working notes and check off as you go:
 
 ### 🔴 Critical
-- [ ] C1 — Fix schema syntax error in `users` table (`shared/schema.ts`)
-- [ ] C2 — Fix `deletedAt` defaulting to `now()` in 4 tables (`shared/schema.ts`)
-- [ ] C3 — Add `await` to all `canAccessProject` calls in `server/mcp_routes.ts`
-- [ ] C4 — Use real AES-256 encryption for AI keys (not base64)
-- [ ] C5 — Add auth guard to `AnimaticEditor` route in `client/src/App.tsx`
+- [x] C1 — Fix schema syntax error in `users` table (`shared/schema.ts`) ✅ COMPLETED
+- [x] C2 — Fix `deletedAt` defaulting to `now()` in 4 tables (`shared/schema.ts`) ✅ COMPLETED
+- [x] C3 — Add `await` to all `canAccessProject` calls in `server/mcp_routes.ts` ✅ COMPLETED
+- [x] C4 — Use real AES-256 encryption for AI keys (not base64) ✅ COMPLETED
+- [x] C5 — Add auth guard to `AnimaticEditor` route in `client/src/App.tsx` ✅ COMPLETED
 
 ### 🟠 High
-- [ ] H1 — Lazy-initialize R2 client so missing env vars don't crash server boot
-- [ ] H2 — Add rate limiting to `/api/auth/login` and `/api/auth/register`
-- [ ] H3 — Fix N+1 query problem in achievement `create_panel` / `create_scene` / `create_comment`
-- [ ] H4 — Fix `week_streak` to track real login activity, not achievement dates
-- [ ] H5 — Gate `night_owl`/`early_bird` on `login` event only
-- [ ] H6 — Remove duplicate `/video` route (redirect to `/video-editor`)
-- [ ] H7 — Migrate assets from base64-in-Postgres to R2 storage keys
+- [x] H1 — Lazy-initialize R2 client so missing env vars don't crash server boot ✅ COMPLETED
+- [x] H2 — Add rate limiting to `/api/auth/login` and `/api/auth/register` ✅ COMPLETED
+- [x] H3 — Fix N+1 query problem in achievement `create_panel` / `create_scene` / `create_comment` ✅ COMPLETED
+- [x] H4 — Fix `week_streak` to track real login activity, not achievement dates ✅ COMPLETED
+- [x] H5 — Gate `night_owl`/`early_bird` on `login` event only ✅ COMPLETED
+- [x] H6 — Remove duplicate `/video` route (redirect to `/video-editor`) ✅ COMPLETED
+- [ ] H7 — Migrate assets from base64-in-Postgres to R2 storage keys (PENDING - Complex migration)
 
 ### 🟡 Medium
-- [ ] M1 — Delete junk files from repo root (`commit_body.txt`, `patch.diff`, etc.)
-- [ ] M2 — Delete `aud_web_audio.ts.orig`
-- [ ] M3 — Delete `package-lock.json`, keep only `pnpm-lock.yaml`
-- [ ] M4 — Add `ENCRYPTION_KEY` to `.env.example`
-- [ ] M5 — Fix misleading `DISCORD_WEBHOOK_URL` in `.env.example`
-- [ ] M6 — Replace `(req as any)` and `(storage as any)` with proper TypeScript types
-- [ ] M7 — Merge `ProtectedShell` and `ProtectedFullscreen` into one `Protected` component
-- [ ] M8 — Apply 50MB body limit only to routes that need it, not globally
+- [x] M1 — Delete junk files from repo root (`commit_body.txt`, `patch.diff`, etc.) ✅ COMPLETED
+- [x] M2 — Delete `aud_web_audio.ts.orig` ✅ COMPLETED
+- [x] M3 — Delete `package-lock.json`, keep only `pnpm-lock.yaml` ✅ COMPLETED
+- [x] M4 — Add `ENCRYPTION_KEY` to `.env.example` ✅ COMPLETED
+- [x] M5 — Fix misleading `DISCORD_WEBHOOK_URL` in `.env.example` ✅ COMPLETED
+- [x] M6 — Replace `(req as any)` and `(storage as any)` with proper TypeScript types ✅ COMPLETED
+- [x] M7 — Merge `ProtectedShell` and `ProtectedFullscreen` into one `Protected` component ✅ COMPLETED
+- [x] M8 — Apply 50MB body limit only to routes that need it, not globally ✅ COMPLETED
 
 ### 🟢 Minor
-- [ ] N1 — Remove `(table: any)` annotations in Drizzle table index callbacks
-- [ ] N2 — Change `volume` column from text to integer (milliunits)
-- [ ] N3 — Add `.Jules/` to `.gitignore` and remove from repo
-- [ ] N4 — Audit and trim `client/src/index.css` (34KB)
-- [ ] N5 — Add missing index on `cli_feedback.sceneId`
+- [x] N1 — Remove `(table: any)` annotations in Drizzle table index callbacks ✅ COMPLETED
+- [x] N2 — Change `volume` column from text to integer (milliunits) ✅ COMPLETED
+- [x] N3 — Add `.Jules/` to `.gitignore` and remove from repo ✅ COMPLETED
+- [x] N4 — Audit and trim `client/src/index.css` (34KB) ✅ COMPLETED
+- [x] N5 — Add missing index on `cli_feedback.sceneId` ✅ COMPLETED
 
 ---
 
