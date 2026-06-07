@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { initials } from "@/lib/utils-cel";
 import { cn } from "@/lib/utils";
+import { LiquidGlass } from "@/components/ui/liquid-glass";
 import type { Project } from "@shared/schema";
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -55,7 +56,12 @@ export function AppShell({ children }: { children: ReactNode }) {
       />
 
       {/* Mobile top bar */}
-      <div className="md:hidden fixed top-0 left-0 right-0 z-40 h-14 glass flex items-center justify-between px-4">
+      <LiquidGlass
+        className="md:hidden fixed top-0 left-0 right-0 z-40 h-14 flex items-center justify-between px-4 border-b border-border/60"
+        displacement={4}
+        borderRadius={0}
+        refract
+      >
         <div className="flex items-center gap-2 text-primary">
           <CelLogo size={22} />
           <span className="font-display text-lg font-bold tracking-tight text-foreground">Cel</span>
@@ -68,7 +74,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         >
           {mobileOpen ? <X size={18} /> : <Menu size={18} />}
         </Button>
-      </div>
+      </LiquidGlass>
 
       {mobileOpen && (
         <button
@@ -83,8 +89,9 @@ export function AppShell({ children }: { children: ReactNode }) {
       <aside
         className={`${
           mobileOpen ? "block" : "hidden"
-        } md:block fixed md:relative left-0 top-14 md:top-0 bottom-0 md:inset-auto z-30 h-[calc(100vh-3.5rem)] md:h-screen w-[min(22rem,calc(100vw-2rem))] md:w-[82px] xl:w-[240px] flex-shrink-0 glass border-r border-sidebar-border`}
+        } md:block fixed md:relative left-0 top-14 md:top-0 bottom-0 md:inset-auto z-30 h-[calc(100vh-3.5rem)] md:h-screen w-[min(22rem,calc(100vw-2rem))] md:w-[82px] xl:w-[240px] flex-shrink-0 glass border-r border-sidebar-border backdrop-blur-xl`}
         data-testid="sidebar-main"
+        data-liquid-gl="true"
         style={{ borderRadius: 0 }}
       >
         <div className="flex h-full min-h-0 flex-col">
@@ -96,9 +103,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           <nav className="min-h-0 flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
             <Link href="/dashboard">
               <div
-                className={`sidebar-nav-item flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer transition-all duration-150 hover:bg-white/40 dark:hover:bg-white/5 md:justify-center xl:justify-start ${
+                className={`sidebar-nav-item flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm cursor-pointer md:justify-center xl:justify-start min-h-[44px] md:min-h-0 ${
                   location === "/dashboard" || location === "/"
-                    ? "bg-white/50 dark:bg-white/8 shadow-sm font-medium active"
+                    ? "active font-medium"
                     : ""
                 }`}
                 onClick={() => setMobileOpen(false)}
@@ -113,10 +120,8 @@ export function AppShell({ children }: { children: ReactNode }) {
             {user && (
               <Link href="/commissions">
                 <div
-                className={`sidebar-nav-item flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer transition-all duration-150 hover:bg-white/40 dark:hover:bg-white/5 md:justify-center xl:justify-start ${
-                  location === "/commissions"
-                    ? "bg-white/50 dark:bg-white/8 shadow-sm font-medium active"
-                    : ""
+                className={`sidebar-nav-item flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm cursor-pointer md:justify-center xl:justify-start min-h-[44px] md:min-h-0 ${
+                  location === "/commissions" ? "active font-medium" : ""
                 }`}
                 onClick={() => setMobileOpen(false)}
                   data-testid="link-commissions"
@@ -131,10 +136,8 @@ export function AppShell({ children }: { children: ReactNode }) {
             {user && (
               <Link href="/business">
                 <div
-                  className={`sidebar-nav-item flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer transition-all duration-150 hover:bg-white/40 dark:hover:bg-white/5 md:justify-center xl:justify-start ${
-                    location === "/business"
-                      ? "bg-white/50 dark:bg-white/8 shadow-sm font-medium active"
-                      : ""
+                  className={`sidebar-nav-item flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm cursor-pointer md:justify-center xl:justify-start min-h-[44px] md:min-h-0 ${
+                    location === "/business" ? "active font-medium" : ""
                   }`}
                   onClick={() => setMobileOpen(false)}
                   data-testid="link-business"
@@ -152,10 +155,8 @@ export function AppShell({ children }: { children: ReactNode }) {
             
             <Link href="/challenges">
               <div
-                className={`sidebar-nav-item flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer transition-all duration-150 hover:bg-white/40 dark:hover:bg-white/5 md:justify-center xl:justify-start ${
-                  location === "/challenges"
-                    ? "bg-white/50 dark:bg-white/8 shadow-sm font-medium active"
-                    : ""
+                className={`sidebar-nav-item flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm cursor-pointer md:justify-center xl:justify-start min-h-[44px] md:min-h-0 ${
+                  location === "/challenges" ? "active font-medium" : ""
                 }`}
                 onClick={() => setMobileOpen(false)}
                 data-testid="link-challenges"
@@ -177,10 +178,8 @@ export function AppShell({ children }: { children: ReactNode }) {
             {projects?.map((p) => (
               <Link key={p.id} href={`/projects/${p.id}`}>
                 <div
-                  className={`sidebar-nav-item flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer transition-all duration-150 hover:bg-white/40 dark:hover:bg-white/5 md:justify-center xl:justify-start ${
-                    projectId === String(p.id)
-                      ? "bg-white/50 dark:bg-white/8 shadow-sm font-medium active"
-                      : ""
+                  className={`sidebar-nav-item flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm cursor-pointer md:justify-center xl:justify-start min-h-[44px] md:min-h-0 ${
+                    projectId === String(p.id) ? "active font-medium" : ""
                   }`}
                   onClick={() => setMobileOpen(false)}
                   data-testid={`link-project-${p.id}`}
@@ -202,10 +201,16 @@ export function AppShell({ children }: { children: ReactNode }) {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button
-                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl glass-pill transition-all duration-150 hover:shadow-md text-left md:justify-center xl:justify-start"
+                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl transition-all duration-150 hover:shadow-md text-left md:justify-center xl:justify-start"
                     data-testid="button-user-menu"
                   >
-                    <Avatar className="h-7 w-7 flex-shrink-0">
+                    <LiquidGlass
+                      className="absolute inset-0 rounded-[inherit]"
+                      displacement={3}
+                      borderRadius={12}
+                      refract
+                    />
+                    <Avatar className="h-7 w-7 flex-shrink-0 relative z-[2]">
                       <AvatarFallback
                         style={{ backgroundColor: user.avatarColor, color: "white" }}
                         className="text-xs font-semibold"
@@ -213,7 +218,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                         {initials(user.name)}
                       </AvatarFallback>
                     </Avatar>
-                    <div className="hidden xl:block flex-1 min-w-0">
+                    <div className="hidden xl:block flex-1 min-w-0 relative z-[2]">
                       <div className="text-sm font-medium truncate">{user.name}</div>
                       <div className="text-xs text-muted-foreground truncate">{user.email}</div>
                     </div>
