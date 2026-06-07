@@ -105,8 +105,8 @@ export const LiquidGlass = React.forwardRef<HTMLDivElement, LiquidGlassProps>(
         className={cn(
           "relative overflow-hidden",
           // Always apply the enhanced CSS glass base
-          "bg-surface-1/80 backdrop-blur-2xl backdrop-saturate-[170%]",
-          "border border-white/20 dark:border-white/10",
+          "bg-surface-1/80 dark:bg-white/10 backdrop-blur-2xl backdrop-saturate-[170%]",
+          "border border-white/20 dark:border-white/20",
           "shadow-[var(--shadow-soft)]",
           className
         )}
@@ -221,8 +221,8 @@ export const GlassSurface = React.forwardRef<
     ref={ref}
     className={cn(
       "relative overflow-hidden",
-      "bg-[var(--surface-1)] backdrop-blur-2xl backdrop-saturate-[170%]",
-      "border border-[var(--card-border)]",
+      "bg-[var(--surface-1)] dark:bg-white/10 backdrop-blur-2xl backdrop-saturate-[170%]",
+      "border border-[var(--card-border)] dark:border-white/20",
       "shadow-[var(--shadow-soft)]",
       className
     )}

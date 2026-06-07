@@ -341,8 +341,16 @@
     overflow: hidden;
   }
 
+  .dark .glass {
+    background: rgba(255, 255, 255, 0.10);
+    border-color: rgba(255, 255, 255, 0.14);
+    box-shadow: var(--shadow-soft), inset 0 1px 0 rgba(255,255,255,0.06);
+  }
+
   .dark .glass-strong {
-    background: rgba(28, 28, 30, 0.72);
+    background: rgba(48, 48, 52, 0.82);
+    border-color: rgba(255, 255, 255, 0.18);
+    box-shadow: var(--shadow-soft), inset 0 1px 0 rgba(255,255,255,0.08);
   }
 
   /* Panel — slightly more opaque card */
