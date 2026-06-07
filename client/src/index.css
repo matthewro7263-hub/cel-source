@@ -320,7 +320,7 @@
 /* ============================================================ */
 
 @layer components {
-  /* Glass surface — frosted panel (Aave-inspired) */
+  /* Glass surface — frosted panel (enhanced blur/saturation) */
   .glass {
     background: var(--surface-1);
     backdrop-filter: blur(28px) saturate(175%);
@@ -328,41 +328,7 @@
     border: 1px solid var(--card-border, hsl(var(--border)));
     border-radius: 16px;
     box-shadow: var(--shadow-soft);
-    /* Subtle inner caustic glow for liquid feel */
-    position: relative;
     overflow: hidden;
-  }
-
-  .glass::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    pointer-events: none;
-    background: var(--neu-glass-caustic);
-    opacity: 0.35;
-    filter: blur(4px);
-    z-index: 0;
-  }
-
-  /* Rim light: subtle gradient border glow */
-  .glass::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    pointer-events: none;
-    padding: 1px;
-    background: linear-gradient(160deg, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0.08) 40%, rgba(255,255,255,0.02) 100%);
-    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-    -webkit-mask-composite: xor;
-    mask-composite: exclude;
-    z-index: 0;
-  }
-
-  .dark .glass::after {
-    background: linear-gradient(160deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.04) 40%, rgba(255,255,255,0.01) 100%);
   }
 
   .glass-strong {
@@ -372,43 +338,11 @@
     border: 1px solid var(--card-border, hsl(var(--border)));
     border-radius: 20px;
     box-shadow: var(--shadow-soft);
-    position: relative;
     overflow: hidden;
-  }
-
-  .glass-strong::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    pointer-events: none;
-    background: var(--neu-glass-caustic);
-    opacity: 0.42;
-    filter: blur(6px);
-    z-index: 0;
-  }
-
-  .glass-strong::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    pointer-events: none;
-    padding: 1px;
-    background: linear-gradient(160deg, rgba(255,255,255,0.65) 0%, rgba(255,255,255,0.12) 40%, rgba(255,255,255,0.02) 100%);
-    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-    -webkit-mask-composite: xor;
-    mask-composite: exclude;
-    z-index: 0;
   }
 
   .dark .glass-strong {
     background: rgba(28, 28, 30, 0.72);
-  }
-
-  .dark .glass-strong::after {
-    background: linear-gradient(160deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.05) 40%, rgba(255,255,255,0.01) 100%);
   }
 
   /* Panel — slightly more opaque card */

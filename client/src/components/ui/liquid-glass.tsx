@@ -108,9 +108,6 @@ export const LiquidGlass = React.forwardRef<HTMLDivElement, LiquidGlassProps>(
           "bg-surface-1/80 backdrop-blur-2xl backdrop-saturate-[170%]",
           "border border-white/20 dark:border-white/10",
           "shadow-[var(--shadow-soft)]",
-          // Subtle inner rim light
-          "before:pointer-events-none before:absolute before:inset-0 before:rounded-[inherit]",
-          "before:bg-gradient-to-br before:from-white/30 before:via-transparent before:to-transparent before:dark:from-white/10",
           className
         )}
         style={{
@@ -227,15 +224,6 @@ export const GlassSurface = React.forwardRef<
       "bg-[var(--surface-1)] backdrop-blur-2xl backdrop-saturate-[170%]",
       "border border-[var(--card-border)]",
       "shadow-[var(--shadow-soft)]",
-      // Caustic inner glow
-      "before:pointer-events-none before:absolute before:inset-0 before:rounded-[inherit]",
-      "before:bg-[var(--neu-glass-caustic)] before:opacity-40 before:blur-[2px]",
-      // Rim light gradient border
-      "after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit]",
-      "after:p-[1px] after:bg-gradient-to-br after:from-white/50 after:via-transparent after:to-white/10",
-      "dark:after:from-white/20 dark:after:to-transparent",
-      "after:mask-composite-exclude after:[mask:linear-gradient(#fff_0_0)_content-box,linear-gradient(#fff_0_0)]",
-      "after:-webkit-mask-composite-xor",
       className
     )}
     {...props}
