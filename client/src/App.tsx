@@ -95,7 +95,7 @@ function useLiquidGL() {
           refraction: 0.006,
           bevelDepth: 0.045,
           bevelWidth: 0.1,
-          frost: 0.02,
+          frost: 0.05,
           shadow: false,
           specular: true,
           reveal: "fade",
@@ -136,6 +136,16 @@ function Protected({ children, fullscreen = false }: { children: React.ReactNode
   }
   if (!user) return <Redirect to="/login" />;
   return fullscreen ? <>{children}</> : <AppShell>{children}</AppShell>;
+}
+
+function MarketingSection({ sectionId }: { sectionId: string }) {
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 80);
+    return () => window.clearTimeout(timer);
+  }, [sectionId]);
+  return <Landing />;
 }
 
 function ProtectedShell({ children }: { children: React.ReactNode }) {
@@ -179,6 +189,8 @@ function AppRouter() {
     <>
       <Switch>
         <Route path="/" component={Landing} />
+        <Route path="/artists">{() => <MarketingSection sectionId="artists" />}</Route>
+        <Route path="/animators">{() => <MarketingSection sectionId="animators" />}</Route>
         <Route path="/login" component={Login} />
         <Route path="/signup" component={Signup} />
         <Route path="/share/:token" component={Share} />

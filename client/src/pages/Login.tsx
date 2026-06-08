@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { CelLogo } from "@/components/CelLogo";
 import { MetalGlassButton } from "@/components/ui/metal-glass-button";
+import { LiquidGlassCard } from "@/components/ui/liquid-glass";
 import { Eye, EyeOff } from "lucide-react";
 
 export default function Login() {
@@ -51,9 +52,15 @@ export default function Login() {
           The production hub for animators.
         </p>
 
+        <LiquidGlassCard
+          refract
+          displacement={3}
+          borderRadius={16}
+          className="rounded-2xl p-7 space-y-5"
+        >
         <form
           onSubmit={(e) => { e.preventDefault(); m.mutate(); }}
-          className="glass rounded-2xl p-7 space-y-5"
+          className="space-y-5"
         >
           <div className="space-y-1.5">
             <Label htmlFor="email" className="text-sm font-medium">Email</Label>
@@ -103,13 +110,14 @@ export default function Login() {
           >
             {m.isPending ? "Signing in…" : "Sign in"}
           </MetalGlassButton>
+        </form>
           <p className="text-xs text-muted-foreground text-center pt-1">
             New here?{" "}
             <Link href="/signup" className="text-primary font-medium hover:underline" data-testid="link-signup">
               Create an account
             </Link>
           </p>
-        </form>
+        </LiquidGlassCard>
 
         <p className="text-[11px] text-muted-foreground text-center mt-5 font-mono">
           Demo: matthew@cel.app / celdemo

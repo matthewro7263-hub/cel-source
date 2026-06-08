@@ -42,7 +42,7 @@ export default function Landing() {
       <div className="fixed inset-0 z-0 landing-bg landing-dot-grid pointer-events-none" />
 
       {/* Top nav */}
-      <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-[20px] bg-white/40 dark:bg-black/30 border-b border-white/40 dark:border-white/10 shadow-sm">
+      <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-xl bg-white/55 dark:bg-black/25 border-b border-black/[0.06] dark:border-white/10" data-liquid-gl="true">
         <div className="flex justify-between items-center px-6 py-4 max-w-[1440px] mx-auto">
           <Link href="/" className="flex items-center gap-2 group">
             <CelLogo size={24} className="text-sky-600" />
@@ -50,10 +50,10 @@ export default function Landing() {
           </Link>
 
           <div className="hidden md:flex items-center gap-8 text-sm">
-            <a href="#artists" className="hover:text-sky-600 transition-colors">Artists</a>
-            <a href="#animators" className="hover:text-sky-600 transition-colors">Animators</a>
-            <a href="#commissions" className="hover:text-sky-600 transition-colors">Commissions</a>
-            <a href="#tinkerers" className="hover:text-sky-600 transition-colors">Pipeline</a>
+            <a href="#artists" className="text-muted-foreground hover:text-foreground transition-colors">Artists</a>
+            <a href="#animators" className="text-muted-foreground hover:text-foreground transition-colors">Animators</a>
+            <a href="#commissions" className="text-muted-foreground hover:text-foreground transition-colors">Commissions</a>
+            <a href="#tinkerers" className="text-muted-foreground hover:text-foreground transition-colors">Pipeline</a>
           </div>
 
           <Link
