@@ -122,7 +122,7 @@ export const GlassButton = forwardRef<HTMLButtonElement, GlassButtonProps>(
       >
         {showOptics && (
           <>
-            {resolvedVariant === "toolbar" && (
+            {resolvedVariant === "primary" && (
               <>
                 <span
                   aria-hidden="true"
