@@ -56,12 +56,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       />
 
       {/* Mobile top bar */}
-      <LiquidGlass
-        className="md:hidden fixed top-0 left-0 right-0 z-40 h-14 flex items-center justify-between px-4 border-b border-border/60"
-        displacement={4}
-        borderRadius={0}
-        refract
-      >
+      <header className="md:hidden fixed top-0 left-0 right-0 z-40 h-14 flex items-center justify-between px-4 border-b border-border/60 glass">
         <div className="flex items-center gap-2 text-primary">
           <CelLogo size={22} />
           <span className="font-display text-lg font-bold tracking-tight text-foreground">Cel</span>
@@ -74,7 +69,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         >
           {mobileOpen ? <X size={18} /> : <Menu size={18} />}
         </Button>
-      </LiquidGlass>
+      </header>
 
       {mobileOpen && (
         <button
@@ -205,7 +200,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                     data-testid="button-user-menu"
                   >
                     <LiquidGlass
-                      className="absolute inset-0 rounded-[inherit]"
+                      className="absolute inset-0 rounded-[inherit] pointer-events-none"
                       displacement={3}
                       borderRadius={12}
                       refract

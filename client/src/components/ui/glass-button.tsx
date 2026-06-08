@@ -43,16 +43,14 @@ const glassButtonVariants = cva(
         primary: [
           "text-foreground tracking-wide",
           "bg-[var(--neu-glass-bg)]",
-          "backdrop-blur-[26px] backdrop-saturate-[175%]",
+          "backdrop-blur-[24px] backdrop-saturate-[165%]",
           "border border-[var(--neu-glass-border)]",
-          "shadow-[var(--neu-shadow-caustic-raised)]",
+          "shadow-[var(--shadow-soft)]",
           "hover:bg-[var(--neu-glass-bg-hover)]",
           "hover:border-[var(--neu-glass-border-hover)]",
           "hover:shadow-[var(--neu-shadow-raised-hover)]",
-          "hover:translate-y-[-0.5px]",
           "active:bg-[var(--neu-glass-bg-active)]",
           "active:shadow-[var(--neu-shadow-pressed)]",
-          "active:translate-y-0",
         ],
         /**
          * Ghost — transparent until hover, then frosted glass appears
@@ -105,12 +103,10 @@ export const GlassButton = forwardRef<HTMLButtonElement, GlassButtonProps>(
     const materialStyle = showOptics
       ? {
           background:
-            resolvedVariant === "primary"
-              ? "var(--neu-glass-material), var(--neu-glass-bg)"
-              : resolvedVariant === "ghost"
-                ? "transparent"
-                : "var(--neu-glass-bg)",
-          boxShadow: resolvedVariant === "ghost" ? undefined : "var(--neu-shadow-caustic-raised)",
+            resolvedVariant === "ghost"
+              ? "transparent"
+              : "var(--neu-glass-bg)",
+          boxShadow: resolvedVariant === "ghost" ? undefined : "var(--shadow-soft)",
         }
       : undefined;
 
@@ -126,31 +122,24 @@ export const GlassButton = forwardRef<HTMLButtonElement, GlassButtonProps>(
       >
         {showOptics && (
           <>
-            <span
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-0 z-0 rounded-[inherit] opacity-95"
-              style={{
-                background: resolvedVariant === "primary" ? "var(--neu-glass-material), var(--neu-glass-bg)" : "var(--neu-glass-bg)",
-              }}
-            />
-            <span
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-0 z-0 rounded-[inherit] opacity-60 blur-[8px] transition-opacity duration-200"
-              style={{
-                background: "var(--neu-glass-caustic)",
-                transform: resolvedSize === "round" ? "scale(0.72)" : "scale(0.82)",
-              }}
-            />
-            <span
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-0 z-0 rounded-[inherit] border border-transparent opacity-75 transition-opacity duration-200"
-              style={{
-                backgroundImage: "linear-gradient(var(--neu-glass-rim), var(--neu-glass-rim)), var(--neu-glass-refraction)",
-                backgroundOrigin: "border-box",
-                backgroundClip: "padding-box, border-box",
-                boxShadow: "inset 0 1px 0 rgba(255,255,255,0.86), inset 0 -1px 1px rgba(84,94,118,0.08)",
-              }}
-            />
+            {resolvedVariant === "toolbar" && (
+              <>
+                <span
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-0 z-0 rounded-[inherit] opacity-50 blur-[6px]"
+                  style={{ background: "var(--neu-glass-caustic)" }}
+                />
+                <span
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-0 z-0 rounded-[inherit] border border-transparent opacity-40"
+                  style={{
+                    backgroundImage: "linear-gradient(var(--neu-glass-rim), var(--neu-glass-rim)), var(--neu-glass-refraction)",
+                    backgroundOrigin: "border-box",
+                    backgroundClip: "padding-box, border-box",
+                  }}
+                />
+              </>
+            )}
           </>
         )}
         <span className="relative z-[2] inline-flex items-center gap-2">

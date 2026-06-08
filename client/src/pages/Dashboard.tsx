@@ -144,18 +144,17 @@ export default function Dashboard() {
     return panel.imageData || (panel.r2Key ? `/api/uploads/file?key=${encodeURIComponent(panel.r2Key)}` : "");
   };
 
-  const getStatusColorClass = (status: string) => {
+  const getStatusChipClass = (status: string) => {
     switch (status.toLowerCase()) {
       case "storyboard":
-        return "border-[#9DD0FF]/35 bg-[#9DD0FF]/10 text-[#9DD0FF]";
       case "animatic":
-        return "border-[#C4B5FD]/35 bg-[#C4B5FD]/10 text-[#C4B5FD]";
+        return "chip-lilac";
       case "review":
-        return "border-[#FFD9A8]/35 bg-[#FFD9A8]/10 text-[#FFD9A8]";
+        return "chip-rose";
       case "done":
-        return "border-emerald-600/35 bg-emerald-600/10 text-emerald-400";
+        return "chip-sage";
       default:
-        return "border-neutral-700 bg-neutral-800/50 text-neutral-400";
+        return "chip";
     }
   };
 
@@ -196,7 +195,7 @@ export default function Dashboard() {
                 <Plus size={14} className="mr-1" /> New Project
               </Button>
             </DialogTrigger>
-            <DialogContent className="border border-[#282822] bg-[#151511] text-[#e8ebf5] rounded-[4px] max-w-md p-6">
+            <DialogContent className="max-w-md">
               <DialogHeader>
                 <DialogTitle className="font-mono text-sm uppercase tracking-wider text-[#e8ebf5]">Create new project</DialogTitle>
               </DialogHeader>
@@ -284,10 +283,10 @@ export default function Dashboard() {
         <div className="grid gap-6 xl:grid-cols-[1fr_360px]">
           <div className="space-y-4">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="h-28 bg-[#151511] border border-[#282822] rounded-[4px] animate-pulse" />
+              <div key={i} className="h-28 glass rounded-2xl animate-pulse" />
             ))}
           </div>
-          <div className="h-96 bg-[#151511] border border-[#282822] rounded-[4px] animate-pulse" />
+          <div className="h-96 glass rounded-2xl animate-pulse" />
         </div>
       ) : !queueData || queueData.queueItems.length === 0 ? (
         <EmptyState onNew={() => setOpen(true)} />
@@ -313,7 +312,7 @@ export default function Dashboard() {
                 return (
                   <div
                     key={item.project.id}
-                    className="border border-[#282822] bg-[#151511] p-4 rounded-[4px] flex flex-col lg:flex-row lg:items-center justify-between gap-4 transition-all hover:border-[#383832]"
+                    className="glass p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4 transition-all hover:shadow-[var(--neu-shadow-raised-hover)]"
                   >
                     {/* Project & Scene details */}
                     <div className="flex-1 min-w-0 flex items-start gap-3">
@@ -336,7 +335,7 @@ export default function Dashboard() {
                                <span className="text-[#e8ebf5] font-semibold">
                                  Scene <span className="font-mono">{item.currentScene.number}</span> - {item.currentScene.title}
                                </span>
-                              <span className={`border px-1.5 py-0.5 rounded-[2px] font-mono text-[10px] uppercase font-bold tracking-wider ${getStatusColorClass(item.currentScene.status)}`}>
+                              <span className={`${getStatusChipClass(item.currentScene.status)} font-mono text-[10px] uppercase tracking-wider`}>
                                 {item.currentScene.status}
                               </span>
                             </>
@@ -420,7 +419,7 @@ export default function Dashboard() {
               Recent Activity
             </h2>
 
-            <div className="border border-[#282822] bg-[#151511] p-4 rounded-[4px] space-y-4 min-h-[300px]">
+            <div className="glass p-4 space-y-4 min-h-[300px]">
               {queueData.recentActivity.length === 0 ? (
                 <div className="text-center py-12 text-sm text-[#8b8b84] italic font-mono">
                   No recent activity logged
@@ -494,7 +493,7 @@ function timeAgo(dateString: string): string {
 
 function EmptyState({ onNew }: { onNew: () => void }) {
   return (
-    <div className="border border-[#282822] bg-[#151511] py-20 px-6 flex flex-col items-center text-center rounded-[4px]">
+    <div className="glass py-20 px-6 flex flex-col items-center text-center">
       <div className="mb-6">
         <svg width="120" height="120" viewBox="0 0 160 160" className="opacity-70">
           <rect x="20" y="30" width="120" height="100" rx="4" fill="none" stroke="#3E63DD" strokeWidth="1.5" opacity="0.5" />

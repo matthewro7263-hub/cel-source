@@ -341,8 +341,16 @@
     overflow: hidden;
   }
 
+  .dark .glass {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.18);
+    box-shadow: var(--shadow-soft), inset 0 1px 0 rgba(255,255,255,0.08), 0 0 24px rgba(255,255,255,0.03);
+  }
+
   .dark .glass-strong {
-    background: rgba(28, 28, 30, 0.72);
+    background: rgba(48, 48, 52, 0.82);
+    border-color: rgba(255, 255, 255, 0.22);
+    box-shadow: var(--shadow-soft), inset 0 1px 0 rgba(255,255,255,0.10), 0 0 32px rgba(255,255,255,0.04);
   }
 
   /* Panel — slightly more opaque card */
@@ -965,11 +973,12 @@
 }
 
 .dark .landing-panel {
-  background-color: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background-color: rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   box-shadow:
-    inset 1px 1px 0 rgba(255, 255, 255, 0.05),
-    0 8px 32px -8px rgba(0, 0, 0, 0.5);
+    inset 1px 1px 0 rgba(255, 255, 255, 0.08),
+    0 8px 32px -8px rgba(0, 0, 0, 0.5),
+    0 0 24px rgba(255,255,255,0.03);
 }
 
 .landing-chip {
@@ -980,8 +989,8 @@
 }
 
 .dark .landing-chip {
-  background-color: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background-color: rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   color: #9dd0ff;
 }
 
@@ -992,8 +1001,8 @@
 }
 
 .dark .landing-pill {
-  background-color: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background-color: rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(255, 255, 255, 0.14);
 }
 
 .landing-mini-feature {
@@ -1009,12 +1018,12 @@
 }
 
 .dark .landing-mini-feature {
-  background-color: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.07);
+  background-color: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
 }
 
 .dark .landing-mini-feature:hover {
-  background-color: rgba(255, 255, 255, 0.08);
+  background-color: rgba(255, 255, 255, 0.12);
 }
 
 /* Canonical sky button with halo — liquid glass neumorphic */

@@ -119,7 +119,7 @@ function renderProjectSection(
       <div className="space-y-6">
         <OverviewTab project={project} members={members} onOpenSection={(section) => { window.location.hash = `/projects/${projectId}/${section}`; }} />
         <ProjectQuickActions projectId={projectId} />
-        <div className="rounded-2xl border border-border/70 bg-background/84 p-5 shadow-[0_18px_45px_rgba(15,23,42,0.05)] backdrop-blur-[12px]">
+        <div className="glass p-5">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
               <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Project assistant</div>
@@ -183,7 +183,7 @@ function OverviewTab({
       <Stat title="Progress" value={`${pct}%`} sub={`${done} of ${total} scenes done`} />
       <Stat title="Team" value={String(members.length)} sub="collaborators" />
 
-      <div className="md:col-span-3 rounded-2xl border border-border/70 bg-background/84 p-5 shadow-[0_18px_45px_rgba(15,23,42,0.05)] backdrop-blur-[12px]">
+      <div className="md:col-span-3 glass p-5">
         <div className="mb-4 flex items-center justify-between gap-3">
           <div>
             <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Workspace areas</div>
@@ -951,7 +951,7 @@ function StoryboardInspector({
   const panelImageUrl = panel.imageData || (panel.r2Key ? `/api/uploads/file?key=${encodeURIComponent(panel.r2Key)}` : "");
 
   return (
-    <div className="w-[320px] shrink-0 border border-border bg-background/50 backdrop-blur rounded-lg p-4 space-y-4 flex flex-col h-[calc(100vh-200px)] overflow-y-auto sticky top-4">
+    <div className="w-[320px] shrink-0 glass-strong rounded-2xl p-4 space-y-4 flex flex-col h-[calc(100vh-200px)] overflow-y-auto sticky top-4">
       <div className="flex items-center justify-between">
         <h4 className="font-semibold text-sm">
           Panel #<span className="font-mono">{String(index + 1).padStart(2, "0")}</span>

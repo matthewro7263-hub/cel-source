@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { CelLogo } from "@/components/CelLogo";
 import { GlassButton } from "@/components/ui/glass-button";
+import { LiquidGlassCard } from "@/components/ui/liquid-glass";
 
 export default function Signup() {
   const [, setLocation] = useLocation();
@@ -50,9 +51,15 @@ export default function Signup() {
           Free for solo animators and small teams.
         </p>
 
+        <LiquidGlassCard
+          refract
+          displacement={3}
+          borderRadius={16}
+          className="rounded-2xl p-7 space-y-5"
+        >
         <form
           onSubmit={(e) => { e.preventDefault(); m.mutate(); }}
-          className="glass rounded-2xl p-7 space-y-5"
+          className="space-y-5"
         >
           <div className="space-y-1.5">
             <Label htmlFor="name" className="text-sm font-medium">Your name</Label>
@@ -77,13 +84,14 @@ export default function Signup() {
           >
             {m.isPending ? "Creating…" : "Create account"}
           </GlassButton>
+        </form>
           <p className="text-xs text-muted-foreground text-center pt-1">
             Have an account?{" "}
             <Link href="/login" className="text-primary font-medium hover:underline" data-testid="link-login">
               Sign in
             </Link>
           </p>
-        </form>
+        </LiquidGlassCard>
       </div>
     </div>
   );

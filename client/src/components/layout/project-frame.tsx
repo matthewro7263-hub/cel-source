@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
 import { Link } from "wouter";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
 import { GlassButton } from "@/components/ui/glass-button";
+import { GlassSurface, LiquidGlassCard } from "@/components/ui/liquid-glass";
 import { Calendar, Columns2, Film, MessageSquare, Mic, Presentation, Radio, Scroll, Settings, SunMedium } from "lucide-react";
 import { formatDeadline, initials } from "@/lib/utils-cel";
 import type { Project } from "@shared/schema";
@@ -108,7 +108,7 @@ export function ProjectFrame({ project, members, activeSection, children }: Proj
             </div>
           </div>
 
-          <div className="min-w-0 rounded-2xl border border-border/70 bg-background/82 p-4 shadow-[0_18px_45px_rgba(15,23,42,0.05)] backdrop-blur-[12px] xl:w-[360px]">
+          <GlassSurface className="min-w-0 p-4 xl:w-[360px]">
             <div className="mb-3 flex items-center justify-between gap-3">
               <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Project tools</div>
               <div className="flex -space-x-1.5">
@@ -130,19 +130,22 @@ export function ProjectFrame({ project, members, activeSection, children }: Proj
               <ProjectToolButton href={`/projects/${project.id}/light-lab`} icon={<SunMedium size={14} />} label="Light Lab" />
               <ProjectToolButton href={`/projects/${project.id}/voicebooth`} icon={<Mic size={14} />} label="Voice Booth" />
             </div>
-          </div>
+          </GlassSurface>
         </header>
 
-        <section className="rounded-2xl border border-border/70 bg-background/84 p-4 shadow-[0_18px_45px_rgba(15,23,42,0.05)] backdrop-blur-[12px]">
-          <div className="flex flex-wrap gap-2">
+        <GlassSurface className="p-3">
+          <div className="cel-segmented flex-wrap">
             {GROUPS.map((group) => {
               const active = group.id === activeGroup.id;
               return (
-                <Button key={group.id} asChild variant={active ? "default" : "outline"} size="sm" className="h-9">
-                  <Link href={group.href(project.id)}>
-                    {group.label}
-                  </Link>
-                </Button>
+                <Link
+                  key={group.id}
+                  href={group.href(project.id)}
+                  className={`cel-segmented-item ${active ? "active" : ""}`}
+                  data-active={active ? "true" : undefined}
+                >
+                  {group.label}
+                </Link>
               );
             })}
           </div>
@@ -150,15 +153,18 @@ export function ProjectFrame({ project, members, activeSection, children }: Proj
             {activeGroup.sections.map((section) => {
               const active = section.id === activeSection;
               return (
-                <Button key={section.id} asChild variant={active ? "secondary" : "ghost"} size="sm" className="h-8 text-xs">
-                  <Link href={section.href(project.id)}>
-                    {section.label}
-                  </Link>
-                </Button>
+                <Link
+                  key={section.id}
+                  href={section.href(project.id)}
+                  className={`cel-segmented-item text-xs ${active ? "active" : ""}`}
+                  data-active={active ? "true" : undefined}
+                >
+                  {section.label}
+                </Link>
               );
             })}
           </div>
-        </section>
+        </GlassSurface>
 
         {children}
       </div>
@@ -185,7 +191,12 @@ function ProjectToolButton({ href, icon, label }: { href: string; icon: ReactNod
 
 export function ProjectQuickActions({ projectId }: { projectId: number }) {
   return (
-    <div className="rounded-2xl border border-border/70 bg-background/84 p-5 shadow-[0_18px_45px_rgba(15,23,42,0.05)] backdrop-blur-[12px]">
+    <LiquidGlassCard
+      refract
+      displacement={3}
+      borderRadius={16}
+      className="p-5"
+    >
       <div className="mb-4 flex items-center gap-2">
         <MessageSquare size={15} className="text-primary" />
         <h2 className="font-display text-base font-semibold">Quick actions</h2>
@@ -196,6 +207,6 @@ export function ProjectQuickActions({ projectId }: { projectId: number }) {
         <ProjectToolButton href={`/projects/${projectId}/credits`} icon={<Scroll size={14} />} label="Credits" />
         <ProjectToolButton href={`/projects/${projectId}/settings`} icon={<Settings size={14} />} label="Settings" />
       </div>
-    </div>
+    </LiquidGlassCard>
   );
 }
