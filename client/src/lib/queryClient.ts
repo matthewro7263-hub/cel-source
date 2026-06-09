@@ -62,24 +62,54 @@ export async function apiRequest(
   return res;
 }
 
+function formatApiError(status: number, text: string): string {
+  if (status === 401) return "Session expired — please log in again.";
+  if (status === 413) return "File too large — try a smaller upload.";
+  return `${status}: ${text}`;
+}
+
+/** Build an API URL from a React Query key (e.g. ["/api/projects", 5, "storyboards"]). */
+export function buildQueryUrl(queryKey: readonly unknown[]): string {
+  if (queryKey.length === 0) return "";
+  if (queryKey.length === 1 && typeof queryKey[0] === "string") {
+    const path = queryKey[0];
+    return path.startsWith("/") ? path : `/${path}`;
+  }
+
+  let url = "";
+  for (let i = 0; i < queryKey.length; i++) {
+    const part = queryKey[i];
+    if (part === null || part === undefined) continue;
+    if (typeof part === "object") continue;
+
+    const segment = String(part);
+    if (i === 0) {
+      url = segment.startsWith("/") ? segment : `/${segment}`;
+    } else {
+      url += segment.startsWith("/") ? segment : `/${segment}`;
+    }
+  }
+  return url;
+}
+
 type UnauthorizedBehavior = "returnNull" | "throw";
 export const getQueryFn: (options: {
   on401: UnauthorizedBehavior;
 }) => QueryFunction =
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
-    const res = await fetch(`${API_BASE}${queryKey[0]}`, {
+    const res = await fetch(`${API_BASE}${buildQueryUrl(queryKey)}`, {
       headers: authHeaders(),
       credentials: "include",
     });
     if (res.status === 401) {
       notifyUnauthorized();
       if (unauthorizedBehavior === "returnNull") return null;
-      throw new Error("Unauthorized");
+      throw new Error(formatApiError(401, "Unauthorized"));
     }
     if (!res.ok) {
       const text = await res.text();
-      throw new Error(`${res.status}: ${text}`);
+      throw new Error(formatApiError(res.status, text));
     }
     return res.json();
   };

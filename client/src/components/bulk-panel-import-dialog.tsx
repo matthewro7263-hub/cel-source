@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getAuthToken } from "@/lib/queryClient";
+import { queryKeys } from "@/lib/queryKeys";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter,
 } from "@/components/ui/dialog";
@@ -33,6 +34,7 @@ interface PendingPanel {
   status: "pending" | "uploading" | "success" | "error";
   progress: number;
   error?: string;
+  r2Key?: string;
 }
 
 export function BulkImportDialog({ storyboardId, projectId, onSuccess }: BulkImportDialogProps) {
@@ -51,7 +53,7 @@ export function BulkImportDialog({ storyboardId, projectId, onSuccess }: BulkImp
 
   // Fetch project scenes for attachment
   const { data: scenes } = useQuery<Scene[]>({
-    queryKey: [`/api/projects/${projectId}/scenes`],
+    queryKey: queryKeys.scenes(projectId),
   });
 
   // Cleanup object URLs on unmount or file reset
@@ -154,87 +156,110 @@ export function BulkImportDialog({ storyboardId, projectId, onSuccess }: BulkImp
     });
   };
 
+  const uploadSingleFile = async (target: PendingPanel): Promise<string> => {
+    setFiles((prev) =>
+      prev.map((f) => (f.id === target.id ? { ...f, status: "uploading", progress: 10, error: undefined } : f))
+    );
+
+    const isHeic = target.filename.toLowerCase().endsWith(".heic") || target.filename.toLowerCase().endsWith(".heif");
+    let r2Key = "";
+
+    if (isHeic) {
+      const formData = new FormData();
+      formData.append("file", target.file);
+      const token = getAuthToken() || "";
+      const response = await fetch("/api/uploads/convert-heic", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      if (!response.ok) throw new Error("HEIC conversion or upload failed");
+      const result = await response.json();
+      r2Key = result.key;
+    } else {
+      const presignRes = await apiRequest("POST", "/api/uploads/presign", {
+        filename: target.filename,
+        contentType: target.file.type || "image/png",
+      });
+      if (!presignRes.ok) throw new Error("Failed to get presigned upload URL");
+      const { url, key, headers } = await presignRes.json();
+      const uploadResponse = await fetch(url, {
+        method: "PUT",
+        headers: headers || {},
+        body: target.file,
+      });
+      if (!uploadResponse.ok) throw new Error("Cloud storage upload failed");
+      r2Key = key;
+    }
+
+    setFiles((prev) =>
+      prev.map((f) => (f.id === target.id ? { ...f, status: "success", progress: 100, r2Key } : f))
+    );
+    return r2Key;
+  };
+
+  const retryFile = async (fileId: string) => {
+    const target = files.find((f) => f.id === fileId);
+    if (!target || uploading) return;
+    setUploading(true);
+    try {
+      await uploadSingleFile(target);
+      toast({ title: "Upload succeeded", description: target.filename });
+    } catch (err: any) {
+      setFiles((prev) =>
+        prev.map((f) => (f.id === fileId ? { ...f, status: "error", error: err.message || "Upload failed" } : f))
+      );
+      toast({ title: "Retry failed", description: String(err.message || err), variant: "destructive" });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const runUploadPool = async (items: PendingPanel[], concurrency: number) => {
+    const queue = [...items];
+    const results: { r2Key: string; caption: string; sceneId: number | null }[] = [];
+    let successCount = 0;
+
+    const workers = Array.from({ length: Math.min(concurrency, queue.length) }, async () => {
+      while (queue.length > 0) {
+        const target = queue.shift();
+        if (!target) break;
+
+        if (target.status === "success" && target.r2Key) {
+          results.push({
+            r2Key: target.r2Key,
+            caption: target.filename,
+            sceneId: selectedSceneId === "none" ? null : parseInt(selectedSceneId, 10),
+          });
+          continue;
+        }
+
+        try {
+          const r2Key = await uploadSingleFile(target);
+          results.push({
+            r2Key,
+            caption: target.filename,
+            sceneId: selectedSceneId === "none" ? null : parseInt(selectedSceneId, 10),
+          });
+          successCount++;
+        } catch (err: any) {
+          console.error(err);
+          setFiles((prev) =>
+            prev.map((f) => (f.id === target.id ? { ...f, status: "error", error: err.message || "Upload failed" } : f))
+          );
+        }
+      }
+    });
+
+    await Promise.all(workers);
+    return { uploadedPanels: results, successCount };
+  };
+
   const handleUpload = async () => {
     if (files.length === 0) return;
     setUploading(true);
 
-    const uploadedPanels: { r2Key: string; caption: string; sceneId: number | null }[] = [];
-    let successCount = 0;
-
-    for (let i = 0; i < files.length; i++) {
-      const target = files[i];
-      if (target.status === "success") {
-        uploadedPanels.push({
-          r2Key: target.previewUrl, // We stash successful key in previewUrl or somewhere else
-          caption: target.filename,
-          sceneId: selectedSceneId === "none" ? null : parseInt(selectedSceneId, 10),
-        });
-        continue;
-      }
-
-      setFiles((prev) =>
-        prev.map((f) => (f.id === target.id ? { ...f, status: "uploading", progress: 10 } : f))
-      );
-
-      try {
-        const isHeic = target.filename.toLowerCase().endsWith(".heic") || target.filename.toLowerCase().endsWith(".heif");
-        let r2Key = "";
-
-        if (isHeic) {
-          // Upload to HEIC server-side conversion endpoint
-          const formData = new FormData();
-          formData.append("file", target.file);
-
-          const token = localStorage.getItem("token") || "";
-          const response = await fetch("/api/uploads/convert-heic", {
-            method: "POST",
-            headers: {
-              "Authorization": `Bearer ${token}`,
-            },
-            body: formData,
-          });
-
-          if (!response.ok) throw new Error("HEIC conversion or upload failed");
-          const result = await response.json();
-          r2Key = result.key;
-        } else {
-          // Get presigned URL and direct upload to R2
-          const presignRes = await apiRequest("POST", "/api/uploads/presign", {
-            filename: target.filename,
-            contentType: target.file.type || "image/png",
-          });
-
-          if (!presignRes.ok) throw new Error("Failed to get presigned upload URL");
-          const { url, key, headers } = await presignRes.json();
-
-          // Direct upload to R2
-          const uploadResponse = await fetch(url, {
-            method: "PUT",
-            headers: headers || {},
-            body: target.file,
-          });
-
-          if (!uploadResponse.ok) throw new Error("Cloud storage upload failed");
-          r2Key = key;
-        }
-
-        setFiles((prev) =>
-          prev.map((f) => (f.id === target.id ? { ...f, status: "success", progress: 100 } : f))
-        );
-
-        uploadedPanels.push({
-          r2Key,
-          caption: target.filename,
-          sceneId: selectedSceneId === "none" ? null : parseInt(selectedSceneId, 10),
-        });
-        successCount++;
-      } catch (err: any) {
-        console.error(err);
-        setFiles((prev) =>
-          prev.map((f) => (f.id === target.id ? { ...f, status: "error", error: err.message || "Upload failed" } : f))
-        );
-      }
-    }
+    const { uploadedPanels, successCount } = await runUploadPool(files, 4);
 
     if (uploadedPanels.length > 0) {
       try {
@@ -248,7 +273,7 @@ export function BulkImportDialog({ storyboardId, projectId, onSuccess }: BulkImp
             title: "Import complete",
             description: `Successfully imported ${successCount} storyboard panels.`,
           });
-          queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId, "storyboards"] });
+          queryClient.invalidateQueries({ queryKey: queryKeys.storyboards(projectId) });
           onSuccess();
           setOpen(false);
           setFiles([]);
@@ -357,6 +382,7 @@ export function BulkImportDialog({ storyboardId, projectId, onSuccess }: BulkImp
                         key={file.id}
                         panel={file}
                         onRemove={() => removeFile(file.id)}
+                        onRetry={() => retryFile(file.id)}
                         disabled={uploading}
                       />
                     ))}
@@ -401,7 +427,17 @@ export function BulkImportDialog({ storyboardId, projectId, onSuccess }: BulkImp
   );
 }
 
-function SortablePreviewItem({ panel, onRemove, disabled }: { panel: PendingPanel; onRemove: () => void; disabled: boolean }) {
+function SortablePreviewItem({
+  panel,
+  onRemove,
+  onRetry,
+  disabled,
+}: {
+  panel: PendingPanel;
+  onRemove: () => void;
+  onRetry: () => void;
+  disabled: boolean;
+}) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: panel.id });
 
   const style = {
@@ -461,8 +497,18 @@ function SortablePreviewItem({ panel, onRemove, disabled }: { panel: PendingPane
         </div>
       )}
       {panel.status === "error" && (
-        <div className="absolute inset-0 bg-red-500/20 flex items-center justify-center z-10 select-none" title={panel.error}>
+        <div className="absolute inset-0 bg-red-500/20 flex flex-col items-center justify-center gap-1 z-10 select-none" title={panel.error}>
           <span className="text-[10px] bg-red-600 text-white font-semibold px-1.5 py-0.5 rounded shadow">Fail</span>
+          {!disabled && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onRetry(); }}
+              className="text-[9px] bg-background/90 text-foreground font-semibold px-1.5 py-0.5 rounded shadow hover:bg-background"
+              data-testid={`button-retry-upload-${panel.id}`}
+            >
+              Retry
+            </button>
+          )}
         </div>
       )}
     </div>

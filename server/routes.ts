@@ -1,7 +1,4 @@
 import multer from "multer";
-import * as pdfParseModule from "pdf-parse";
-const pdfParse = (pdfParseModule as any).default || pdfParseModule;
-import mammoth from "mammoth";
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { randomUUID, createCipheriv, createDecipheriv, randomBytes, createHash } from "node:crypto";
@@ -48,11 +45,22 @@ async function requireAuth(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
+const ACCESS_CACHE_TTL_MS = 60_000;
+const accessCache = new Map<string, { allowed: boolean; expiresAt: number }>();
+
 async function canAccessProject(projectId: number, userId: number): Promise<boolean> {
+  const key = `${projectId}:${userId}`;
+  const cached = accessCache.get(key);
+  if (cached && Date.now() < cached.expiresAt) return cached.allowed;
+
   const p = await storage.getProject(projectId);
-  if (!p) return false;
-  if (p.ownerId === userId) return true;
-  return await storage.isMember(projectId, userId);
+  if (!p) {
+    accessCache.set(key, { allowed: false, expiresAt: Date.now() + ACCESS_CACHE_TTL_MS });
+    return false;
+  }
+  const allowed = p.ownerId === userId || await storage.isMember(projectId, userId);
+  accessCache.set(key, { allowed, expiresAt: Date.now() + ACCESS_CACHE_TTL_MS });
+  return allowed;
 }
 
 import { bakRouter } from "./routes/bak/index.js";
@@ -88,10 +96,16 @@ const upload = multer({
 
   // ===== RATE LIMITER =====
   const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
+  function pruneRateLimitMap(now: number) {
+    for (const [ip, bucket] of rateLimitMap) {
+      if (now > bucket.resetTime) rateLimitMap.delete(ip);
+    }
+  }
   function rateLimiter(options: { windowMs: number; max: number; message: string }) {
     return (req: any, res: any, next: any) => {
       const ip = req.ip || req.headers["x-forwarded-for"] || req.socket.remoteAddress || "unknown-ip";
       const now = Date.now();
+      pruneRateLimitMap(now);
       let bucket = rateLimitMap.get(ip);
       if (!bucket || now > bucket.resetTime) {
         bucket = { count: 1, resetTime: now + options.windowMs };
@@ -132,7 +146,7 @@ const upload = multer({
     const user = await storage.createUser({
       email: body.email,
       name: body.name,
-      passwordHash: hashPassword(body.password),
+      passwordHash: await hashPassword(body.password),
       avatarColor: colors[Math.floor(Math.random() * colors.length)],
     });
     const token = createSession(user.id, user.tokenVersion);
@@ -144,7 +158,7 @@ const upload = multer({
     const schema = z.object({ email: z.string().email(), password: z.string() });
     const body = schema.parse(req.body);
     const user = await storage.getUserByEmail(body.email);
-    if (!user || !verifyPassword(body.password, user.passwordHash)) {
+    if (!user || !(await verifyPassword(body.password, user.passwordHash))) {
       return res.status(401).json({ message: "Invalid email or password" });
     }
     const token = createSession(user.id, user.tokenVersion);
@@ -186,36 +200,67 @@ const upload = multer({
     try {
       const userId = req.user!.id;
       const userProjects = await storage.listProjectsForUser(userId);
-      
-      const userCache = new Map<number, { name: string; avatarColor: string }>();
-      const getUserInfo = async (id: number) => {
-        if (userCache.has(id)) return userCache.get(id)!;
-        const u = await storage.getUser(id);
-        const info = u ? { name: u.name, avatarColor: u.avatarColor } : { name: "System", avatarColor: "#6E4FE8" };
-        userCache.set(id, info);
-        return info;
-      };
+      const projectIds = userProjects.map((p: any) => p.id);
+      const projectTitleById = new Map(userProjects.map((p: any) => [p.id, p.title]));
 
-      const queueItems = await Promise.all(userProjects.map(async (project: any) => {
-        const projectScenes = await storage.listScenes(project.id);
+      const [allScenes, allStoryboards, allComments, allAssets] = await Promise.all([
+        storage.listScenesForProjectIds(projectIds),
+        storage.listStoryboardsForProjectIds(projectIds),
+        storage.listCommentsForProjectIds(projectIds),
+        storage.listAssetsForProjectIds(projectIds),
+      ]);
+      const allPanels = await storage.listPanelsLiteBatch(allStoryboards.map((sb: any) => sb.id));
+
+      const activityUserIds = Array.from(new Set([
+        ...allComments.map((c: any) => c.authorId),
+        ...allAssets.map((a: any) => a.uploaderId),
+      ]));
+      const activityUsers = await storage.getUsersByIds(activityUserIds);
+      const userCache = new Map<number, { name: string; avatarColor: string }>(
+        activityUsers.map((u) => [u.id, { name: u.name, avatarColor: u.avatarColor }]),
+      );
+      const getUserInfo = (id: number) => userCache.get(id) ?? { name: "System", avatarColor: "#6E4FE8" };
+
+      const scenesByProject = new Map<number, any[]>();
+      for (const scene of allScenes) {
+        const list = scenesByProject.get(scene.projectId) ?? [];
+        list.push(scene);
+        scenesByProject.set(scene.projectId, list);
+      }
+
+      const storyboardsByProject = new Map<number, any[]>();
+      for (const sb of allStoryboards) {
+        const list = storyboardsByProject.get(sb.projectId) ?? [];
+        list.push(sb);
+        storyboardsByProject.set(sb.projectId, list);
+      }
+
+      const panelsByStoryboard = new Map<number, any[]>();
+      for (const panel of allPanels) {
+        const list = panelsByStoryboard.get(panel.storyboardId) ?? [];
+        list.push(panel);
+        panelsByStoryboard.set(panel.storyboardId, list);
+      }
+
+      const queueItems = userProjects.map((project: any) => {
+        const projectScenes = scenesByProject.get(project.id) ?? [];
         const activeScenes = projectScenes.filter((s: any) => s.status !== "done" && !s.deletedAt);
         const currentScene = activeScenes[0] || null;
 
-        const projectStoryboards = await storage.listStoryboards(project.id);
-        let lastPanel: any = null;
-        const allPanels: any[] = [];
+        const projectStoryboards = storyboardsByProject.get(project.id) ?? [];
+        const projectPanels: any[] = [];
         for (const sb of projectStoryboards) {
-          const panels = await storage.listPanels(sb.id);
-          allPanels.push(...panels.filter((p: any) => !p.deletedAt));
+          projectPanels.push(...(panelsByStoryboard.get(sb.id) ?? []).filter((p: any) => !p.deletedAt));
         }
 
-        if (allPanels.length > 0) {
-          allPanels.sort((a, b) => b.id - a.id);
-          lastPanel = allPanels[0];
+        let lastPanel: any = null;
+        if (projectPanels.length > 0) {
+          projectPanels.sort((a, b) => b.id - a.id);
+          lastPanel = projectPanels[0];
         }
 
         const pendingScenesCount = activeScenes.length;
-        const pendingChangeRequestsCount = allPanels.filter(p => p.changeRequest && p.changeRequest.trim() !== "").length;
+        const pendingChangeRequestsCount = projectPanels.filter((p) => p.changeRequest && p.changeRequest.trim() !== "").length;
         const pendingItemsCount = pendingScenesCount + pendingChangeRequestsCount;
 
         return {
@@ -237,50 +282,42 @@ const upload = multer({
             id: lastPanel.id,
             storyboardId: lastPanel.storyboardId,
             orderIdx: lastPanel.orderIdx,
-            imageData: lastPanel.imageData,
             r2Key: lastPanel.r2Key,
             caption: lastPanel.caption,
             dialogue: lastPanel.dialogue,
           } : null,
           pendingItemsCount,
         };
-      }));
+      });
 
       const activityFeed: any[] = [];
-      for (const project of userProjects) {
-        const commentsList = await storage.listComments(project.id);
-        const enrichedComments = await Promise.all(commentsList.map(async (c: any) => {
-          const user = await getUserInfo(c.authorId);
-          return {
-            id: `comment-${c.id}`,
-            projectId: project.id,
-            projectTitle: project.title,
-            type: "comment",
-            user,
-            content: c.body,
-            timestamp: c.createdAt,
-          };
-        }));
-        activityFeed.push(...enrichedComments);
-
-        const assetsList = await storage.listAssets(project.id);
-        const enrichedAssets = await Promise.all(assetsList.map(async (a: any) => {
-          const user = await getUserInfo(a.uploaderId);
-          return {
-            id: `asset-${a.id}`,
-            projectId: project.id,
-            projectTitle: project.title,
-            type: "asset",
-            user,
-            content: `Uploaded asset: ${a.filename} (${a.category})`,
-            timestamp: a.createdAt,
-          };
-        }));
-        activityFeed.push(...enrichedAssets);
+      for (const c of allComments) {
+        const user = await getUserInfo(c.authorId);
+        activityFeed.push({
+          id: `comment-${c.id}`,
+          projectId: c.projectId,
+          projectTitle: projectTitleById.get(c.projectId) ?? "Project",
+          type: "comment",
+          user,
+          content: c.body,
+          timestamp: c.createdAt,
+        });
+      }
+      for (const a of allAssets) {
+        const user = await getUserInfo(a.uploaderId);
+        activityFeed.push({
+          id: `asset-${a.id}`,
+          projectId: a.projectId,
+          projectTitle: projectTitleById.get(a.projectId) ?? "Project",
+          type: "asset",
+          user,
+          content: `Uploaded asset: ${a.filename} (${a.category})`,
+          timestamp: a.createdAt,
+        });
       }
 
       activityFeed.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-      const recentActivity = activityFeed.slice(0, 15);
+      const recentActivity = activityFeed.slice(0, 20);
 
       res.json({
         queueItems,
@@ -367,7 +404,7 @@ const upload = multer({
       user = await storage.createUser({
         email: body.email,
         name: body.email.split("@")[0],
-        passwordHash: hashPassword(tempPassword),
+        passwordHash: await hashPassword(tempPassword),
         avatarColor: colors[Math.floor(Math.random() * colors.length)],
       });
     }
@@ -428,9 +465,12 @@ const upload = multer({
       let extractedText = "";
 
       if (sourceFormat === "pdf") {
+        const pdfParseModule = await import("pdf-parse");
+        const pdfParse = (pdfParseModule as any).default || pdfParseModule;
         const data = await pdfParse(buffer);
         extractedText = data.text;
       } else if (sourceFormat === "docx") {
+        const mammoth = (await import("mammoth")).default;
         const result = await mammoth.extractRawText({ buffer });
         extractedText = result.value;
       } else {
@@ -536,7 +576,7 @@ const upload = multer({
   app.get("/api/projects/:id/scripts", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
-    res.json(await storage.listScripts(id));
+    res.json(await storage.listScriptsLite(id));
   });
   app.post("/api/projects/:id/scripts", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
@@ -566,7 +606,15 @@ const upload = multer({
     const id = parseInt(String(req.params.id), 10);
     if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
     const sbs = await storage.listStoryboards(id);
-    const out = await Promise.all(sbs.map(async (sb: any) => ({ ...sb, panels: await storage.listPanels(sb.id) })));
+    const sbIds = sbs.map((sb: any) => sb.id);
+    const allPanels = sbIds.length > 0 ? await storage.listPanelsLiteBatch(sbIds) : [];
+    const panelsByStoryboard = new Map<number, typeof allPanels>();
+    for (const panel of allPanels) {
+      const list = panelsByStoryboard.get(panel.storyboardId) ?? [];
+      list.push(panel);
+      panelsByStoryboard.set(panel.storyboardId, list);
+    }
+    const out = sbs.map((sb: any) => ({ ...sb, panels: panelsByStoryboard.get(sb.id) ?? [] }));
     res.json(out);
   });
   app.post("/api/projects/:id/storyboards", requireAuth, async (req, res) => {
@@ -591,12 +639,13 @@ const upload = multer({
     if (!sb) return res.status(404).json({ message: "Storyboard not found" });
     if (!(await canAccessProject(sb.projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
     const schema = z.object({
-      imageData: z.string().min(1),
+      imageData: z.string().min(1).optional(),
+      r2Key: z.string().min(1).optional(),
       caption: z.string().optional().default(""),
       dialogue: z.string().optional().default(""),
-    });
+    }).refine((data) => data.imageData || data.r2Key, { message: "imageData or r2Key required" });
     const body = schema.parse(req.body);
-    if (body.imageData.length > 14 * 1024 * 1024) {
+    if (body.imageData && body.imageData.length > 14 * 1024 * 1024) {
       return res.status(413).json({ message: "Image too large (max 10MB)" });
     }
     const panels = await storage.listPanels(sbId);
@@ -604,7 +653,8 @@ const upload = multer({
     const panel = await storage.createPanel({
       storyboardId: sbId,
       orderIdx,
-      imageData: body.imageData,
+      imageData: body.imageData || null,
+      r2Key: body.r2Key || null,
       caption: body.caption || "",
       dialogue: body.dialogue || "",
     });
@@ -673,11 +723,40 @@ const upload = multer({
     res.json({ ok: true });
   });
 
+  app.post("/api/storyboards/:sbId/panels/reorder", requireAuth, async (req, res) => {
+    const sbId = parseInt(String(req.params.sbId), 10);
+    const sb = await storage.getStoryboard(sbId);
+    if (!sb) return res.status(404).json({ message: "Storyboard not found" });
+    if (!(await canAccessProject(sb.projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
+    const schema = z.object({ orderedIds: z.array(z.number().int()) });
+    const { orderedIds } = schema.parse(req.body);
+    await storage.reorderPanels(sbId, orderedIds);
+    res.json({ ok: true });
+  });
+
+  app.get("/api/storyboards/:sbId/pins", requireAuth, async (req, res) => {
+    const sbId = parseInt(String(req.params.sbId), 10);
+    const sb = await storage.getStoryboard(sbId);
+    if (!sb) return res.status(404).json({ message: "Storyboard not found" });
+    if (!(await canAccessProject(sb.projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
+    const pins = await (storage as any).listPanelPinsForStoryboard(sbId);
+    const authorIds = [...new Set<number>(pins.map((p: any) => p.authorId as number))];
+    const authors = await storage.getUsersByIds(authorIds);
+    const authorMap = new Map(authors.map((a) => [a.id, a]));
+    res.json(pins.map((p: any) => {
+      const author = authorMap.get(p.authorId);
+      return {
+        ...p,
+        author: author ? { id: author.id, name: author.name, avatarColor: author.avatarColor } : null,
+      };
+    }));
+  });
+
   // ===== ANIMATICS =====
   app.get("/api/projects/:id/animatics", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
-    res.json(await storage.listAnimatics(id));
+    res.json(await storage.listAnimaticsLite(id));
   });
   app.post("/api/projects/:id/animatics", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
@@ -762,16 +841,31 @@ const upload = multer({
     res.json({ ok: true });
   });
 
+  app.get("/api/projects/:id/scene-timers", requireAuth, async (req, res) => {
+    const id = parseInt(String(req.params.id), 10);
+    if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
+    const timers = await (storage as any).getActiveSceneTimersForProject(id, req.user!.id);
+    res.json(timers);
+  });
+
   // ===== COMMENTS =====
   app.get("/api/projects/:id/comments", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
-    const list = await storage.listComments(id);
-    const enriched = await Promise.all(list.map(async (c: any) => ({ ...c, author: await storage.getUser(c.authorId) || null })));
-    res.json(enriched.map((c) => ({
-      ...c,
-      author: c.author ? { id: c.author.id, name: c.author.name, avatarColor: c.author.avatarColor } : null,
-    })));
+    const limit = Math.min(parseInt(String(req.query.limit || "50"), 10) || 50, 200);
+    const cursor = req.query.cursor ? parseInt(String(req.query.cursor), 10) : undefined;
+    const { items, nextCursor } = await storage.listComments(id, { limit, cursor });
+    const authorIds = Array.from(new Set(items.map((c) => c.authorId)));
+    const authors = await storage.getUsersByIds(authorIds);
+    const authorMap = new Map(authors.map((a) => [a.id, a]));
+    const enriched = items.map((c) => {
+      const author = authorMap.get(c.authorId);
+      return {
+        ...c,
+        author: author ? { id: author.id, name: author.name, avatarColor: author.avatarColor } : null,
+      };
+    });
+    res.json({ items: enriched, nextCursor });
   });
   app.post("/api/projects/:id/comments", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
@@ -799,10 +893,10 @@ const upload = multer({
     const id = parseInt(String(req.params.id), 10);
     if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
     const category = req.query.category as string | undefined;
-    // Exclude fileData from listing for performance; client fetches individual for download
-    const list = await storage.listAssets(id, category);
-    const safe = list.map(({ fileData, ...rest }: any) => rest);
-    res.json(safe);
+    const limit = Math.min(parseInt(String(req.query.limit || "50"), 10) || 50, 200);
+    const cursor = req.query.cursor ? parseInt(String(req.query.cursor), 10) : undefined;
+    const { items, nextCursor } = await storage.listAssets(id, category, { limit, cursor });
+    res.json({ items, nextCursor });
   });
 
   app.post("/api/projects/:id/assets", requireAuth, async (req, res) => {
@@ -812,20 +906,27 @@ const upload = multer({
       category: z.string().optional().default("Other"),
       filename: z.string().min(1),
       mimeType: z.string().optional().default(""),
-      fileData: z.string().min(1),
+      fileData: z.string().optional(),
+      r2Key: z.string().optional(),
       thumbnailData: z.string().nullable().optional(),
       notes: z.string().optional().default(""),
       tags: z.string().optional().default(""),
-    });
+    }).refine((body) => Boolean(body.r2Key || body.fileData), { message: "r2Key or fileData required" });
     const body = schema.parse(req.body);
-    if (body.fileData.length > 14 * 1024 * 1024) {
+    if (body.fileData && body.fileData.length > 14 * 1024 * 1024) {
       return res.status(413).json({ message: "File too large (max 10MB)" });
     }
     const asset = await storage.createAsset({
       projectId: id,
       uploaderId: req.user!.id,
-      ...body,
-      thumbnailData: body.thumbnailData ?? null,
+      category: body.category,
+      filename: body.filename,
+      mimeType: body.mimeType,
+      r2Key: body.r2Key ?? null,
+      fileData: body.r2Key ? null : (body.fileData ?? null),
+      thumbnailData: body.r2Key ? null : (body.thumbnailData ?? null),
+      notes: body.notes,
+      tags: body.tags,
     });
     const { fileData, ...safe } = asset;
     res.json(safe);
@@ -1272,11 +1373,17 @@ const upload = multer({
     const p = await storage.getProjectByToken(token);
     if (!p || !p.shareEnabled) return res.status(404).json({ message: "Share link not found or disabled" });
     const owner = await storage.getUser(p.ownerId);
-    const scripts = await storage.listScripts(p.id);
-    const storyboards = await Promise.all((await storage.listStoryboards(p.id)).map(async (sb: any) => ({
-      ...sb, panels: await storage.listPanels(sb.id),
-    })));
-    const animatics = await storage.listAnimatics(p.id);
+    const scripts = await storage.listScriptsLite(p.id);
+    const sbs = await storage.listStoryboards(p.id);
+    const sharePanels = await storage.listPanelsForStoryboardIds(sbs.map((sb: any) => sb.id));
+    const sharePanelsByStoryboard = new Map<number, any[]>();
+    for (const panel of sharePanels) {
+      const list = sharePanelsByStoryboard.get(panel.storyboardId) ?? [];
+      list.push(panel);
+      sharePanelsByStoryboard.set(panel.storyboardId, list);
+    }
+    const storyboards = sbs.map((sb: any) => ({ ...sb, panels: sharePanelsByStoryboard.get(sb.id) ?? [] }));
+    const animatics = await storage.listAnimaticsLite(p.id);
     const scenes = await storage.listScenes(p.id);
     res.json({
       project: { ...p, shareToken: undefined },
@@ -1629,14 +1736,16 @@ ${body.scriptContent}
     const sb = await storage.getStoryboard(panel.storyboardId);
     if (!sb || !(await canAccessProject(sb.projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
     const pins = await (storage as any).listPanelPins(id);
-    const enriched = await Promise.all(pins.map(async (p: any) => {
-      const author = await storage.getUser(p.authorId);
+    const authorIds = [...new Set<number>(pins.map((p: any) => p.authorId as number))];
+    const authors = await storage.getUsersByIds(authorIds);
+    const authorMap = new Map(authors.map((a) => [a.id, a]));
+    res.json(pins.map((p: any) => {
+      const author = authorMap.get(p.authorId);
       return {
         ...p,
         author: author ? { id: author.id, name: author.name, avatarColor: author.avatarColor } : null,
       };
     }));
-    res.json(enriched);
   });
 
   app.post ("/api/panels/:id/pins", requireAuth, async (req, res) => {

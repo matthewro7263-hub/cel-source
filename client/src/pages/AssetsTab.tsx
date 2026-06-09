@@ -73,7 +73,8 @@ export function AssetsTab({ projectId }: AssetsTabProps) {
         ? `/api/projects/${projectId}/assets?category=${encodeURIComponent(activeCategory)}`
         : `/api/projects/${projectId}/assets`;
       const r = await apiRequest("GET", url);
-      return r.json();
+      const data = await r.json();
+      return Array.isArray(data) ? data : data.items ?? [];
     },
   });
 
@@ -130,6 +131,7 @@ export function AssetsTab({ projectId }: AssetsTabProps) {
   const handleFiles = async (files: FileList | null) => {
     if (!files) return;
     setUploading(true);
+    let uploadedAny = false;
     for (const file of Array.from(files)) {
       if (file.size > 10 * 1024 * 1024) {
         toast({ title: "File too large", description: `${file.name} exceeds 10MB.`, variant: "destructive" });
@@ -176,10 +178,13 @@ export function AssetsTab({ projectId }: AssetsTabProps) {
           notes: "",
           tags: "",
         });
-        queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId, "assets"] });
+        uploadedAny = true;
       } catch (err: any) {
         toast({ title: "Upload failed", description: String(err.message || err), variant: "destructive" });
       }
+    }
+    if (uploadedAny) {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId, "assets"] });
     }
     setUploading(false);
     if (fileRef.current) fileRef.current.value = "";
@@ -328,7 +333,7 @@ function AssetCard({ asset, onClick, onDownload }: { asset: AssetSafe; onClick: 
       {/* Preview area */}
       <div className="aspect-square bg-muted flex items-center justify-center relative">
         {isImage ? (
-          <img src={asset.thumbnailData!} alt={asset.filename} className="w-full h-full object-cover" />
+          <img src={asset.thumbnailData!} alt={asset.filename} className="w-full h-full object-cover" loading="lazy" decoding="async" />
         ) : (
           <div className="flex flex-col items-center gap-2 p-4">
             {getAssetIcon(asset.mimeType, asset.filename)}

@@ -32,7 +32,7 @@ export async function seedIfEmpty() {
   const matthew = await storage.createUser({
     email: "matthew@cel.app",
     name: "Matthew",
-    passwordHash: hashPassword("celdemo"),
+    passwordHash: await hashPassword("celdemo"),
     avatarColor: "#6E4FE8",
   });
 
@@ -40,7 +40,7 @@ export async function seedIfEmpty() {
   const collab = await storage.createUser({
     email: "sam@cel.app",
     name: "Sam Rivera",
-    passwordHash: hashPassword("celdemo"),
+    passwordHash: await hashPassword("celdemo"),
     avatarColor: "#E8744F",
   });
 

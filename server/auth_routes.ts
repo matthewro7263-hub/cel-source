@@ -44,7 +44,7 @@ export function configurePassport() {
         const found = await db.select().from(users).where(eq(users.email, email.toLowerCase())).limit(1);
         const user = found[0];
         if (!user) return done(null, false, { message: "invalid_credentials" });
-        const ok = verifyPassword(password, user.passwordHash);
+        const ok = await verifyPassword(password, user.passwordHash);
         if (!ok) return done(null, false, { message: "invalid_credentials" });
         return done(null, user);
       } catch (err) {
@@ -89,7 +89,7 @@ authRouter.post("/register", authLimiter, async (req, res) => {
   try {
     const existing = await db.select().from(users).where(eq(users.email, normEmail)).limit(1);
     if (existing[0]) return res.status(409).json({ error: "email_taken" });
-    const passwordHash = hashPassword(password);
+    const passwordHash = await hashPassword(password);
     const name = displayName ?? normEmail.split("@")[0];
     const inserted = await db.insert(users).values({ email: normEmail, passwordHash, name }).returning();
     const u = inserted[0] as User;

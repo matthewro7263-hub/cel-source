@@ -197,53 +197,53 @@ export default function Dashboard() {
             </DialogTrigger>
             <DialogContent className="max-w-md">
               <DialogHeader>
-                <DialogTitle className="font-mono text-sm uppercase tracking-wider text-[#e8ebf5]">Create new project</DialogTitle>
+                <DialogTitle className="font-mono text-sm uppercase tracking-wider">Create new project</DialogTitle>
               </DialogHeader>
               <div className="space-y-4 pt-4">
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-mono text-[#8b8b84]">Title</Label>
+                  <Label className="text-xs font-mono text-muted-foreground">Title</Label>
                   <Input 
                     value={title} 
                     onChange={(e) => setTitle(e.target.value)} 
                     placeholder="Project title" 
                     data-testid="input-project-title" 
-                    className="rounded-[4px] border-[#282822] bg-[#0F0F0C] text-[#e8ebf5]" 
+                    className="rounded-lg border-border bg-card/50 text-foreground" 
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-mono text-[#8b8b84]">Description</Label>
+                  <Label className="text-xs font-mono text-muted-foreground">Description</Label>
                   <Textarea 
                     value={description} 
                     onChange={(e) => setDescription(e.target.value)} 
                     placeholder="Brief description (optional)" 
                     rows={3} 
                     data-testid="input-project-description" 
-                    className="rounded-[4px] border-[#282822] bg-[#0F0F0C] text-[#e8ebf5]"
+                    className="rounded-lg border-border bg-card/50 text-foreground"
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-mono text-[#8b8b84]">Deadline</Label>
+                  <Label className="text-xs font-mono text-muted-foreground">Deadline</Label>
                   <Input 
                     type="date" 
                     value={deadline} 
                     onChange={(e) => setDeadline(e.target.value)} 
                     data-testid="input-project-deadline" 
-                    className="rounded-[4px] border-[#282822] bg-[#0F0F0C] text-[#e8ebf5]" 
+                    className="rounded-lg border-border bg-card/50 text-foreground" 
                   />
                 </div>
-                <div className="flex items-center space-x-2 rounded-[4px] border border-[#282822] px-3 py-2.5 bg-[#0F0F0C]">
+                <div className="flex items-center space-x-2 rounded-lg border border-border px-3 py-2.5 glass">
                   <Checkbox
                     id="use-bible-template"
                     checked={useBibleTemplate}
                     onCheckedChange={(checked) => setUseBibleTemplate(checked === true)}
-                    className="rounded-[2px] border-[#282822]"
+                    className="rounded-sm border-border"
                   />
-                  <Label htmlFor="use-bible-template" className="text-xs font-mono text-[#8b8b84] cursor-pointer">
+                  <Label htmlFor="use-bible-template" className="text-xs font-mono text-muted-foreground cursor-pointer">
                     Seed with Bible template
                   </Label>
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-mono text-[#8b8b84]">Color</Label>
+                  <Label className="text-xs font-mono text-muted-foreground">Color</Label>
                   <div className="flex gap-2 flex-wrap">
                     {COLORS.map((c) => (
                       <button
@@ -251,7 +251,7 @@ export default function Dashboard() {
                         type="button"
                         onClick={() => setColor(c)}
                         className={`w-6 h-6 rounded-full border-2 transition-all ${
-                          color === c ? "border-[#e8ebf5] scale-110" : "border-transparent"
+                          color === c ? "border-foreground scale-110" : "border-transparent"
                         }`}
                         style={{ backgroundColor: c }}
                         data-testid={`button-color-${c}`}
@@ -261,7 +261,7 @@ export default function Dashboard() {
                 </div>
               </div>
               <DialogFooter className="mt-6 flex gap-2">
-                <Button variant="ghost" className="rounded-[4px] text-xs font-mono" onClick={() => { setOpen(false); setUseBibleTemplate(false); }}>
+                <Button variant="ghost" className="rounded-lg text-xs font-mono" onClick={() => { setOpen(false); setUseBibleTemplate(false); }}>
                   Cancel
                 </Button>
                 <Button
@@ -269,7 +269,7 @@ export default function Dashboard() {
                   onClick={() => create.mutate()}
                   disabled={!title || create.isPending}
                   data-testid="button-create-project"
-                  className="rounded-[4px] bg-[#3E63DD] hover:bg-[#3555c2] text-white text-xs font-mono"
+                  className="rounded-lg text-xs font-mono"
                 >
                   {create.isPending ? "Creating…" : "Create"}
                 </Button>
@@ -359,11 +359,15 @@ export default function Dashboard() {
                         {item.lastPanel ? (
                           <div className="flex items-center gap-2">
                             {panelImgSrc ? (
-                              <img 
-                                src={panelImgSrc} 
-                                className="w-16 h-10 object-cover rounded-[4px] border border-[#282822] bg-black"
-                                alt="Last edit thumbnail"
-                              />
+                              <Link href={`/projects/${item.project.id}/storyboards?panel=${item.lastPanel.id}`}>
+                                <img 
+                                  src={panelImgSrc} 
+                                  className="w-16 h-10 object-cover rounded-[4px] border border-[#282822] bg-black hover:ring-1 hover:ring-[#3E63DD] cursor-pointer transition-all"
+                                  alt="Last edit thumbnail"
+                                  loading="lazy"
+                                  decoding="async"
+                                />
+                              </Link>
                             ) : (
                               <div className="w-16 h-10 bg-neutral-900 border border-[#282822] flex items-center justify-center text-[8px] text-neutral-600 rounded-[4px] font-mono">
                                 NO IMAGE

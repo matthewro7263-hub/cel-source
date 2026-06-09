@@ -27,6 +27,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { data: projects } = useQuery<Project[]>({
     queryKey: ["/api/projects"],
     enabled: !!user,
+    staleTime: 1000 * 60 * 5,
   });
 
   const handleLogout = async () => {

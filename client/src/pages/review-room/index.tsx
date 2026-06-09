@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Brush, Eraser, Radio, FileDown, CheckCircle2 } from "lucide-react";
 import { getAuthToken, apiRequest, queryClient } from "@/lib/queryClient";
-import jsPDF from "jspdf";
+
 import { useToast } from "@/hooks/use-toast";
 import { ToolSurface, ToolWorkspace } from "@/components/layout/tool-workspace";
 import type { Panel, Storyboard } from "@shared/schema";
@@ -158,7 +158,8 @@ export default function ReviewRoomPage() {
     send({ type: "clear" });
   };
 
-  const exportPDF = () => {
+  const exportPDF = async () => {
+    const { default: jsPDF } = await import("jspdf");
     const doc = new jsPDF("landscape");
     doc.setFontSize(18);
     doc.text(`Review Session: Project ${projectId}`, 10, 20);

@@ -12,9 +12,11 @@ import { registerArchiveRoutes } from "./archive_routes";
 import { registerSpriteSheetRoutes } from "./spritesheet_routes";
 import { startLeaderboardCron } from "./leaderboard_cron";
 import { createServer } from "node:http";
-import { Pool, neonConfig } from "@neondatabase/serverless";
+import { neonConfig } from "@neondatabase/serverless";
 import ws from "ws";
-import { drizzle } from "drizzle-orm/neon-serverless"; import { migrate } from "drizzle-orm/neon-serverless/migrator";
+import { drizzle } from "drizzle-orm/neon-serverless";
+import { migrate } from "drizzle-orm/neon-serverless/migrator";
+import { pool } from "./storage";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -85,6 +87,24 @@ app.use(
 
 app.use(express.urlencoded({ extended: false, limit: "1mb" }));
 
+app.get("/health", (_req, res) => {
+  res.status(200).json({ ok: true });
+});
+
+app.get("/ready", async (_req, res) => {
+  try {
+    const client = await pool.connect();
+    try {
+      await client.query("SELECT 1");
+    } finally {
+      client.release();
+    }
+    res.status(200).json({ ok: true, db: "connected" });
+  } catch {
+    res.status(503).json({ ok: false, db: "disconnected" });
+  }
+});
+
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
     hour: "numeric",
@@ -111,10 +131,12 @@ app.use((req, res, next) => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
+      const contentLength = res.getHeader("content-length");
+      if (contentLength) {
+        logLine += ` size=${contentLength}b`;
+      } else if (capturedJsonResponse) {
+        logLine += ` size=${JSON.stringify(capturedJsonResponse).length}b`;
       }
-
       log(logLine);
     }
   });
@@ -129,11 +151,10 @@ async function runMigrations() {
   }
 
   try {
-        neonConfig.webSocketConstructor = ws;
-        const pool = new Pool({ connectionString: process.env.DATABASE_URL }); const migrationDb = drizzle(pool);
-        await migrate(migrationDb, { migrationsFolder: path.join(__dirname, "../migrations") });
+    neonConfig.webSocketConstructor = ws;
+    const migrationDb = drizzle(pool);
+    await migrate(migrationDb, { migrationsFolder: path.join(__dirname, "../migrations") });
     log("database migrations completed", "migrations");
-        await pool.end();
   } catch (err) {
     console.error("Database migration failed; continuing startup:", err);
   }

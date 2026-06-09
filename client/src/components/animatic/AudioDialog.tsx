@@ -37,8 +37,10 @@ export function AudioDialog({ open, onClose, projectId, onAdd }: AudioDialogProp
 
   const { data: assets } = useQuery<Omit<Asset, "fileData">[]>({
     queryKey: ["/api/projects", projectId, "assets"],
-    queryFn: async () =>
-      (await apiRequest("GET", `/api/projects/${projectId}/assets`)).json(),
+    queryFn: async () => {
+      const data = await (await apiRequest("GET", `/api/projects/${projectId}/assets`)).json();
+      return Array.isArray(data) ? data : data.items ?? [];
+    },
     enabled: open,
   });
 

@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
+import { queryKeys } from "@/lib/queryKeys";
 import { useTheme } from "@/lib/theme";
 import {
   CommandDialog, CommandInput, CommandList, CommandEmpty,
@@ -32,19 +33,20 @@ export function CmdkPalette({ open, onOpenChange }: CmdkPaletteProps) {
   const [, setLocation] = useLocation();
   const { theme, toggle: toggleTheme } = useTheme();
 
-  // Detect current project ID from the URL path (e.g. /projects/12/scripts)
-  const projectMatch = window.location.pathname.match(/\/projects\/(\d+)/);
+  // Detect current project ID from hash route (e.g. /#/projects/12/storyboards)
+  const hashRoute = window.location.hash.replace(/^#/, "");
+  const projectMatch = hashRoute.match(/\/projects\/(\d+)/);
   const projectId = projectMatch ? parseInt(projectMatch[1], 10) : null;
 
   // Fetch current project details for navigation shortcuts
   const { data: currentProject } = useQuery<any>({
-    queryKey: ["/api/projects", projectId],
+    queryKey: projectId ? queryKeys.project(projectId) : ["disabled"],
     enabled: !!projectId && open,
   });
 
   // Fetch all projects for global client-side project search
   const { data: allProjects } = useQuery<any[]>({
-    queryKey: ["/api/projects"],
+    queryKey: queryKeys.projects(),
     enabled: open,
   });
 

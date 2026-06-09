@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef, lazy, Suspense } from "react";
 import { Switch, Route, Router, Redirect } from "wouter";
 import { useHashLocation } from "wouter/use-hash-location";
 import { queryClient } from "./lib/queryClient";
@@ -13,8 +13,11 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import Login from "@/pages/Login";
 import Signup from "@/pages/Signup";
 import Landing from "@/pages/Landing";
-import Dashboard from "@/pages/Dashboard";
-import ProjectWorkspace, { ProjectSectionPage } from "@/pages/ProjectWorkspace";
+const Dashboard = lazy(() => import("@/pages/Dashboard"));
+const ProjectWorkspace = lazy(() => import("@/pages/ProjectWorkspace"));
+const ProjectSectionPage = lazy(() =>
+  import("@/pages/ProjectWorkspace").then((m) => ({ default: m.ProjectSectionPage })),
+);
 import Share from "@/pages/Share";
 import ProfileSettings from "@/pages/ProfileSettings";
 import CommissionIntake from "@/pages/CommissionIntake";
@@ -22,10 +25,10 @@ import CommissionsQueue from "@/pages/CommissionsQueue";
 import PaletteMatcher from "./pages/lor/PaletteMatcher";
 import EpisodeBible from "./pages/lor/EpisodeBible";
 import NotFound from "@/pages/not-found";
-import AnimaticEditor from "@/pages/animatic-editor";
-import VideoEditor from "@/pages/video-editor";
+const AnimaticEditor = lazy(() => import("@/pages/animatic-editor"));
+const VideoEditor = lazy(() => import("@/pages/video-editor"));
 import ComparePage from "@/pages/compare";
-import ReviewRoomPage from "@/pages/review-room";
+const ReviewRoomPage = lazy(() => import("@/pages/review-room"));
 import InbetweenColorLab from "@/pages/inbetween-color";
 // v4 imports
 import Achievements from "@/pages/Achievements";
@@ -46,7 +49,7 @@ import ChallengeFeed from "@/pages/challenge";
 import AudVoiceBoothPage from "@/pages/aud_voicebooth";
 import Audio2Page from "@/pages/audio2";
 
-import AnalyticsPage from "@/pages/analytics";
+const AnalyticsPage = lazy(() => import("@/pages/analytics"));
 import ScratchpadPage from "@/pages/scratchpad";
 import CouchModePage from "@/pages/couch-mode";
 
@@ -55,7 +58,19 @@ import Snapshots from "@/pages/studio/Snapshots";
 import CreditRoll from "@/pages/studio/CreditRoll";
 import LightLab from "@/pages/studio/LightLab";
 
-import BizPage from "@/pages/biz/index";
+const BizPage = lazy(() => import("@/pages/biz/index"));
+
+function RouteSpinner() {
+  return (
+    <div className="min-h-[40vh] flex items-center justify-center">
+      <div className="h-8 w-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
+}
+
+function LazyRoute({ children }: { children: React.ReactNode }) {
+  return <Suspense fallback={<RouteSpinner />}>{children}</Suspense>;
+}
 
 // ── liquidGL initializer ─────────────────────────────────────────────────────
 // liquidGL is a window-global loaded via <script> in index.html.
@@ -70,12 +85,43 @@ declare global {
   }
 }
 
+let liquidGLScriptsPromise: Promise<void> | null = null;
+
+function loadLiquidGLScripts(): Promise<void> {
+  if (typeof window.liquidGL === "function") return Promise.resolve();
+  if (!liquidGLScriptsPromise) {
+    liquidGLScriptsPromise = new Promise((resolve, reject) => {
+      const loadScript = (src: string) =>
+        new Promise<void>((res, rej) => {
+          const script = document.createElement("script");
+          script.src = src;
+          script.defer = true;
+          script.onload = () => res();
+          script.onerror = () => rej(new Error(`Failed to load ${src}`));
+          document.head.appendChild(script);
+        });
+      loadScript("/html2canvas.min.js")
+        .then(() => loadScript("/liquidGL.js"))
+        .then(() => resolve())
+        .catch(reject);
+    });
+  }
+  return liquidGLScriptsPromise;
+}
+
 function useLiquidGL() {
+  const [location] = useHashLocation();
+  const disabled = /\/projects\//.test(location);
+  const debounceRef = useRef<number | null>(null);
+
   useEffect(() => {
-    if (typeof window === "undefined" || typeof window.liquidGL !== "function") return;
+    if (disabled) return;
+    if (typeof window === "undefined") return;
     if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
 
     let frame = 0;
+    let cancelled = false;
+
     const initPending = () => {
       const targets = Array.from(
         document.querySelectorAll<HTMLElement>("[data-liquid-gl='true']:not([data-liquid-ready='true'])"),
@@ -109,19 +155,31 @@ function useLiquidGL() {
     };
 
     const schedule = () => {
-      window.cancelAnimationFrame(frame);
-      frame = window.requestAnimationFrame(initPending);
+      if (debounceRef.current) window.clearTimeout(debounceRef.current);
+      debounceRef.current = window.setTimeout(() => {
+        window.cancelAnimationFrame(frame);
+        frame = window.requestAnimationFrame(initPending);
+      }, 200);
     };
 
-    schedule();
+    void loadLiquidGLScripts()
+      .then(() => {
+        if (!cancelled) schedule();
+      })
+      .catch((error) => {
+        console.warn("liquidGL scripts failed to load; using CSS glass fallback.", error);
+      });
+
     const observer = new MutationObserver(schedule);
     observer.observe(document.body, { childList: true, subtree: true });
 
     return () => {
+      cancelled = true;
+      if (debounceRef.current) window.clearTimeout(debounceRef.current);
       window.cancelAnimationFrame(frame);
       observer.disconnect();
     };
-  }, []);
+  }, [disabled]);
 }
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -157,11 +215,11 @@ function ProtectedFullscreen({ children }: { children: React.ReactNode }) {
 }
 
 function ReviewRoomRoute() {
-  return <ProtectedShell><ReviewRoomPage /></ProtectedShell>;
+  return <ProtectedShell><LazyRoute><ReviewRoomPage /></LazyRoute></ProtectedShell>;
 }
 
 function ProjectSectionRoute({ section }: { section: "script" | "storyboards" | "assets" | "animatics" | "scenes" | "comments" | "continuity" | "casting" | "signoff" | "settings" }) {
-  return <ProtectedShell><ProjectSectionPage section={section} /></ProtectedShell>;
+  return <ProtectedShell><LazyRoute><ProjectSectionPage section={section} /></LazyRoute></ProtectedShell>;
 }
 
 // Landing page handles its own auth-redirect (logged-in users go to dashboard)
@@ -195,7 +253,7 @@ function AppRouter() {
         <Route path="/signup" component={Signup} />
         <Route path="/share/:token" component={Share} />
         <Route path="/dashboard">
-          <ProtectedShell><Dashboard /></ProtectedShell>
+          <ProtectedShell><LazyRoute><Dashboard /></LazyRoute></ProtectedShell>
         </Route>
         <Route path="/projects/:id/script">
           <ProjectSectionRoute section="script" />
@@ -228,7 +286,7 @@ function AppRouter() {
           <ProjectSectionRoute section="settings" />
         </Route>
         <Route path="/projects/:id">
-          <ProtectedShell><ProjectWorkspace /></ProtectedShell>
+          <ProtectedShell><LazyRoute><ProjectWorkspace /></LazyRoute></ProtectedShell>
         </Route>
         <Route path="/settings">
           <ProtectedShell><ProfileSettings /></ProtectedShell>
@@ -266,7 +324,7 @@ function AppRouter() {
           <ProtectedShell><CreditRoll /></ProtectedShell>
         </Route>
         <Route path="/analytics">
-          <ProtectedShell><AnalyticsPage /></ProtectedShell>
+          <ProtectedShell><LazyRoute><AnalyticsPage /></LazyRoute></ProtectedShell>
         </Route>
         <Route path="/scratchpad">
           <ProtectedFullscreen><ScratchpadPage /></ProtectedFullscreen>
@@ -276,7 +334,7 @@ function AppRouter() {
         </Route>
 
         <Route path="/business">
-          <ProtectedShell><BizPage /></ProtectedShell>
+          <ProtectedShell><LazyRoute><BizPage /></LazyRoute></ProtectedShell>
         </Route>
 
         <Route path="/projects/:id/trash">
@@ -293,14 +351,14 @@ function AppRouter() {
         </Route>
         {/* animatic editor */}
         <Route path="/projects/:projectId/animatic/:animaticId">
-          <ProtectedFullscreen><AnimaticEditor /></ProtectedFullscreen>
+          <ProtectedFullscreen><LazyRoute><AnimaticEditor /></LazyRoute></ProtectedFullscreen>
         </Route>
         {/* video editor — timeline for storyboards + animatics */}
         <Route path="/projects/:id/video">
           {(params) => <Redirect to={`/projects/${params.id}/video-editor`} />}
         </Route>
         <Route path="/projects/:id/video-editor">
-          {() => <ProtectedShell><VideoEditor /></ProtectedShell>}
+          {() => <ProtectedShell><LazyRoute><VideoEditor /></LazyRoute></ProtectedShell>}
         </Route>
         <Route path="/projects/:id/compare">
           <ProtectedShell><ComparePage /></ProtectedShell>
