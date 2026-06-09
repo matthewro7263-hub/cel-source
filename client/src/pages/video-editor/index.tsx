@@ -13,6 +13,9 @@ import {
 } from "react";
 import { useLocation, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
+import { queryKeys } from "@/lib/queryKeys";
+import { resolvePanelImageUrl } from "@/lib/panelMedia";
+import { PanelImage } from "@/components/PanelImage";
 import {
   ChevronLeft,
   Clock,
@@ -125,11 +128,11 @@ export default function VideoEditor() {
   const [, navigate] = useLocation();
 
   const { data: storyboardsData = [] } = useQuery<Storyboard[]>({
-    queryKey: [`/api/projects/${pid}/storyboards`],
+    queryKey: queryKeys.storyboards(pid),
     enabled: Number.isFinite(pid),
   });
   const { data: animaticsData = [] } = useQuery<Animatic[]>({
-    queryKey: [`/api/projects/${pid}/animatics`],
+    queryKey: queryKeys.animatics(pid),
     enabled: Number.isFinite(pid),
   });
 
@@ -426,8 +429,18 @@ export default function VideoEditor() {
     [pxPerSecond, seekTo],
   );
 
+  const resolvePanelSrc = useCallback(
+    async (panel: Panel) => {
+      if (panel.imageData) return panel.imageData;
+      return resolvePanelImageUrl(panel, { projectId: pid });
+    },
+    [pid],
+  );
+
   const addPanelClip = useCallback(
-    (panel: Panel) => {
+    async (panel: Panel) => {
+      const src = await resolvePanelSrc(panel);
+      if (!src) return;
       const id = createClipId("panel");
       commitClips(
         (current) => [
@@ -435,7 +448,7 @@ export default function VideoEditor() {
           {
             id,
             kind: "panel",
-            src: panel.imageData,
+            src,
             label: panel.caption || panel.dialogue || `Panel ${panel.orderIdx + 1}`,
             durationMs: DEFAULT_PANEL_MS,
           },
@@ -443,24 +456,30 @@ export default function VideoEditor() {
         { selectedClipId: id },
       );
     },
-    [commitClips],
+    [commitClips, resolvePanelSrc],
   );
 
   const addPanels = useCallback(
-    (panels: Panel[], labelPrefix?: string) => {
+    async (panels: Panel[], labelPrefix?: string) => {
       if (panels.length === 0) return;
-      const newClips = panels.map((panel, index): VideoEditorClip => ({
-        id: createClipId("panel"),
-        kind: "panel",
-        src: panel.imageData,
-        label: panel.caption || panel.dialogue || `${labelPrefix ?? "Panel"} ${index + 1}`,
-        durationMs: DEFAULT_PANEL_MS,
-      }));
+      const resolved = await Promise.all(panels.map((panel) => resolvePanelSrc(panel)));
+      const newClips = panels.flatMap((panel, index): VideoEditorClip[] => {
+        const src = resolved[index];
+        if (!src) return [];
+        return [{
+          id: createClipId("panel"),
+          kind: "panel" as const,
+          src,
+          label: panel.caption || panel.dialogue || `${labelPrefix ?? "Panel"} ${index + 1}`,
+          durationMs: DEFAULT_PANEL_MS,
+        }];
+      });
+      if (newClips.length === 0) return;
       commitClips((current) => [...current, ...newClips], {
         selectedClipId: newClips[0]?.id ?? null,
       });
     },
-    [commitClips],
+    [commitClips, resolvePanelSrc],
   );
 
   const addAnimaticClip = useCallback(
@@ -1100,8 +1119,9 @@ export default function VideoEditor() {
                               style={{ borderColor: "var(--card-border)" }}
                               title={panel.caption || `Panel ${panel.orderIdx + 1}`}
                             >
-                              <img
-                                src={panel.imageData}
+                              <PanelImage
+                                panel={panel}
+                                projectId={pid}
                                 alt={panel.caption || panel.dialogue || `Storyboard panel ${panel.orderIdx + 1}`}
                                 className="h-full w-full object-cover"
                               />

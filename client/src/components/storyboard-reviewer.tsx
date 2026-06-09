@@ -1,13 +1,15 @@
 import { useState, useEffect, useCallback } from "react";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import type { Panel } from "@shared/schema";
+import { PanelImage } from "@/components/PanelImage";
 
 interface StoryboardReviewerProps {
   panels: Panel[];
+  projectId: number;
   onClose: () => void;
 }
 
-export function StoryboardReviewer({ panels, onClose }: StoryboardReviewerProps) {
+export function StoryboardReviewer({ panels, projectId, onClose }: StoryboardReviewerProps) {
   const [current, setCurrent] = useState(0);
   const [fading, setFading] = useState(false);
 
@@ -97,8 +99,9 @@ export function StoryboardReviewer({ panels, onClose }: StoryboardReviewerProps)
           style={{ opacity: fading ? 0 : 1, transition: "opacity 200ms ease" }}
         >
           <div className="relative max-w-4xl w-full">
-            <img
-              src={panel.imageData || undefined}
+            <PanelImage
+              panel={panel}
+              projectId={projectId}
               alt={`Panel ${current + 1}`}
               className="w-full rounded-xl shadow-2xl"
               style={{

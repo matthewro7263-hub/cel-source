@@ -145,30 +145,35 @@ export function createSession(userId: number, tokenVersion: number): string {
   return `${payload}:${signature}`;
 }
 
-export function getSessionUser(sid: string | undefined): number | undefined {
+export function getSessionPayload(sid: string | undefined): { userId: number; tokenVersion: number } | undefined {
   if (!sid) return undefined;
   const parts = sid.split(":");
   if (parts.length !== 4) return undefined;
   const [userIdStr, expiresAtStr, tokenVersionStr, signature] = parts;
   const userId = parseInt(userIdStr, 10);
   const expiresAt = parseInt(expiresAtStr, 10);
-  
-  if (isNaN(userId) || isNaN(expiresAt)) return undefined;
-  if (Date.now() > expiresAt) return undefined; // Session expired
-  
-    const payload = `${userIdStr}:${expiresAtStr}:${tokenVersionStr}`;
+  const tokenVersion = parseInt(tokenVersionStr, 10);
+
+  if (isNaN(userId) || isNaN(expiresAt) || isNaN(tokenVersion)) return undefined;
+  if (Date.now() > expiresAt) return undefined;
+
+  const payload = `${userIdStr}:${expiresAtStr}:${tokenVersionStr}`;
   const hmac = createHmac("sha256", SESSION_SECRET);
   hmac.update(payload);
   const expectedSignature = hmac.digest("hex");
-  
+
   try {
     if (timingSafeEqual(Buffer.from(signature, "hex"), Buffer.from(expectedSignature, "hex"))) {
-      return userId;
+      return { userId, tokenVersion };
     }
   } catch {
     return undefined;
   }
   return undefined;
+}
+
+export function getSessionUser(sid: string | undefined): number | undefined {
+  return getSessionPayload(sid)?.userId;
 }
 
 export function destroySession(sid: string) {
@@ -298,7 +303,7 @@ const coreStorage = {
         deletedAt: storyboardPanels.deletedAt,
       })
       .from(storyboardPanels)
-      .where(eq(storyboardPanels.storyboardId, storyboardId))
+      .where(and(eq(storyboardPanels.storyboardId, storyboardId), isNull(storyboardPanels.deletedAt)))
       .orderBy(asc(storyboardPanels.orderIdx));
   },
   async listPanelsLiteBatch(storyboardIds: number[]) {
@@ -319,7 +324,7 @@ const coreStorage = {
         deletedAt: storyboardPanels.deletedAt,
       })
       .from(storyboardPanels)
-      .where(inArray(storyboardPanels.storyboardId, storyboardIds))
+      .where(and(inArray(storyboardPanels.storyboardId, storyboardIds), isNull(storyboardPanels.deletedAt)))
       .orderBy(asc(storyboardPanels.storyboardId), asc(storyboardPanels.orderIdx));
   },
   async listPanelsForStoryboardIds(ids: number[]) {
@@ -349,6 +354,28 @@ const coreStorage = {
   },
   async deletePanel(id: number) { return await db.delete(storyboardPanels).where(eq(storyboardPanels.id, id)); },
   async getPanel(id: number) { return await db.select().from(storyboardPanels).where(eq(storyboardPanels.id, id)).then(r => r[0]); },
+  async isR2KeyInProject(projectId: number, r2Key: string): Promise<boolean> {
+    if (!r2Key) return false;
+    const projectStoryboards = await db
+      .select({ id: storyboards.id })
+      .from(storyboards)
+      .where(eq(storyboards.projectId, projectId));
+    const sbIds = projectStoryboards.map((sb) => sb.id);
+    if (sbIds.length > 0) {
+      const panelHit = await db
+        .select({ id: storyboardPanels.id })
+        .from(storyboardPanels)
+        .where(and(inArray(storyboardPanels.storyboardId, sbIds), eq(storyboardPanels.r2Key, r2Key)))
+        .limit(1);
+      if (panelHit.length > 0) return true;
+    }
+    const assetHit = await db
+      .select({ id: assets.id })
+      .from(assets)
+      .where(and(eq(assets.projectId, projectId), eq(assets.r2Key, r2Key)))
+      .limit(1);
+    return assetHit.length > 0;
+  },
 
   // ===== ANIMATICS =====
   async listAnimatics(projectId: number) { return await db.select().from(animatics).where(eq(animatics.projectId, projectId)); },
@@ -685,6 +712,7 @@ const extraStorage = {
   async listCommissionLineItems(commissionId: number) { return await db.select().from(commissionLineItems).where(eq(commissionLineItems.commissionId, commissionId)); },
   async createCommissionLineItem(item: InsertCommissionLineItem) { return await db.insert(commissionLineItems).values({ ...item, createdAt: new Date() }).returning().then(r => r[0] as any); },
   async updateCommissionLineItem(id: number, patch: Partial<InsertCommissionLineItem>) { return await db.update(commissionLineItems).set(patch).where(eq(commissionLineItems.id, id)).returning().then(r => r[0] as any); },
+  async getCommissionLineItem(id: number) { return await db.select().from(commissionLineItems).where(eq(commissionLineItems.id, id)).then(r => r[0]); },
   async deleteCommissionLineItem(id: number) { return await db.delete(commissionLineItems).where(eq(commissionLineItems.id, id)); },
   async updateCommissionQuote(id: number, quoteCents: number | null, invoicedAt?: string | null) {
       const patch: any = {};
@@ -718,6 +746,12 @@ const extraStorage = {
 
   // v4 Scene Time Entries
   async listSceneTimeEntries(sceneId: number) { return await db.select().from(sceneTimeEntries).where(eq(sceneTimeEntries.sceneId, sceneId)); },
+  async listSceneTimeEntriesForUser(sceneId: number, userId: number) {
+    return await db
+      .select()
+      .from(sceneTimeEntries)
+      .where(and(eq(sceneTimeEntries.sceneId, sceneId), eq(sceneTimeEntries.userId, userId)));
+  },
   async getActiveSceneTimersForProject(projectId: number, userId: number) {
     const projectScenes = await db
       .select({ id: scenes.id })
@@ -753,6 +787,7 @@ const extraStorage = {
   async listCommissionPricingPresets(projectId: number) { return await db.select().from(commissionPricingPresets).where(eq(commissionPricingPresets.projectId, projectId)); },
   async createCommissionPricingPreset(p: InsertCommissionPricingPreset) { return await db.insert(commissionPricingPresets).values({ ...p, createdAt: new Date() }).returning().then(r => r[0] as any); },
   async updateCommissionPricingPreset(id: number, patch: Partial<InsertCommissionPricingPreset>) { return await db.update(commissionPricingPresets).set(patch).where(eq(commissionPricingPresets.id, id)).returning().then(r => r[0] as any); },
+  async getCommissionPricingPreset(id: number) { return await db.select().from(commissionPricingPresets).where(eq(commissionPricingPresets.id, id)).then(r => r[0]); },
   async deleteCommissionPricingPreset(id: number) { return await db.delete(commissionPricingPresets).where(eq(commissionPricingPresets.id, id)); },
 
   // v4 Global Search — uses raw SQLite for LIKE queries across user's accessible projects
@@ -793,7 +828,7 @@ const extraStorage = {
   async getAudVoiceTakesByProject(projectId: number) { return await db.select().from(audVoiceTakes).where(eq(audVoiceTakes.projectId, projectId)); },
   
   async createAudCaption(caption: InsertAudCaption) { return await db.insert(audCaptions).values(caption).returning().then(r => r[0] as any); },
-    
+  async getAudCaption(id: number) { return await db.select().from(audCaptions).where(eq(audCaptions.id, id)).then(r => r[0]); },
   async getAudCaptionsByAnimatic(animaticProjectId: number) { return await db.select().from(audCaptions).where(eq(audCaptions.animaticProjectId, animaticProjectId)); },
     
   async deleteAudCaption(id: number) { return await db.delete(audCaptions).where(eq(audCaptions.id, id)); },

@@ -1,6 +1,6 @@
 import type { IncomingMessage, Server } from "node:http";
 import { WebSocket, WebSocketServer } from "ws";
-import { getSessionUser, storage } from "./storage";
+import { getSessionPayload, storage } from "./storage";
 
 interface ReviewClientMeta {
   projectId: number;
@@ -45,15 +45,22 @@ export function registerReviewRoom(httpServer: Server) {
 
     const projectId = parseInt(match[1], 10);
     const token = url.searchParams.get("token") || undefined;
-    const userId = getSessionUser(token);
-    if (!userId || !canAccessProject(projectId, userId)) {
-      socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
-      socket.destroy();
-      return;
-    }
 
-    wss.handleUpgrade(req, socket, head, (ws) => {
-      wss.emit("connection", ws, req, { projectId, userId } satisfies ReviewClientMeta);
+    (async () => {
+      const session = getSessionPayload(token);
+      const userId = session?.userId;
+      if (!userId || !(await canAccessProject(projectId, userId))) {
+        socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+        socket.destroy();
+        return;
+      }
+
+      wss.handleUpgrade(req, socket, head, (ws) => {
+        wss.emit("connection", ws, req, { projectId, userId } satisfies ReviewClientMeta);
+      });
+    })().catch(() => {
+      socket.write("HTTP/1.1 500 Internal Server Error\r\n\r\n");
+      socket.destroy();
     });
   });
 

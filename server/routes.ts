@@ -8,8 +8,9 @@ import type { Server } from "node:http";
 import { z } from "zod";
 import {
   storage, db, hashPassword, verifyPassword, createSession,
-  getSessionUser, destroySession, genToken,
+  getSessionUser, getSessionPayload, destroySession, genToken,
 } from "./storage";
+import { presignDownload } from "./r2";
 import { notifyDiscord } from "./discord";
 import {
   insertCommissionSchema,
@@ -37,16 +38,30 @@ function extractToken(req: Request): string | undefined {
 
 async function requireAuth(req: Request, res: Response, next: NextFunction) {
   const token = extractToken(req);
-  const userId = getSessionUser(token);
-  if (!userId) return res.status(401).json({ message: "Not authenticated" });
-  const user = await storage.getUser(userId);
+  const session = getSessionPayload(token);
+  if (!session) return res.status(401).json({ message: "Not authenticated" });
+  const user = await storage.getUser(session.userId);
   if (!user) return res.status(401).json({ message: "User not found" });
+  if (session.tokenVersion !== user.tokenVersion) {
+    return res.status(401).json({ message: "Session revoked" });
+  }
   req.user = user;
   next();
 }
 
 const ACCESS_CACHE_TTL_MS = 60_000;
 const accessCache = new Map<string, { allowed: boolean; expiresAt: number }>();
+
+function invalidateProjectAccess(projectId: number, userId?: number) {
+  if (userId !== undefined) {
+    accessCache.delete(`${projectId}:${userId}`);
+    return;
+  }
+  const prefix = `${projectId}:`;
+  for (const key of accessCache.keys()) {
+    if (key.startsWith(prefix)) accessCache.delete(key);
+  }
+}
 
 async function canAccessProject(projectId: number, userId: number): Promise<boolean> {
   const key = `${projectId}:${userId}`;
@@ -174,10 +189,13 @@ const upload = multer({
 
   app.get("/api/auth/me", async (req, res) => {
     const token = extractToken(req);
-    const userId = getSessionUser(token);
-    if (!userId) return res.status(401).json({ message: "Not authenticated" });
-    const user = await storage.getUser(userId);
+    const session = getSessionPayload(token);
+    if (!session) return res.status(401).json({ message: "Not authenticated" });
+    const user = await storage.getUser(session.userId);
     if (!user) return res.status(401).json({ message: "User not found" });
+    if (session.tokenVersion !== user.tokenVersion) {
+      return res.status(401).json({ message: "Session revoked" });
+    }
     const { passwordHash, ...safe } = user;
     res.json(safe);
   });
@@ -410,6 +428,7 @@ const upload = multer({
     }
     if (!(await storage.isMember(id, user.id))) {
       await storage.addMember({ projectId: id, userId: user.id, role: body.role || "editor" });
+      invalidateProjectAccess(id, user.id);
     }
     res.json({ user: { id: user.id, email: user.email, name: user.name, avatarColor: user.avatarColor }, tempPassword });
   });
@@ -419,7 +438,23 @@ const upload = multer({
     const userId = parseInt(String(req.params.userId), 10);
     if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
     await storage.removeMember(id, userId);
+    invalidateProjectAccess(id, userId);
     res.json({ ok: true });
+  });
+
+  // Project-scoped R2 media (presigned URL for panels/assets in this project)
+  app.get("/api/projects/:id/media", requireAuth, async (req, res) => {
+    const id = parseInt(String(req.params.id), 10);
+    if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
+    const key = String(req.query.key ?? "");
+    if (!key) return res.status(400).json({ message: "key required" });
+    if (!(await storage.isR2KeyInProject(id, key))) return res.status(404).json({ message: "Media not found" });
+    try {
+      const url = await presignDownload(key, 300);
+      res.json({ url, expiresIn: 300 });
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message ?? "Failed to presign media" });
+    }
   });
 
   // ===== SCRIPTS =====
@@ -756,7 +791,7 @@ const upload = multer({
   app.get("/api/projects/:id/animatics", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
-    res.json(await storage.listAnimaticsLite(id));
+    res.json(await storage.listAnimatics(id));
   });
   app.post("/api/projects/:id/animatics", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
@@ -963,7 +998,14 @@ const upload = multer({
     const asset = await storage.getAsset(id);
     if (!asset) return res.status(404).json({ message: "Not found" });
     if (!(await canAccessProject(asset.projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
-    // fileData is a base64 data URL — send it as-is for client-side download
+    if (asset.r2Key) {
+      try {
+        const url = await presignDownload(asset.r2Key, 300);
+        return res.json({ url, filename: asset.filename, mimeType: asset.mimeType, r2Key: asset.r2Key });
+      } catch (err: any) {
+        return res.status(500).json({ message: err?.message ?? "Failed to presign asset" });
+      }
+    }
     res.json({ fileData: asset.fileData, filename: asset.filename, mimeType: asset.mimeType });
   });
 
@@ -1383,13 +1425,28 @@ const upload = multer({
       sharePanelsByStoryboard.set(panel.storyboardId, list);
     }
     const storyboards = sbs.map((sb: any) => ({ ...sb, panels: sharePanelsByStoryboard.get(sb.id) ?? [] }));
-    const animatics = await storage.listAnimaticsLite(p.id);
+    const animatics = await storage.listAnimatics(p.id);
     const scenes = await storage.listScenes(p.id);
     res.json({
       project: { ...p, shareToken: undefined },
       owner: owner ? { name: owner.name, avatarColor: owner.avatarColor } : null,
       scripts, storyboards, animatics, scenes,
     });
+  });
+
+  app.get("/api/share/:token/media", async (req, res) => {
+    const token = req.params.token;
+    const p = await storage.getProjectByToken(token);
+    if (!p || !p.shareEnabled) return res.status(404).json({ message: "Share link not found or disabled" });
+    const key = String(req.query.key ?? "");
+    if (!key) return res.status(400).json({ message: "key required" });
+    if (!(await storage.isR2KeyInProject(p.id, key))) return res.status(404).json({ message: "Media not found" });
+    try {
+      const url = await presignDownload(key, 300);
+      res.json({ url, expiresIn: 300 });
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message ?? "Failed to presign media" });
+    }
   });
 
   // Public share meta endpoint (for watermark)
@@ -1679,6 +1736,7 @@ ${body.scriptContent}
 
   app.post("/api/projects/:projectId/ai/agent/check", requireAuth, async (req, res) => {
     const projectId = parseInt(String(req.params.projectId), 10);
+    if (!(await canAccessProject(projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
     const { scriptContent, lastVersion } = req.body;
 
     const apiKey = await (storage as any).getProjectAiKey(projectId);
@@ -1988,10 +2046,10 @@ ${body.scriptContent}
     const scene = await storage.getScene(id);
     if (!scene) return res.status(404).json({ message: "Scene not found" });
     if (!(await canAccessProject(scene.projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
-    const entries = await (storage as any).listSceneTimeEntries(id);
-    const totalMs = entries.filter((e: any) => e.durationMs).reduce((sum: number, e: any) => sum + e.durationMs, 0);
-    const active = entries.find((e: any) => !e.endedAt);
-    res.json({ entries, totalMs, active: active || null });
+    const entries = await storage.listSceneTimeEntriesForUser(id, req.user!.id);
+    const totalMs = entries.filter((e) => e.durationMs).reduce((sum, e) => sum + (e.durationMs ?? 0), 0);
+    const active = entries.find((e) => !e.endedAt) ?? null;
+    res.json({ entries, totalMs, active });
   });
 
   app.post ("/api/scenes/:id/timer/start", requireAuth, async (req, res) => {

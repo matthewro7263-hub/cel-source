@@ -1,8 +1,11 @@
 import { useState, useRef, useEffect, useCallback, memo } from "react";
+import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { apiRequest, queryClient, getAuthToken } from "@/lib/queryClient";
 import { queryKeys } from "@/lib/queryKeys";
+import { assertOk } from "@/lib/assertOk";
+import { PanelImage } from "@/components/PanelImage";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -94,7 +97,13 @@ function EmptyTabState({
   );
 }
 
+function invalidatePanelCaches(projectId: number) {
+  queryClient.invalidateQueries({ queryKey: queryKeys.storyboards(projectId) });
+  queryClient.invalidateQueries({ queryKey: ["/api/production/queue"] });
+}
+
 export default function StoryboardsTab({ projectId }: { projectId: number }) {
+  const [location] = useLocation();
   const { data: boards } = useQuery<StoryboardWithPanels[]>({
     queryKey: queryKeys.storyboards(projectId),
   });
@@ -102,13 +111,13 @@ export default function StoryboardsTab({ projectId }: { projectId: number }) {
   const [deepLinkPanelId, setDeepLinkPanelId] = useState<number | null>(null);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const panelParam = params.get("panel");
+    const query = location.includes("?") ? location.split("?")[1] : "";
+    const panelParam = new URLSearchParams(query).get("panel");
     if (panelParam) {
       const panelId = parseInt(panelParam, 10);
       if (!isNaN(panelId)) setDeepLinkPanelId(panelId);
     }
-  }, []);
+  }, [location]);
 
   useEffect(() => {
     if (deepLinkPanelId && boards) {
@@ -224,7 +233,7 @@ function StoryboardView({
   const selectedPanel = panels.find((p) => p.id === selectedPanelId);
   const useVirtualGrid = filteredPanels.length > 20;
 
-  useEffect(() => { setPanels(board.panels); }, [board.id, board.panels.length]);
+  useEffect(() => { setPanels(board.panels); }, [board.id, board.panels]);
 
   useEffect(() => {
     if (initialSelectedPanelId && board.panels.some((p) => p.id === initialSelectedPanelId)) {
@@ -254,26 +263,34 @@ function StoryboardView({
   const upload = useMutation({
     mutationFn: async (data: { r2Key: string; caption: string }) => {
       const r = await apiRequest("POST", `/api/storyboards/${board.id}/panels`, data);
+      await assertOk(r);
       return r.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.storyboards(projectId) });
-    },
+    onSuccess: () => invalidatePanelCaches(projectId),
     onError: (err: any) => toast({ title: "Upload failed", description: String(err.message || err), variant: "destructive" }),
   });
 
   const reorder = useMutation({
     mutationFn: async (newOrder: Panel[]) => {
-      await apiRequest("POST", `/api/storyboards/${board.id}/panels/reorder`, {
+      const r = await apiRequest("POST", `/api/storyboards/${board.id}/panels/reorder`, {
         orderedIds: newOrder.map((p) => p.id),
       });
+      await assertOk(r);
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.storyboards(projectId) }),
+    onSuccess: () => invalidatePanelCaches(projectId),
+    onError: () => {
+      setPanels(board.panels);
+      toast({ title: "Reorder failed", description: "Panel order was restored.", variant: "destructive" });
+    },
   });
 
   const delPanel = useMutation({
-    mutationFn: async (id: number) => (await apiRequest("DELETE", `/api/panels/${id}`)).json(),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.storyboards(projectId) }),
+    mutationFn: async (id: number) => {
+      const r = await apiRequest("DELETE", `/api/panels/${id}`);
+      await assertOk(r);
+      return r.json();
+    },
+    onSuccess: () => invalidatePanelCaches(projectId),
   });
 
   const editPanel = useMutation({
@@ -284,6 +301,7 @@ function StoryboardView({
       if (!isCaptionOnly) return {};
       const previous = queryClient.getQueryData<StoryboardWithPanels[]>(queryKeys.storyboards(projectId));
       patchPanelInCache(projectId, id, patch);
+      setPanels((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)));
       return { previous };
     },
     onError: (_err, { id, patch }, context) => {
@@ -297,7 +315,7 @@ function StoryboardView({
       if (isCaptionOnly) {
         patchPanelInCache(projectId, id, { caption: updated.caption });
       } else {
-        queryClient.invalidateQueries({ queryKey: queryKeys.storyboards(projectId) });
+        invalidatePanelCaches(projectId);
       }
     },
   });
@@ -381,6 +399,7 @@ function StoryboardView({
       key={p.id}
       panel={p}
       index={i}
+      projectId={projectId}
       allPins={allPins}
       storyboardId={board.id}
       onDelete={() => {
@@ -449,7 +468,7 @@ function StoryboardView({
   return (
     <>
       {reviewing && panels.length > 0 && (
-        <StoryboardReviewer panels={panels} onClose={() => setReviewing(false)} />
+        <StoryboardReviewer panels={panels} projectId={projectId} onClose={() => setReviewing(false)} />
       )}
       <div className="rounded-xl border border-card-border bg-card p-5">
         <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
@@ -521,6 +540,7 @@ function StoryboardView({
             {selectedPanel && (
               <StoryboardInspector
                 panel={selectedPanel}
+                projectId={projectId}
                 index={panels.findIndex((p) => p.id === selectedPanelId)}
                 onClose={() => setSelectedPanelId(null)}
                 onEdit={(patch) => editPanel.mutate({ id: selectedPanel.id, patch })}
@@ -541,6 +561,7 @@ function StoryboardView({
 const SortablePanel = memo(function SortablePanel({
   panel,
   index,
+  projectId,
   allPins,
   storyboardId,
   onDelete,
@@ -551,6 +572,7 @@ const SortablePanel = memo(function SortablePanel({
 }: {
   panel: Panel;
   index: number;
+  projectId: number;
   allPins: PinData[];
   storyboardId: number;
   onDelete: () => void;
@@ -567,8 +589,6 @@ const SortablePanel = memo(function SortablePanel({
     setCaption(panel.caption || "");
   }, [panel]);
 
-  const panelImageUrl = panel.imageData || (panel.r2Key ? `/api/uploads/file?key=${encodeURIComponent(panel.r2Key)}` : "");
-
   return (
     <div
       ref={setNodeRef}
@@ -584,8 +604,9 @@ const SortablePanel = memo(function SortablePanel({
         onClick={onClick}
         className="aspect-video bg-muted relative cursor-grab active:cursor-grabbing hover:brightness-95 transition-all duration-150"
       >
-        <img
-          src={panelImageUrl}
+        <PanelImage
+          panel={panel}
+          projectId={projectId}
           alt={panel.caption || panel.dialogue || `Storyboard panel ${index + 1}`}
           className="w-full h-full object-cover select-none pointer-events-none"
           loading="lazy"
@@ -626,6 +647,7 @@ const SortablePanel = memo(function SortablePanel({
 
 function StoryboardInspector({
   panel,
+  projectId,
   index,
   onClose,
   onEdit,
@@ -633,6 +655,7 @@ function StoryboardInspector({
   onDelete,
 }: {
   panel: Panel;
+  projectId: number;
   index: number;
   onClose: () => void;
   onEdit: (patch: Partial<Panel>) => void;
@@ -662,8 +685,6 @@ function StoryboardInspector({
     reader.readAsDataURL(file);
   };
 
-  const panelImageUrl = panel.imageData || (panel.r2Key ? `/api/uploads/file?key=${encodeURIComponent(panel.r2Key)}` : "");
-
   return (
     <div className="w-[320px] shrink-0 glass-strong rounded-2xl p-4 space-y-4 flex flex-col h-[calc(100vh-200px)] overflow-y-auto sticky top-4">
       <div className="flex items-center justify-between">
@@ -679,13 +700,17 @@ function StoryboardInspector({
         <div className="space-y-2">
           <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Image</Label>
           <div className="aspect-video bg-muted border border-border rounded overflow-hidden relative">
-            {panelImageUrl ? (
-              <img src={panelImageUrl} alt={caption} className="w-full h-full object-cover" />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center text-muted-foreground text-xs">
-                No image data
-              </div>
-            )}
+            <PanelImage
+              panel={panel}
+              projectId={projectId}
+              alt={caption}
+              className="w-full h-full object-cover"
+              fallback={
+                <div className="w-full h-full flex items-center justify-center text-muted-foreground text-xs">
+                  No image data
+                </div>
+              }
+            />
           </div>
           <div className="flex gap-2 justify-end">
             <input

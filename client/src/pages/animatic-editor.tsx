@@ -8,6 +8,8 @@ import {
 import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { queryKeys } from "@/lib/queryKeys";
+import { resolvePanelImageUrl } from "@/lib/panelMedia";
 import { useToast } from "@/hooks/use-toast";
 import {
   Play, Pause, SkipBack, SkipForward, ChevronsLeft, ChevronsRight,
@@ -130,23 +132,39 @@ export default function AnimaticEditor() {
   const panelImageCache = useRef<Map<number, string>>(new Map());
 
   const { data: storyboards } = useQuery<{ id: number; title: string; panels: Panel[] }[]>({
-    queryKey: ["/api/projects", projectId, "storyboards"],
-    queryFn: async () =>
-      (await apiRequest("GET", `/api/projects/${projectId}/storyboards`)).json(),
+    queryKey: queryKeys.storyboards(projectId),
     enabled: !!animatic,
   });
+
+  const [, bumpPanelCache] = useState(0);
+
+  useEffect(() => {
+    if (!storyboards || !projectId) return;
+    const allPanels = storyboards.flatMap((sb) => sb.panels);
+    for (const p of allPanels) {
+      if (p.imageData) panelImageCache.current.set(p.id, p.imageData);
+      else if (p.r2Key) {
+        resolvePanelImageUrl(p, { projectId }).then((url) => {
+          if (url) {
+            panelImageCache.current.set(p.id, url);
+            bumpPanelCache((n) => n + 1);
+          }
+        });
+      }
+    }
+  }, [storyboards, projectId]);
 
   const panelImageUrl = useCallback(
     (panelId: number | null | undefined): string | undefined => {
       if (!panelId) return undefined;
       if (panelImageCache.current.has(panelId)) return panelImageCache.current.get(panelId);
       const allPanels = storyboards?.flatMap((sb) => sb.panels) ?? [];
-      const p = allPanels.find((p) => p.id === panelId);
+      const p = allPanels.find((panel) => panel.id === panelId);
       if (p?.imageData) {
         panelImageCache.current.set(panelId, p.imageData);
         return p.imageData;
       }
-      return undefined;
+      return panelImageCache.current.get(panelId);
     },
     [storyboards],
   );

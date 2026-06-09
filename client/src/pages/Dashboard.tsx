@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Plus, Clapperboard, Calendar, ArrowRight, Activity, MessageSquare, Upload } from "lucide-react";
 import { formatDeadline } from "@/lib/utils-cel";
 import { useToast } from "@/hooks/use-toast";
+import { PanelImage } from "@/components/PanelImage";
 
 const COLORS = ["#6E4FE8", "#E8744F", "#4FBFE8", "#E84F9F", "#4FE89A", "#E8C44F", "#E84F4F"];
 
@@ -139,10 +140,6 @@ export default function Dashboard() {
     },
     onError: (err: any) => toast({ title: "Couldn't create sandbox", description: String(err.message || err), variant: "destructive" }),
   });
-
-  const getPanelImageUrl = (panel: NonNullable<QueueItem["lastPanel"]>) => {
-    return panel.imageData || (panel.r2Key ? `/api/uploads/file?key=${encodeURIComponent(panel.r2Key)}` : "");
-  };
 
   const getStatusChipClass = (status: string) => {
     switch (status.toLowerCase()) {
@@ -307,8 +304,6 @@ export default function Dashboard() {
                   deadlineInfo.tone === "amber" ? "text-amber-500" :
                   deadlineInfo.tone === "green" ? "text-emerald-500" : "text-neutral-400";
 
-                const panelImgSrc = item.lastPanel ? getPanelImageUrl(item.lastPanel) : "";
-
                 return (
                   <div
                     key={item.project.id}
@@ -358,21 +353,21 @@ export default function Dashboard() {
                         <span className="text-[10px] uppercase font-mono tracking-wider text-[#8b8b84] block">Last edit</span>
                         {item.lastPanel ? (
                           <div className="flex items-center gap-2">
-                            {panelImgSrc ? (
-                              <Link href={`/projects/${item.project.id}/storyboards?panel=${item.lastPanel.id}`}>
-                                <img 
-                                  src={panelImgSrc} 
-                                  className="w-16 h-10 object-cover rounded-[4px] border border-[#282822] bg-black hover:ring-1 hover:ring-[#3E63DD] cursor-pointer transition-all"
-                                  alt="Last edit thumbnail"
-                                  loading="lazy"
-                                  decoding="async"
-                                />
-                              </Link>
-                            ) : (
-                              <div className="w-16 h-10 bg-neutral-900 border border-[#282822] flex items-center justify-center text-[8px] text-neutral-600 rounded-[4px] font-mono">
-                                NO IMAGE
-                              </div>
-                            )}
+                            <Link href={`/projects/${item.project.id}/storyboards?panel=${item.lastPanel.id}`}>
+                              <PanelImage
+                                panel={item.lastPanel}
+                                projectId={item.project.id}
+                                className="w-16 h-10 object-cover rounded-[4px] border border-[#282822] bg-black hover:ring-1 hover:ring-[#3E63DD] cursor-pointer transition-all"
+                                alt="Last edit thumbnail"
+                                loading="lazy"
+                                decoding="async"
+                                fallback={
+                                  <div className="w-16 h-10 bg-neutral-900 border border-[#282822] flex items-center justify-center text-[8px] text-neutral-600 rounded-[4px] font-mono">
+                                    NO IMAGE
+                                  </div>
+                                }
+                              />
+                            </Link>
                             <div className="max-w-[120px] text-left">
                               <div className="text-[10px] font-mono text-[#e8ebf5] truncate">
                                 Panel #{item.lastPanel.orderIdx + 1}

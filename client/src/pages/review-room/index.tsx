@@ -4,6 +4,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Brush, Eraser, Radio, FileDown, CheckCircle2 } from "lucide-react";
 import { getAuthToken, apiRequest, queryClient } from "@/lib/queryClient";
+import { queryKeys } from "@/lib/queryKeys";
+import { PanelImage } from "@/components/PanelImage";
 
 import { useToast } from "@/hooks/use-toast";
 import { ToolSurface, ToolWorkspace } from "@/components/layout/tool-workspace";
@@ -54,7 +56,7 @@ export default function ReviewRoomPage() {
   const { toast } = useToast();
 
   const { data: storyboards = [] } = useQuery<StoryboardWithPanels[]>({
-    queryKey: [`/api/projects/${projectId}/storyboards`],
+    queryKey: queryKeys.storyboards(projectId),
     enabled: !!projectId,
   });
 
@@ -192,7 +194,7 @@ export default function ReviewRoomPage() {
       await apiRequest("POST", `/api/projects/${projectId}/comments`, {
         body: `✅ APPROVED in Review Room: ${panel.label}`,
       });
-      queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}/comments`] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.comments(projectId) });
       toast({ title: "Status Updated", description: "Marked as approved in project logs." });
       send({ type: "note", body: `✅ ${panel.label} approved by reviewer` });
     } catch (e) {
@@ -231,7 +233,7 @@ export default function ReviewRoomPage() {
       main={
         <ToolSurface className="relative aspect-video bg-black">
           {panel ? (
-            <img src={panel.imageData || undefined} alt={panel.label} className="absolute inset-0 h-full w-full object-contain" />
+            <PanelImage panel={panel} projectId={projectId} alt={panel.label} className="absolute inset-0 h-full w-full object-contain" />
           ) : (
             <div className="absolute inset-0 grid place-items-center text-sm text-white/45">No panels available for review.</div>
           )}

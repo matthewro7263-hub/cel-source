@@ -274,6 +274,7 @@ export function BulkImportDialog({ storyboardId, projectId, onSuccess }: BulkImp
             description: `Successfully imported ${successCount} storyboard panels.`,
           });
           queryClient.invalidateQueries({ queryKey: queryKeys.storyboards(projectId) });
+          queryClient.invalidateQueries({ queryKey: ["/api/production/queue"] });
           onSuccess();
           setOpen(false);
           setFiles([]);

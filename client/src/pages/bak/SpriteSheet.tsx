@@ -7,6 +7,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 
 import { getAuthToken } from "@/lib/queryClient";
+import { queryKeys } from "@/lib/queryKeys";
 
 export default function BakSpriteSheetPage() {
   const { id } = useParams();
@@ -16,7 +17,7 @@ export default function BakSpriteSheetPage() {
 
   // We fetch storyboards to get all panels.
   const { data: storyboards = [], isLoading } = useQuery<any[]>({
-    queryKey: [`/api/projects/${id}/storyboards`],
+    queryKey: queryKeys.storyboards(Number(id)),
   });
 
   const handleExport = async () => {

@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { queryKeys } from "@/lib/queryKeys";
+import { resolvePanelImageUrl } from "@/lib/panelMedia";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowLeft, Columns2, Eye, Pause, Play } from "lucide-react";
@@ -60,17 +62,41 @@ export default function ComparePage() {
   const [diffOpacity, setDiffOpacity] = useState(50);
 
   const { data: storyboards = [] } = useQuery<CompareStoryboard[]>({
-    queryKey: [`/api/projects/${projectId}/storyboards`],
+    queryKey: queryKeys.storyboards(projectId),
     enabled: !!projectId,
   });
 
   const { data: animatics = [] } = useQuery<CompareAnimatic[]>({
-    queryKey: [`/api/projects/${projectId}/animatics`],
+    queryKey: queryKeys.animatics(projectId),
     queryFn: async () => (await apiRequest("GET", `/api/projects/${projectId}/animatics`)).json(),
     enabled: !!projectId,
   });
 
-  const media = useMemo(() => flattenComparableMedia(storyboards, animatics), [storyboards, animatics]);
+  const [resolvedSrc, setResolvedSrc] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!projectId || !storyboards.length) return;
+    let cancelled = false;
+    (async () => {
+      const next: Record<string, string> = {};
+      for (const sb of storyboards) {
+        for (const panel of sb.panels || []) {
+          const url = await resolvePanelImageUrl(panel, { projectId });
+          if (url) next[`panel-${panel.id}`] = url;
+        }
+      }
+      if (!cancelled) setResolvedSrc(next);
+    })();
+    return () => { cancelled = true; };
+  }, [storyboards, projectId]);
+
+  const media = useMemo(() => {
+    const base = flattenComparableMedia(storyboards, animatics);
+    return base.map((item) => ({
+      ...item,
+      src: resolvedSrc[item.key] || item.src,
+    }));
+  }, [storyboards, animatics, resolvedSrc]);
 
   useEffect(() => {
     if (!media.length) return;

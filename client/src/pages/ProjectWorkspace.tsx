@@ -957,7 +957,7 @@ function ScenesTab({ projectId }: { projectId: number }) {
 function ScenesTable({ scenes, projectId }: { scenes: Scene[]; projectId: number }) {
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
 
-  const { data: sceneTimers = {} } = useQuery<Record<number, { active?: boolean }>>({
+  const { data: sceneTimers = {} } = useQuery<Record<number, TimeData>>({
     queryKey: queryKeys.sceneTimers(projectId),
     queryFn: async () => (await apiRequest("GET", `/api/projects/${projectId}/scene-timers`)).json(),
     refetchInterval: (query) => {
@@ -1060,7 +1060,7 @@ function ScenesTable({ scenes, projectId }: { scenes: Scene[]; projectId: number
                     </td>
                     <td className="px-4 py-2.5">
                       {/* v4: scene timer */}
-                      <SceneTimerButton sceneId={s.id} />
+                      <SceneTimerButton sceneId={s.id} projectId={projectId} timerData={sceneTimers[s.id]} />
                     </td>
                     <td className="px-4 py-2.5 text-right">
                       <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => del.mutate(s.id)} data-testid={`button-delete-scene-${s.id}`}>

@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { queryKeys } from "@/lib/queryKeys";
+import { PanelImage } from "@/components/PanelImage";
 import type { Panel, Storyboard } from "@shared/schema";
 
 interface StoryboardWithPanels extends Storyboard {
@@ -30,7 +32,7 @@ export default function CouchModePage() {
   const [newComment, setNewComment] = useState("");
   
   const { data: storyboards = [] } = useQuery<StoryboardWithPanels[]>({
-    queryKey: [`/api/projects/${projectId}/storyboards`],
+    queryKey: queryKeys.storyboards(projectId),
     enabled: !!projectId,
   });
 
@@ -112,7 +114,7 @@ export default function CouchModePage() {
         title: decision === "approved" ? "Panel approved" : "Revision note added",
         description: "Saved to project comments.",
       });
-      queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}/comments`] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.comments(projectId) });
       if (currentIdx < panels.length - 1) nextPanel();
     },
   });
@@ -129,7 +131,7 @@ export default function CouchModePage() {
       toast({ title: "Comment added" });
       setNewComment("");
       setCommentsOpen(false);
-      queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}/comments`] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.comments(projectId) });
     }
   });
 
@@ -169,8 +171,9 @@ export default function CouchModePage() {
         {/* Panel Image */}
         {panel ? (
           <div className="absolute inset-0 flex items-center justify-center p-12">
-            <img
-              src={panel.imageData || undefined}
+            <PanelImage
+              panel={panel}
+              projectId={projectId}
               alt={`${panel.storyboardTitle} panel ${panel.panelNumber}`}
               className="max-w-full max-h-full object-contain shadow-2xl rounded-sm"
               draggable={false}

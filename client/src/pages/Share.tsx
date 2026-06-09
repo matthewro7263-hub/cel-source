@@ -15,6 +15,7 @@ import { CliShareHeader } from "@/components/cli-share-header";
 import { CliFeedbackModal } from "@/components/cli-feedback-modal";
 import { CliApprovalWidget } from "@/components/cli-approval-widget";
 import { CliWatermarkOverlay } from "@/components/cli-watermark";
+import { PanelImage } from "@/components/PanelImage";
 import { useState } from "react";
 
 interface ShareData {
@@ -139,8 +140,9 @@ export default function Share() {
                     {sb.panels.map((p, i) => (
                       <div key={p.id} className="rounded-lg border border-border overflow-hidden">
                         <div className="aspect-video bg-muted relative">
-                          <img
-                            src={p.imageData || undefined}
+                          <PanelImage
+                            panel={p}
+                            shareToken={params.token}
                             alt={p.caption || p.dialogue || `${sb.title} panel ${i + 1}`}
                             className="w-full h-full object-cover"
                           />

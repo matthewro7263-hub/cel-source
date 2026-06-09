@@ -1,5 +1,5 @@
 import { Express, Request, Response, NextFunction } from "express";
-import { storage, getSessionUser } from "./storage";
+import { storage, getSessionPayload } from "./storage";
 import { z } from "zod";
 
 /**
@@ -21,10 +21,13 @@ function extractToken(req: Request): string | undefined {
 
 async function requireAuth(req: Request, res: Response, next: NextFunction) {
   const token = extractToken(req);
-  const userId = token ? getSessionUser(token) : null;
-  if (!userId) return res.status(401).json({ error: "Unauthorized", code: "UNAUTHORIZED" });
-  const user = await storage.getUser(userId);
+  const session = token ? getSessionPayload(token) : undefined;
+  if (!session) return res.status(401).json({ error: "Unauthorized", code: "UNAUTHORIZED" });
+  const user = await storage.getUser(session.userId);
   if (!user) return res.status(401).json({ error: "Unauthorized", code: "UNAUTHORIZED" });
+  if (session.tokenVersion !== user.tokenVersion) {
+    return res.status(401).json({ error: "Session revoked", code: "SESSION_REVOKED" });
+  }
   req.user = user;
   next();
 }

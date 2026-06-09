@@ -5,7 +5,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { Storyboard, Panel } from "@shared/schema";
-import { apiRequest } from "@/lib/queryClient";
+import { queryKeys } from "@/lib/queryKeys";
+import { PanelImage } from "@/components/PanelImage";
 
 interface StoryboardWithPanels extends Storyboard {
   panels: Panel[];
@@ -20,9 +21,7 @@ interface PanelPickerDialogProps {
 
 export function PanelPickerDialog({ open, onClose, projectId, onSelectPanel }: PanelPickerDialogProps) {
   const { data: storyboards, isLoading } = useQuery<StoryboardWithPanels[]>({
-    queryKey: ["/api/projects", projectId, "storyboards"],
-    queryFn: async () =>
-      (await apiRequest("GET", `/api/projects/${projectId}/storyboards`)).json(),
+    queryKey: queryKeys.storyboards(projectId),
     enabled: open,
   });
 
@@ -65,8 +64,9 @@ export function PanelPickerDialog({ open, onClose, projectId, onSelectPanel }: P
                   }}
                 >
                   <div className="aspect-video bg-black/50 overflow-hidden">
-                    <img
-                      src={panel.imageData || undefined}
+                    <PanelImage
+                      panel={panel}
+                      projectId={projectId}
                       alt={panel.caption || "Panel"}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                     />
