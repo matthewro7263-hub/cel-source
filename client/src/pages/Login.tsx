@@ -54,7 +54,8 @@ export default function Login() {
 
         <LiquidGlassCard
           refract
-          displacement={3}
+          depth="strong"
+          displacement={12}
           borderRadius={16}
           className="rounded-2xl p-7 space-y-5"
         >

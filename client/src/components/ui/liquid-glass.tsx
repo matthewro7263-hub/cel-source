@@ -3,67 +3,127 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 
+export type LiquidGlassDepth = "subtle" | "normal" | "strong";
+
+const DEPTH_PRESETS: Record<
+  LiquidGlassDepth,
+  {
+    displacement: number;
+    chromaAmount: number;
+    saturate: number;
+    chromaOpacity: number;
+    bevelOpacity: number;
+    liftOpacity: number;
+  }
+> = {
+  subtle: {
+    displacement: 6,
+    chromaAmount: 0.1,
+    saturate: 165,
+    chromaOpacity: 0.55,
+    bevelOpacity: 0.5,
+    liftOpacity: 0.35,
+  },
+  normal: {
+    displacement: 10,
+    chromaAmount: 0.16,
+    saturate: 190,
+    chromaOpacity: 0.75,
+    bevelOpacity: 0.7,
+    liftOpacity: 0.55,
+  },
+  strong: {
+    displacement: 12,
+    chromaAmount: 0.22,
+    saturate: 210,
+    chromaOpacity: 1,
+    bevelOpacity: 0.9,
+    liftOpacity: 0.75,
+  },
+};
+
 interface LiquidGlassProps extends React.HTMLAttributes<HTMLDivElement> {
   children?: React.ReactNode;
-  /** Intensity of the glass refraction shimmer (1-20, default 8) */
+  /** Intensity of the glass shimmer (1-20, default from depth preset) */
   displacement?: number;
   borderRadius?: number;
-  /** Iridescence intensity (0-1, default 0.12) */
+  /** Iridescence intensity (0-1, default from depth preset) */
   chromaAmount?: number;
   active?: boolean;
-  /** When true, enables the full liquid glass refraction effect. When false, uses basic CSS glass. */
+  /** When true, enables simulated CSS refraction (backdrop-filter + depth layers). */
   refract?: boolean;
+  /** Visual depth tier — subtle | normal | strong */
+  depth?: LiquidGlassDepth;
   /**
    * When true, renders as an absolute inset-0 pointer-events-none decorative layer.
    * The caller is responsible for placing interactive content in a sibling with z-index.
-   * This avoids the glass overlay intercepting pointer events on buttons, inputs, etc.
    */
   overlay?: boolean;
 }
 
 /**
- * LiquidGlass — Liquid glass refraction effect using layered CSS techniques.
+ * LiquidGlass — Simulated glass refraction using layered CSS techniques.
  *
- * Produces a premium frosted-glass surface with:
- * - Strong backdrop-filter blur for real background refraction
- * - Animated iridescent shimmer via conic-gradient
- * - Specular highlight simulation (top-left light source)
- * - Edge-light refraction border glow
- * - Caustic light bloom on hover
- *
- * Falls back to enhanced CSS glass when `refract={false}` or `active={false}`.
+ * Produces a premium frosted-glass surface with backdrop blur, iridescent shimmer,
+ * specular highlights, chromatic edge fringing, bevel depth, and lift shadows.
+ * WebGL refraction is handled separately via data-liquid-gl hosts.
  */
 export const LiquidGlass = React.forwardRef<HTMLDivElement, LiquidGlassProps>(
   (
     {
       children,
       className,
-      displacement = 8,
+      displacement,
       borderRadius,
-      chromaAmount = 0.12,
+      chromaAmount,
       active = true,
       refract = true,
+      depth = "normal",
       overlay = false,
       style,
       ...props
     },
     ref
   ) => {
+    const preset = DEPTH_PRESETS[depth];
+    const effectiveDisplacement = displacement ?? preset.displacement;
+    const effectiveChroma = chromaAmount ?? preset.chromaAmount;
     const shouldRefract = active && refract;
 
-    // Map displacement (1-20) to blur intensity (20-44px)
-    const blurPx = Math.round(20 + (displacement / 20) * 24);
-    // Map chromaAmount to iridescence opacity
-    const iridescenceOpacity = Math.min(1, chromaAmount * 3);
+    const blurPx = Math.round(20 + (effectiveDisplacement / 20) * 24);
+    const iridescenceOpacity = Math.min(1, effectiveChroma * 3);
 
-    // Overlay mode: absolute decorative background, no children wrapper
+    const depthLayers = shouldRefract ? (
+      <>
+        <span
+          className="liquid-glass-shimmer"
+          style={{ opacity: iridescenceOpacity * preset.chromaOpacity }}
+        />
+        <span
+          className="liquid-glass-chroma"
+          style={{ opacity: preset.chromaOpacity }}
+        />
+        <span
+          className="liquid-glass-bevel"
+          style={{ opacity: preset.bevelOpacity }}
+        />
+        <span className="liquid-glass-specular" />
+        <span
+          className="liquid-glass-lift"
+          style={{ opacity: preset.liftOpacity }}
+        />
+        <span className="liquid-glass-edge" />
+      </>
+    ) : null;
+
     if (overlay) {
       return (
         <div
           ref={ref}
+          data-glass-depth={depth}
           className={cn(
-            "absolute inset-0 overflow-hidden pointer-events-none",
-            shouldRefract ? "liquid-glass-surface" : "glass",
+            "absolute inset-0 z-0 overflow-hidden pointer-events-none liquid-glass-host",
+            shouldRefract ? "liquid-glass-surface liquid-glass-depth" : "glass",
             className
           )}
           style={{
@@ -71,38 +131,26 @@ export const LiquidGlass = React.forwardRef<HTMLDivElement, LiquidGlassProps>(
             ...(borderRadius !== undefined ? { borderRadius } : {}),
             ...(shouldRefract
               ? {
-                  backdropFilter: `blur(${blurPx}px) saturate(180%)`,
-                  WebkitBackdropFilter: `blur(${blurPx}px) saturate(180%)`,
+                  backdropFilter: `blur(${blurPx}px) saturate(${preset.saturate}%)`,
+                  WebkitBackdropFilter: `blur(${blurPx}px) saturate(${preset.saturate}%)`,
                 }
               : {}),
           }}
           aria-hidden="true"
           {...props}
         >
-          {shouldRefract && (
-            <>
-              {/* Iridescent shimmer layer */}
-              <span
-                className="liquid-glass-shimmer"
-                style={{ opacity: iridescenceOpacity }}
-              />
-              {/* Specular highlight — top-left light source */}
-              <span className="liquid-glass-specular" />
-              {/* Edge-light refraction glow */}
-              <span className="liquid-glass-edge" />
-            </>
-          )}
+          {depthLayers}
         </div>
       );
     }
 
-    // Standard mode: wraps children with glass + effects
     return (
       <div
         ref={ref}
+        data-glass-depth={depth}
         className={cn(
-          "relative overflow-hidden",
-          shouldRefract ? "liquid-glass-surface" : "glass",
+          "relative overflow-hidden liquid-glass-host",
+          shouldRefract ? "liquid-glass-surface liquid-glass-depth" : "glass",
           className
         )}
         style={{
@@ -110,25 +158,14 @@ export const LiquidGlass = React.forwardRef<HTMLDivElement, LiquidGlassProps>(
           ...(borderRadius !== undefined ? { borderRadius } : {}),
           ...(shouldRefract
             ? {
-                backdropFilter: `blur(${blurPx}px) saturate(180%)`,
-                WebkitBackdropFilter: `blur(${blurPx}px) saturate(180%)`,
+                backdropFilter: `blur(${blurPx}px) saturate(${preset.saturate}%)`,
+                WebkitBackdropFilter: `blur(${blurPx}px) saturate(${preset.saturate}%)`,
               }
             : {}),
         }}
         {...props}
       >
-        {shouldRefract && (
-          <>
-            <span
-              className="liquid-glass-shimmer"
-              style={{ opacity: iridescenceOpacity }}
-            />
-            <span className="liquid-glass-specular" />
-            <span className="liquid-glass-edge" />
-          </>
-        )}
-
-        {/* Content wrapper — keeps children interactive above glass layers */}
+        {depthLayers}
         <div className="relative z-[2]">{children}</div>
       </div>
     );
@@ -147,7 +184,7 @@ export const GlassSurface = React.forwardRef<
   <div
     ref={ref}
     className={cn(
-      "relative overflow-hidden",
+      "relative overflow-hidden liquid-glass-host",
       "bg-[var(--surface-1)] dark:bg-white/10",
       "backdrop-blur-2xl backdrop-saturate-[170%]",
       "border border-[var(--card-border)] dark:border-white/14",
@@ -162,19 +199,7 @@ export const GlassSurface = React.forwardRef<
 ));
 GlassSurface.displayName = "GlassSurface";
 
-/**
- * LiquidGlassCard — Convenience wrapper that composes LiquidGlass overlay
- * with a relative content container. Safe for interactive content (buttons,
- * links, inputs) because the glass effects are on a pointer-events-none layer.
- *
- * Usage:
- *   <LiquidGlassCard refract displacement={4} className="rounded-2xl">
- *     <h2>Title</h2>
- *     <Button>Click me</Button>
- *   </LiquidGlassCard>
- */
 export interface LiquidGlassCardProps extends Omit<LiquidGlassProps, "overlay"> {
-  /** Glass CSS class fallback for when refract is false */
   glassClass?: "glass" | "glass-strong";
 }
 
@@ -185,14 +210,18 @@ export const LiquidGlassCard = React.forwardRef<HTMLDivElement, LiquidGlassCardP
       className,
       glassClass = "glass-strong",
       refract = true,
+      depth = "normal",
+      displacement,
       ...liquidProps
     },
     ref
   ) => (
-    <div ref={ref} className={cn("relative rounded-2xl", className)}>
+    <div ref={ref} className={cn("relative rounded-2xl liquid-glass-host", className)}>
       <LiquidGlass
         overlay
         refract={refract}
+        depth={depth}
+        displacement={displacement}
         className={cn("rounded-[inherit]", refract ? "" : glassClass)}
         {...liquidProps}
       />

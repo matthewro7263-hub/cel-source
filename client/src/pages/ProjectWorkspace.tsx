@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, lazy, Suspense } from "react";
+import { useState, useRef, useEffect, useCallback, lazy, Suspense } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient, getAuthToken } from "@/lib/queryClient";
@@ -40,6 +40,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { formatDeadline, STATUS_LABELS, STATUS_ORDER, statusClass, initials, youTubeId, vimeoId } from "@/lib/utils-cel";
 import type { Project, Script, Animatic, Scene, Render } from "@shared/schema";
 import { GlassButton } from "@/components/ui/glass-button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { AssetsTab } from "@/pages/AssetsTab";
 import { BakSettingsExports } from "@/components/bak-settings-panel";
 import { ScriptUploadDialog } from "@/components/script-upload-dialog";
@@ -84,8 +85,19 @@ function ProjectWorkspaceScaffold({ activeSection }: { activeSection: ProjectSec
   const params = useParams() as { id: string };
   const projectId = parseInt(params.id, 10);
 
-  const { data, isLoading } = useQuery<ProjectDetail>({
+  const { data, isLoading, isError, refetch, isFetching } = useQuery<ProjectDetail | null>({
     queryKey: queryKeys.project(projectId),
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/projects/${projectId}`);
+      if (res.status === 404 || res.status === 403) return null;
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`${res.status}: ${text}`);
+      }
+      const json = await res.json();
+      if (!json?.project) return null;
+      return json as ProjectDetail;
+    },
   });
 
   if (isLoading) {
@@ -97,7 +109,26 @@ function ProjectWorkspaceScaffold({ activeSection }: { activeSection: ProjectSec
       </div>
     );
   }
-  if (!data) return <div className="p-10 text-muted-foreground">Project not found.</div>;
+  if (isError) {
+    return (
+      <div className="px-6 lg:px-10 py-8 lg:py-12 max-w-6xl mx-auto text-center">
+        <p className="text-muted-foreground mb-4">Couldn't load this project. Check your connection and try again.</p>
+        <Button onClick={() => refetch()} disabled={isFetching} data-testid="button-retry-project">
+          {isFetching ? "Retrying…" : "Retry"}
+        </Button>
+      </div>
+    );
+  }
+  if (!data) {
+    return (
+      <div className="px-6 lg:px-10 py-8 lg:py-12 max-w-6xl mx-auto text-center">
+        <p className="text-muted-foreground mb-4">Project not found or you don't have access.</p>
+        <Button variant="outline" onClick={() => { window.location.hash = "/dashboard"; }} data-testid="button-back-dashboard">
+          Back to dashboard
+        </Button>
+      </div>
+    );
+  }
 
   const { project, members } = data;
 
@@ -299,10 +330,13 @@ function ScriptTab({ projectId }: { projectId: number }) {
   const { data: scripts } = useQuery<Script[]>({ queryKey: queryKeys.scripts(projectId) });
   const [active, setActive] = useState<number | null>(null);
   const [draft, setDraft] = useState<{ title: string; content: string }>({ title: "", content: "" });
+  const [savedBaseline, setSavedBaseline] = useState<{ title: string; content: string }>({ title: "", content: "" });
   const [uploadOpen, setUploadOpen] = useState(false);
   const { toast } = useToast();
   const wsRef = useRef<WebSocket | null>(null);
   const [otherCursors, setOtherCursors] = useState<Record<number, number>>({});
+  const saveSourceRef = useRef<"auto" | "manual">("manual");
+  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (active === null && scripts && scripts.length > 0) {
@@ -312,8 +346,16 @@ function ScriptTab({ projectId }: { projectId: number }) {
 
   const current = scripts?.find((s) => s.id === active) as Script & { sourceType?: string, sourceFormat?: string, originalKey?: string };
   useEffect(() => {
-    if (current) setDraft({ title: current.title, content: current.content });
-  }, [active, current?.id]);
+    if (current) {
+      const baseline = { title: current.title, content: current.content };
+      setDraft(baseline);
+      setSavedBaseline(baseline);
+    }
+  }, [active, current?.id, current?.title, current?.content]);
+
+  const isDirty = current?.sourceType !== "upload" && (
+    draft.title !== savedBaseline.title || draft.content !== savedBaseline.content
+  );
 
   const { data: aiStatus } = useQuery<{ hasKey: boolean } | null>({
     queryKey: queryKeys.aiKey(projectId),
@@ -369,8 +411,16 @@ function ScriptTab({ projectId }: { projectId: number }) {
   const save = useMutation({
     mutationFn: async () => (await apiRequest("PATCH", `/api/projects/${projectId}/scripts/${active}`, draft)).json(),
     onSuccess: () => {
+      setSavedBaseline({ ...draft });
       queryClient.invalidateQueries({ queryKey: queryKeys.scripts(projectId) });
-      toast({ title: "Script saved" });
+      if (saveSourceRef.current === "manual") {
+        toast({ title: "Script saved" });
+      }
+    },
+    onError: () => {
+      if (saveSourceRef.current === "manual") {
+        toast({ title: "Save failed", variant: "destructive" });
+      }
     },
   });
   const del = useMutation({
@@ -380,6 +430,31 @@ function ScriptTab({ projectId }: { projectId: number }) {
       setActive(null);
     },
   });
+
+  const triggerSave = useCallback((source: "auto" | "manual") => {
+    if (!active || current?.sourceType === "upload") return;
+    saveSourceRef.current = source;
+    save.mutate();
+  }, [active, current?.sourceType, save]);
+
+  useEffect(() => {
+    if (!isDirty || !active || current?.sourceType === "upload" || save.isPending) return;
+    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    autosaveTimerRef.current = setTimeout(() => triggerSave("auto"), 2000);
+    return () => {
+      if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    };
+  }, [draft, isDirty, active, current?.sourceType, save.isPending, triggerSave]);
+
+  useEffect(() => {
+    if (!isDirty) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [isDirty]);
 
   if (!scripts || scripts.length === 0) {
     return (
@@ -450,12 +525,22 @@ function ScriptTab({ projectId }: { projectId: number }) {
               </span>
             )}
             <div className="flex items-center gap-2">
+              {isDirty && (
+                <span className="text-[10px] font-medium text-amber-500 shrink-0" data-testid="script-dirty-indicator">
+                  Unsaved changes
+                </span>
+              )}
+              {save.isPending && (
+                <span className="text-[10px] font-medium text-muted-foreground shrink-0">
+                  Saving…
+                </span>
+              )}
               {isAgentChecking && (
                 <div className="text-[10px] font-medium text-primary animate-pulse flex items-center gap-1.5 shrink-0">
                   <Sparkles size={10} /> Agent thinking...
                 </div>
               )}
-              <Button size="sm" onClick={() => save.mutate()} disabled={save.isPending}>
+              <Button size="sm" onClick={() => triggerSave("manual")} disabled={save.isPending || !isDirty}>
                 {save.isPending ? "Saving..." : "Save Draft"}
               </Button>
             </div>
@@ -575,7 +660,7 @@ function ScriptTab({ projectId }: { projectId: number }) {
             </div>
             
             {current.sourceType !== "upload" && (
-              <Button onClick={() => save.mutate()} disabled={save.isPending} data-testid="button-save-script">
+              <Button onClick={() => triggerSave("manual")} disabled={save.isPending || !isDirty} data-testid="button-save-script">
                 {save.isPending ? "Saving…" : "Save script"}
               </Button>
             )}
@@ -676,15 +761,28 @@ function AnimaticEditorSection({ projectId }: { projectId: number }) {
                   <ExternalLink size={12} className="mr-1.5" />
                   Open Editor
                 </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="text-destructive hover:text-destructive"
-                  onClick={() => del.mutate(ap.id)}
-                  data-testid={`button-delete-animatic-v2-${ap.id}`}
-                >
-                  <Trash2 size={12} />
-                </Button>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-destructive hover:text-destructive"
+                      data-testid={`button-delete-animatic-v2-${ap.id}`}
+                    >
+                      <Trash2 size={12} />
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Delete this animatic?</AlertDialogTitle>
+                      <AlertDialogDescription>This permanently removes the multi-track animatic and all its clips.</AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction onClick={() => del.mutate(ap.id)}>Delete</AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               </div>
             </div>
           ))}
@@ -803,9 +901,23 @@ function AnimaticCard({ a, onDelete }: { a: Animatic; onDelete: () => void }) {
       <div className="p-4">
         <div className="flex items-start justify-between mb-1.5">
           <h4 className="font-display font-semibold text-sm">{a.title}</h4>
-          <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={onDelete} data-testid={`button-delete-animatic-${a.id}`}>
-            <Trash2 size={13} />
-          </Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" data-testid={`button-delete-animatic-${a.id}`}>
+                <Trash2 size={13} />
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete this animatic?</AlertDialogTitle>
+                <AlertDialogDescription>This video animatic will be permanently removed.</AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={onDelete}>Delete</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
         {a.notes && <p className="text-xs text-muted-foreground">{a.notes}</p>}
       </div>
@@ -1063,9 +1175,23 @@ function ScenesTable({ scenes, projectId }: { scenes: Scene[]; projectId: number
                       <SceneTimerButton sceneId={s.id} projectId={projectId} timerData={sceneTimers[s.id]} />
                     </td>
                     <td className="px-4 py-2.5 text-right">
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => del.mutate(s.id)} data-testid={`button-delete-scene-${s.id}`}>
-                        <Trash2 size={13} />
-                      </Button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" data-testid={`button-delete-scene-${s.id}`}>
+                            <Trash2 size={13} />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Delete scene {s.number}?</AlertDialogTitle>
+                            <AlertDialogDescription>This removes "{s.title}" from your pipeline. This can't be undone.</AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => del.mutate(s.id)}>Delete</AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
                     </td>
                   </tr>
                   {isExp && (
@@ -1176,9 +1302,23 @@ function SceneRendersPanel({ sceneId }: { sceneId: number }) {
               <ExternalLink size={11} />
             </a>
           )}
-          <Button variant="ghost" size="icon" className="h-5 w-5 text-muted-foreground hover:text-destructive ml-auto" onClick={() => del.mutate(r.id)}>
-            <Trash2 size={11} />
-          </Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-5 w-5 text-muted-foreground hover:text-destructive ml-auto">
+                <Trash2 size={11} />
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete this render?</AlertDialogTitle>
+                <AlertDialogDescription>"{r.label}" will be permanently removed.</AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={() => del.mutate(r.id)}>Delete</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       ))}
 
@@ -1369,7 +1509,7 @@ function NewSceneDialog({ open, setOpen, projectId }: { open: boolean; setOpen: 
 
 // ===== COMMENTS =====
 function CommentsTab({ projectId }: { projectId: number }) {
-  const { data: commentsData } = useQuery<{ items: any[]; nextCursor: number | null }>({
+  const { data: commentsData, isLoading } = useQuery<{ items: any[]; nextCursor: number | null }>({
     queryKey: queryKeys.comments(projectId),
     queryFn: async () => (await apiRequest("GET", `/api/projects/${projectId}/comments`)).json(),
   });
@@ -1387,6 +1527,19 @@ function CommentsTab({ projectId }: { projectId: number }) {
     mutationFn: async (id: number) => (await apiRequest("DELETE", `/api/projects/${projectId}/comments/${id}`)).json(),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.comments(projectId) }),
   });
+
+  if (isLoading) {
+    return (
+      <div className="space-y-5 max-w-2xl">
+        <Skeleton className="h-28 rounded-xl" />
+        <div className="space-y-3">
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-24 rounded-lg" />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5 max-w-2xl">
@@ -1423,9 +1576,23 @@ function CommentsTab({ projectId }: { projectId: number }) {
                 </div>
                 <p className="text-sm leading-relaxed whitespace-pre-wrap">{c.body}</p>
               </div>
-              <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => del.mutate(c.id)}>
-                <Trash2 size={12} />
-              </Button>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive">
+                    <Trash2 size={12} />
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Delete this comment?</AlertDialogTitle>
+                    <AlertDialogDescription>This note will be permanently removed from the project.</AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => del.mutate(c.id)}>Delete</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </div>
           </div>
         ))}
@@ -1442,6 +1609,8 @@ function SettingsTab({ project, members }: { project: Project; members: ProjectD
   const [deadline, setDeadline] = useState(project.deadline || "");
   const [shareEnabled, setShareEnabled] = useState(project.shareEnabled);
   const [inviteEmail, setInviteEmail] = useState("");
+  const [deleteConfirmName, setDeleteConfirmName] = useState("");
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const { toast } = useToast();
 
   const patch = useMutation({
@@ -1605,7 +1774,13 @@ function SettingsTab({ project, members }: { project: Project; members: ProjectD
       <BakSettingsExports projectId={project.id} />
 
       <SettingsSection title="Danger zone" tone="destructive">
-        <AlertDialog>
+        <AlertDialog
+          open={deleteDialogOpen}
+          onOpenChange={(open) => {
+            setDeleteDialogOpen(open);
+            if (!open) setDeleteConfirmName("");
+          }}
+        >
           <AlertDialogTrigger asChild>
             <Button variant="outline" className="text-destructive border-destructive/30 hover:bg-destructive/5" data-testid="button-delete-project">
               <Trash2 size={14} className="mr-1.5" />Delete this project
@@ -1615,13 +1790,26 @@ function SettingsTab({ project, members }: { project: Project; members: ProjectD
             <AlertDialogHeader>
               <AlertDialogTitle>Delete this project?</AlertDialogTitle>
               <AlertDialogDescription>
-                This permanently deletes all scripts, storyboards, animatics, scenes, and comments. This cannot be undone.
+                This permanently deletes all scripts, storyboards, animatics, scenes, and comments. Type{" "}
+                <span className="font-semibold text-foreground">{project.title}</span> to confirm.
               </AlertDialogDescription>
             </AlertDialogHeader>
+            <Input
+              value={deleteConfirmName}
+              onChange={(e) => setDeleteConfirmName(e.target.value)}
+              placeholder={project.title}
+              className="mt-2"
+              data-testid="input-delete-project-confirm"
+            />
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={() => del.mutate()} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                Yes, delete project
+              <AlertDialogAction
+                disabled={deleteConfirmName !== project.title || del.isPending}
+                onClick={() => del.mutate()}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                data-testid="button-confirm-delete-project"
+              >
+                {del.isPending ? "Deleting…" : "Delete project"}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

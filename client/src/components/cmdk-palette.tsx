@@ -1,5 +1,5 @@
 // v5 Cmd+K search palette with quick actions
-import { useState, useEffect } from "react";
+import { useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
@@ -10,9 +10,10 @@ import {
   CommandGroup, CommandItem, CommandSeparator,
 } from "@/components/ui/command";
 import {
-  FolderOpen, Film, FileText, Package, MessageSquare, Search,
+  FolderOpen, Film, FileText, Package, MessageSquare,
   Plus, LayoutDashboard, Settings, Sun, Moon, Inbox, Trophy,
-  Keyboard, Briefcase, BarChart3, Image, Box, Calendar, Folder
+  Briefcase, BarChart3, Image, Box, Calendar, Folder, Users,
+  GitBranch, ClipboardCheck,
 } from "lucide-react";
 
 interface SearchResults {
@@ -26,6 +27,14 @@ interface SearchResults {
 interface CmdkPaletteProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+}
+
+function ShortcutBadge({ children }: { children: ReactNode }) {
+  return (
+    <span className="ml-auto text-[11px] text-white/40 font-mono tracking-tight">
+      {children}
+    </span>
+  );
 }
 
 export function CmdkPalette({ open, onOpenChange }: CmdkPaletteProps) {
@@ -96,12 +105,17 @@ export function CmdkPalette({ open, onOpenChange }: CmdkPaletteProps) {
           <CommandItem onSelect={() => navigate("/dashboard")} data-testid="cmdk-go-dashboard" className="cursor-pointer">
             <LayoutDashboard size={14} className="mr-2 text-white/60" />
             <span>Dashboard</span>
+            <ShortcutBadge>g d</ShortcutBadge>
           </CommandItem>
         </CommandGroup>
 
         {/* Current Project Sections */}
         {projectId && currentProject && (
           <CommandGroup heading={`Active Project: ${currentProject.project?.title || currentProject.title || "Context"}`}>
+            <CommandItem onSelect={() => navigate(`/projects/${projectId}`)} className="cursor-pointer">
+              <LayoutDashboard size={14} className="mr-2 text-white/60" />
+              <span>Overview</span>
+            </CommandItem>
             <CommandItem onSelect={() => navigate(`/projects/${projectId}/script`)} className="cursor-pointer">
               <FileText size={14} className="mr-2 text-sky-400" />
               <span>Script</span>
@@ -121,6 +135,26 @@ export function CmdkPalette({ open, onOpenChange }: CmdkPaletteProps) {
             <CommandItem onSelect={() => navigate(`/projects/${projectId}/scenes`)} className="cursor-pointer">
               <Calendar size={14} className="mr-2 text-amber-400" />
               <span>Scenes</span>
+            </CommandItem>
+            <CommandItem onSelect={() => navigate(`/projects/${projectId}/comments`)} className="cursor-pointer">
+              <MessageSquare size={14} className="mr-2 text-blue-400" />
+              <span>Comments</span>
+            </CommandItem>
+            <CommandItem onSelect={() => navigate(`/projects/${projectId}/continuity`)} className="cursor-pointer">
+              <GitBranch size={14} className="mr-2 text-teal-400" />
+              <span>Continuity</span>
+            </CommandItem>
+            <CommandItem onSelect={() => navigate(`/projects/${projectId}/casting`)} className="cursor-pointer">
+              <Users size={14} className="mr-2 text-orange-400" />
+              <span>Casting</span>
+            </CommandItem>
+            <CommandItem onSelect={() => navigate(`/projects/${projectId}/signoff`)} className="cursor-pointer">
+              <ClipboardCheck size={14} className="mr-2 text-lime-400" />
+              <span>Sign-off</span>
+            </CommandItem>
+            <CommandItem onSelect={() => navigate(`/projects/${projectId}/settings`)} className="cursor-pointer">
+              <Settings size={14} className="mr-2 text-white/60" />
+              <span>Project settings</span>
             </CommandItem>
           </CommandGroup>
         )}
@@ -153,6 +187,20 @@ export function CmdkPalette({ open, onOpenChange }: CmdkPaletteProps) {
             {isLoading && <CommandEmpty className="text-white/40">Searching deep database...</CommandEmpty>}
             {!isLoading && totalResults === 0 && (
               <CommandEmpty className="text-white/40">No deep matching database entries found.</CommandEmpty>
+            )}
+
+            {results && results.projects.length > 0 && (
+              <CommandGroup heading="Matching Projects">
+                {results.projects.map((p: any) => (
+                  <CommandItem
+                    key={`proj-${p.id}`}
+                    onSelect={() => navigate(`/projects/${p.id}`)}
+                  >
+                    <FolderOpen size={14} className="mr-2 text-white/60" />
+                    <span>{p.title}</span>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
             )}
 
             {results && results.scenes.length > 0 && (
@@ -216,10 +264,12 @@ export function CmdkPalette({ open, onOpenChange }: CmdkPaletteProps) {
               <CommandItem onSelect={() => navigate("/inbox")} data-testid="cmdk-go-inbox" className="cursor-pointer">
                 <Inbox size={14} className="mr-2 text-white/60" />
                 <span>Inbox</span>
+                <ShortcutBadge>g i</ShortcutBadge>
               </CommandItem>
               <CommandItem onSelect={() => navigate("/commissions")} data-testid="cmdk-go-commissions" className="cursor-pointer">
                 <Briefcase size={14} className="mr-2 text-white/60" />
                 <span>Commissions</span>
+                <ShortcutBadge>g c</ShortcutBadge>
               </CommandItem>
               <CommandItem onSelect={() => navigate("/analytics")} data-testid="cmdk-go-analytics" className="cursor-pointer">
                 <BarChart3 size={14} className="mr-2 text-white/60" />
@@ -246,6 +296,7 @@ export function CmdkPalette({ open, onOpenChange }: CmdkPaletteProps) {
               <CommandItem onSelect={() => navigate("/achievements")} data-testid="cmdk-go-achievements" className="cursor-pointer">
                 <Trophy size={14} className="mr-2 text-white/60" />
                 <span>Achievements</span>
+                <ShortcutBadge>g a</ShortcutBadge>
               </CommandItem>
             </CommandGroup>
           </>

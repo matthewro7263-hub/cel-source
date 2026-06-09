@@ -17,9 +17,11 @@ import ws from "ws";
 import { drizzle } from "drizzle-orm/neon-serverless";
 import { migrate } from "drizzle-orm/neon-serverless/migrator";
 import { pool } from "./storage";
+import { checkR2Health } from "./r2";
 
 const app = express();
 app.set("trust proxy", 1);
+const startedAt = Date.now();
 
 const DEFAULT_ALLOWED_ORIGINS = [
   "https://cel-source.onrender.com",
@@ -88,21 +90,38 @@ app.use(
 app.use(express.urlencoded({ extended: false, limit: "1mb" }));
 
 app.get("/health", (_req, res) => {
-  res.status(200).json({ ok: true });
+  res.status(200).json({
+    ok: true,
+    uptime: Math.floor((Date.now() - startedAt) / 1000),
+    ts: new Date().toISOString(),
+  });
 });
 
 app.get("/ready", async (_req, res) => {
+  const uptime = Math.floor((Date.now() - startedAt) / 1000);
+
+  if (!process.env.DATABASE_URL) {
+    return res.status(503).json({ ok: false, db: "not_configured", r2: await checkR2Health(), uptime });
+  }
+
+  let db: "connected" | "disconnected" = "disconnected";
   try {
     const client = await pool.connect();
     try {
       await client.query("SELECT 1");
+      db = "connected";
     } finally {
       client.release();
     }
-    res.status(200).json({ ok: true, db: "connected" });
   } catch {
-    res.status(503).json({ ok: false, db: "disconnected" });
+    return res.status(503).json({ ok: false, db: "disconnected", r2: await checkR2Health(), uptime });
   }
+
+  const r2 = await checkR2Health();
+  const r2Required = !!(process.env.R2_BUCKET && process.env.R2_ENDPOINT);
+  const ok = db === "connected" && (!r2Required || r2 === "connected");
+
+  res.status(ok ? 200 : 503).json({ ok, db, r2, uptime });
 });
 
 export function log(message: string, source = "express") {

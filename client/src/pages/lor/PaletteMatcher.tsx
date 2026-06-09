@@ -209,9 +209,13 @@ export default function PaletteMatcher() {
       )}
 
       {isLoading ? (
-        <div className="text-center">Loading...</div>
+        <div className="space-y-4">
+          {[1, 2].map((i) => (
+            <div key={i} className="h-36 glass rounded-xl animate-pulse" />
+          ))}
+        </div>
       ) : palettes.length === 0 ? (
-        <div className="bg-card border border-dashed rounded-lg p-16 text-center text-muted-foreground">
+        <div className="glass border border-dashed rounded-lg p-16 text-center text-muted-foreground">
           <ImageIcon size={48} className="mx-auto mb-4 opacity-50" />
           <p>No palettes generated yet. Upload some screenshots to start.</p>
         </div>

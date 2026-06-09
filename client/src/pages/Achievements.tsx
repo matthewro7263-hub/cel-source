@@ -35,10 +35,11 @@ export default function Achievements() {
   if (isLoading) {
     return (
       <div className="px-6 lg:px-10 py-8 max-w-4xl mx-auto">
-        <div className="h-7 w-48 bg-muted rounded animate-pulse mb-8" />
+        <div className="h-7 w-48 glass rounded-lg animate-pulse mb-2" />
+        <div className="h-4 w-32 glass rounded animate-pulse mb-8" />
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
           {Array.from({ length: 12 }).map((_, i) => (
-            <div key={i} className="h-36 bg-muted rounded-xl animate-pulse" />
+            <div key={i} className="h-36 glass rounded-xl animate-pulse" />
           ))}
         </div>
       </div>

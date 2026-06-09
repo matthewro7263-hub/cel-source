@@ -12,6 +12,12 @@ import {
 } from "./storage";
 import { presignDownload } from "./r2";
 import { notifyDiscord } from "./discord";
+import { sendError } from "./errors";
+import { checkAchievements } from "./achievements";
+
+function fireAchievements(ctx: Parameters<typeof checkAchievements>[0]) {
+  checkAchievements(ctx).catch((err) => console.error("[achievements]", err));
+}
 import {
   insertCommissionSchema,
   audVoiceTakes, insertAudVoiceTakeSchema, audCaptions, insertAudCaptionSchema,
@@ -52,6 +58,12 @@ async function requireAuth(req: Request, res: Response, next: NextFunction) {
 const ACCESS_CACHE_TTL_MS = 60_000;
 const accessCache = new Map<string, { allowed: boolean; expiresAt: number }>();
 
+function pruneAccessCache(now = Date.now()) {
+  for (const [key, entry] of accessCache) {
+    if (now >= entry.expiresAt) accessCache.delete(key);
+  }
+}
+
 function invalidateProjectAccess(projectId: number, userId?: number) {
   if (userId !== undefined) {
     accessCache.delete(`${projectId}:${userId}`);
@@ -64,6 +76,7 @@ function invalidateProjectAccess(projectId: number, userId?: number) {
 }
 
 async function canAccessProject(projectId: number, userId: number): Promise<boolean> {
+  pruneAccessCache();
   const key = `${projectId}:${userId}`;
   const cached = accessCache.get(key);
   if (cached && Date.now() < cached.expiresAt) return cached.allowed;
@@ -365,6 +378,7 @@ const upload = multer({
       shareEnabled: false,
     });
     await storage.addMember({ projectId: p.id, userId: req.user!.id, role: "owner" });
+    fireAchievements({ userId: req.user!.id, event: "create_project", projectId: p.id });
     res.json(p);
   });
 
@@ -395,7 +409,11 @@ const upload = multer({
       dltDiscordWebhookUrl: z.string().url().nullable().optional(),
     });
     const patch = schema.parse(req.body);
+    const before = await storage.getProject(id);
     const updated = await storage.updateProject(id, patch as any);
+    if (patch.shareEnabled === true && !before?.shareEnabled) {
+      fireAchievements({ userId: req.user!.id, event: "enable_share_link", projectId: id });
+    }
     res.json(updated);
   });
 
@@ -429,6 +447,7 @@ const upload = multer({
     if (!(await storage.isMember(id, user.id))) {
       await storage.addMember({ projectId: id, userId: user.id, role: body.role || "editor" });
       invalidateProjectAccess(id, user.id);
+      fireAchievements({ userId: req.user!.id, event: "add_member", projectId: id });
     }
     res.json({ user: { id: user.id, email: user.email, name: user.name, avatarColor: user.avatarColor }, tempPassword });
   });
@@ -693,6 +712,7 @@ const upload = multer({
       caption: body.caption || "",
       dialogue: body.dialogue || "",
     });
+    fireAchievements({ userId: req.user!.id, event: "create_panel", projectId: sb.projectId });
     res.json(panel);
   });
   app.post ("/api/storyboards/:sbId/panels/bulk", requireAuth, async (req, res) => {
@@ -726,6 +746,7 @@ const upload = multer({
     }));
 
     const created = await storage.createPanelsBulk(panelsToCreate);
+    fireAchievements({ userId: req.user!.id, event: "create_panel", projectId: sb.projectId });
     res.json(created);
   });
   app.patch ("/api/panels/:id", requireAuth, async (req, res) => {
@@ -808,6 +829,7 @@ const upload = multer({
     const created = await storage.createAnimatic({
       projectId: id, title: body.title || "Animatic", videoData: body.videoData, notes: body.notes || "",
     });
+    fireAchievements({ userId: req.user!.id, event: "create_animatic", projectId: id });
     notifyDiscord(id, `Animatic Published`, `Animatic "${created.title}" has been published.`);
     res.json(created);
   });
@@ -837,7 +859,7 @@ const upload = multer({
       assigneeId: z.number().nullable().optional(),
     });
     const body = schema.parse(req.body);
-    res.json(await storage.createScene({
+    const scene = await storage.createScene({
       projectId: id,
       number: body.number || "1",
       title: body.title || "Untitled Scene",
@@ -845,7 +867,9 @@ const upload = multer({
       status: body.status || "script",
       deadline: body.deadline ?? null,
       assigneeId: body.assigneeId ?? null,
-    }));
+    });
+    fireAchievements({ userId: req.user!.id, event: "create_scene", projectId: id });
+    res.json(scene);
   });
   app.patch("/api/projects/:id/scenes/:sceneId", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
@@ -912,7 +936,8 @@ const upload = multer({
     });
     
     notifyDiscord(id, `New Comment from ${req.user!.name}`, body.body);
-    
+    fireAchievements({ userId: req.user!.id, event: "create_comment", projectId: id });
+
     res.json(comment);
   });
   app.delete("/api/projects/:id/comments/:commentId", requireAuth, async (req, res) => {
@@ -1013,9 +1038,16 @@ const upload = multer({
   // In-memory rate limiter: max 5 submissions per IP per hour
   const commissionRateLimit = new Map<string, { count: number; resetAt: number }>();
 
+  function pruneCommissionRateLimit(now = Date.now()) {
+    for (const [ip, entry] of commissionRateLimit) {
+      if (now >= entry.resetAt) commissionRateLimit.delete(ip);
+    }
+  }
+
   app.post("/api/commissions", async (req, res) => {
     const ip = req.ip || req.socket.remoteAddress || "unknown";
     const now = Date.now();
+    pruneCommissionRateLimit(now);
     const entry = commissionRateLimit.get(ip);
     if (entry) {
       if (now < entry.resetAt && entry.count >= 5) {
@@ -1057,6 +1089,7 @@ const upload = multer({
       status: "new",
       notes: "",
     });
+    fireAchievements({ userId: body.ownerUserId, event: "create_commission" });
     res.json(commission);
   });
 
@@ -1086,12 +1119,15 @@ const upload = multer({
     });
     const patch = schema.parse(req.body);
     const updated = await storage.updateCommission(id, patch);
-    
+
     // If it's linked to a project and status changed, notify Discord
     if (patch.status && updated?.linkedProjectId) {
       notifyDiscord(updated.linkedProjectId, `Commission Status Updated`, `Commission from ${updated.clientName} is now **${patch.status}**`);
     }
-    
+    if (patch.status === "delivered") {
+      fireAchievements({ userId: req.user!.id, event: "deliver_commission" });
+    }
+
     res.json(updated);
   });
 
@@ -1201,6 +1237,7 @@ const upload = multer({
     });
     const body = schema.parse(req.body);
     const ap = await storage.createAnimaticProject({ projectId, title: body.title, fps: body.fps, totalDurationMs: body.totalDurationMs });
+    fireAchievements({ userId: req.user!.id, event: "create_animatic", projectId });
     res.json(ap);
   });
 
@@ -2080,13 +2117,13 @@ ${body.scriptContent}
   // ===== v4 GLOBAL SEARCH =====
   app.get("/api/search", requireAuth, async (req, res) => {
     const q = String(req.query.q || "").trim();
-    const limit = Math.min(parseInt(String(req.query.limit || "20"), 10), 50);
+    const limit = Math.min(parseInt(String(req.query.limit || "20"), 10) || 20, 50);
     if (!q || q.length < 1) return res.json({ projects: [], scenes: [], scripts: [], assets: [], comments: [] });
     try {
-      const results = await (storage as any).globalSearch(req.user!.id, q, limit);
+      const results = await storage.globalSearch(req.user!.id, q, limit);
       res.json(results);
-    } catch (e: any) {
-      res.status(500).json({ message: e.message });
+    } catch (e) {
+      sendError(res, e);
     }
   });
 

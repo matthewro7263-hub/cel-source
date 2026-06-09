@@ -65,7 +65,7 @@ const SheetContent = React.forwardRef<
       ref={ref}
       className={cn(
         sheetVariants({ side }),
-        "relative glass-strong",
+        "overflow-hidden glass-strong",
         className
       )}
       {...props}
@@ -73,7 +73,8 @@ const SheetContent = React.forwardRef<
       <LiquidGlass
         overlay
         refract
-        displacement={4}
+        depth="strong"
+        displacement={10}
         borderRadius={16}
         className="rounded-[inherit]"
       />

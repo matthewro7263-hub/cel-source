@@ -67,6 +67,11 @@ import {
   probeVideoDurationMs,
 } from "./media";
 import { ToolSurface, ToolWorkspace } from "@/components/layout/tool-workspace";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface Panel {
   id: number;
@@ -127,14 +132,15 @@ export default function VideoEditor() {
   const pid = Number(projectId);
   const [, navigate] = useLocation();
 
-  const { data: storyboardsData = [] } = useQuery<Storyboard[]>({
+  const { data: storyboardsData = [], isLoading: storyboardsLoading } = useQuery<Storyboard[]>({
     queryKey: queryKeys.storyboards(pid),
     enabled: Number.isFinite(pid),
   });
-  const { data: animaticsData = [] } = useQuery<Animatic[]>({
+  const { data: animaticsData = [], isLoading: animaticsLoading } = useQuery<Animatic[]>({
     queryKey: queryKeys.animatics(pid),
     enabled: Number.isFinite(pid),
   });
+  const mediaLoading = storyboardsLoading || animaticsLoading;
 
   const storyboards = Array.isArray(storyboardsData) ? storyboardsData : [];
   const animatics = Array.isArray(animaticsData) ? animaticsData : [];
@@ -160,6 +166,8 @@ export default function VideoEditor() {
   const [videoDurations, setVideoDurations] = useState<Record<number, number>>({});
   const [resizeState, setResizeState] = useState<ResizeState | null>(null);
   const [previewTick, setPreviewTick] = useState(0);
+  const [confirmRemoveClipId, setConfirmRemoveClipId] = useState<string | null>(null);
+  const [confirmClearOpen, setConfirmClearOpen] = useState(false);
 
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const previewVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -624,7 +632,7 @@ export default function VideoEditor() {
       } else if (event.key === "Delete" || event.key === "Backspace") {
         if (selectedClipId) {
           event.preventDefault();
-          removeClip(selectedClipId);
+          setConfirmRemoveClipId(selectedClipId);
         }
       }
     };
@@ -653,7 +661,18 @@ export default function VideoEditor() {
       currentClipInfo.endMs - playheadMs >= 100,
   );
 
+  if (mediaLoading) {
+    return (
+      <div className="px-6 py-8 space-y-6">
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="aspect-video rounded-xl" />
+        <Skeleton className="h-40 rounded-xl" />
+      </div>
+    );
+  }
+
   return (
+    <>
     <ToolWorkspace
       backAction={
         <button
@@ -705,7 +724,7 @@ export default function VideoEditor() {
             type="button"
             className="btn-ghost inline-flex items-center gap-2"
             disabled={clips.length === 0}
-            onClick={clearTimeline}
+            onClick={() => setConfirmClearOpen(true)}
           >
             <RotateCcw size={15} />
             Clear
@@ -1051,7 +1070,7 @@ export default function VideoEditor() {
                     </button>
                     <button type="button" className="btn-ghost" onClick={() => moveSelected(-1)}>Move left</button>
                     <button type="button" className="btn-ghost" onClick={() => moveSelected(1)}>Move right</button>
-                    <button type="button" className="btn-ghost inline-flex items-center gap-2 text-red-500" onClick={() => removeClip(selectedClip.id)}>
+                    <button type="button" className="btn-ghost inline-flex items-center gap-2 text-red-500" onClick={() => setConfirmRemoveClipId(selectedClip.id)}>
                       <Trash2 size={14} />
                       Remove
                     </button>
@@ -1180,5 +1199,50 @@ export default function VideoEditor() {
         </ToolSurface>
       }
     />
+    <AlertDialog open={!!confirmRemoveClipId} onOpenChange={(open) => !open && setConfirmRemoveClipId(null)}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Remove this clip?</AlertDialogTitle>
+          <AlertDialogDescription>
+            The clip will be removed from your timeline. You can undo with Cmd+Z.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={() => {
+              if (confirmRemoveClipId) {
+                removeClip(confirmRemoveClipId);
+                setConfirmRemoveClipId(null);
+              }
+            }}
+          >
+            Remove
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    <AlertDialog open={confirmClearOpen} onOpenChange={setConfirmClearOpen}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Clear the timeline?</AlertDialogTitle>
+          <AlertDialogDescription>
+            All {clips.length} clip{clips.length === 1 ? "" : "s"} will be removed from the timeline. You can undo with Cmd+Z.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={() => {
+              clearTimeline();
+              setConfirmClearOpen(false);
+            }}
+          >
+            Clear timeline
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   );
 }

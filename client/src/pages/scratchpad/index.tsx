@@ -1,7 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { Download, Save, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -18,6 +22,8 @@ export default function ScratchpadPage() {
   const [brushColor, setBrushColor] = useState("#111111");
   const [lastPressure, setLastPressure] = useState(0);
   const [lastTilt, setLastTilt] = useState({ x: 0, y: 0 });
+  const [hasDrawn, setHasDrawn] = useState(false);
+  const [exitConfirmOpen, setExitConfirmOpen] = useState(false);
 
   // Resize canvas to full window
   useEffect(() => {
@@ -44,6 +50,24 @@ export default function ScratchpadPage() {
     return () => window.removeEventListener("resize", resize);
   }, []);
 
+  const requestExit = useCallback(() => {
+    if (hasDrawn) {
+      setExitConfirmOpen(true);
+    } else {
+      setLocation("/dashboard");
+    }
+  }, [hasDrawn, setLocation]);
+
+  useEffect(() => {
+    if (!hasDrawn) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [hasDrawn]);
+
   // Swipe down to exit
   useEffect(() => {
     let startY = 0;
@@ -51,8 +75,7 @@ export default function ScratchpadPage() {
     const onTouchEnd = (e: TouchEvent) => {
       const endY = e.changedTouches[0].clientY;
       if (endY - startY > 150) {
-        // Swipe down detected
-        setLocation("/dashboard");
+        requestExit();
       }
     };
     window.addEventListener("touchstart", onTouchStart, { passive: true });
@@ -61,7 +84,7 @@ export default function ScratchpadPage() {
       window.removeEventListener("touchstart", onTouchStart);
       window.removeEventListener("touchend", onTouchEnd);
     };
-  }, [setLocation]);
+  }, [requestExit]);
 
   const startDrawing = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!ctx) return;
@@ -77,7 +100,8 @@ export default function ScratchpadPage() {
 
   const draw = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!isDrawing || !ctx) return;
-    
+    setHasDrawn(true);
+
     // Apple Pencil pressure support via PointerEvents
     const pressure = e.nativeEvent.pressure || 0.5;
     setLastPressure(pressure);
@@ -121,7 +145,8 @@ export default function ScratchpadPage() {
       });
       
       toast({ title: "Saved to Inbox" });
-      
+      setHasDrawn(false);
+
       // Clear canvas
       if (ctx) {
         ctx.fillStyle = "white";
@@ -192,7 +217,7 @@ export default function ScratchpadPage() {
           variant="outline" 
           size="icon" 
           className="w-14 h-14 rounded-full glass bg-white/80 text-black shadow-lg"
-          onClick={() => setLocation("/dashboard")}
+          onClick={requestExit}
         >
           <X className="w-6 h-6" />
         </Button>
@@ -240,6 +265,21 @@ export default function ScratchpadPage() {
           Swipe down from top to exit
         </div>
       )}
+
+      <AlertDialog open={exitConfirmOpen} onOpenChange={setExitConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Leave scratchpad?</AlertDialogTitle>
+            <AlertDialogDescription>
+              You have unsaved strokes. Save to inbox first, or leave and lose your sketch.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep drawing</AlertDialogCancel>
+            <AlertDialogAction onClick={() => setLocation("/dashboard")}>Leave anyway</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

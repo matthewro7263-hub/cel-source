@@ -1,9 +1,30 @@
-import type { ReactNode } from "react";
-import { Link } from "wouter";
+import { useEffect, type ReactNode } from "react";
+import { Link, useLocation } from "wouter";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
 import { GlassButton } from "@/components/ui/glass-button";
 import { GlassSurface, LiquidGlassCard } from "@/components/ui/liquid-glass";
-import { Calendar, Columns2, Film, MessageSquare, Mic, Presentation, Radio, Scroll, Settings, SunMedium } from "lucide-react";
+import {
+  ArrowLeft,
+  Calendar,
+  Columns2,
+  Film,
+  LayoutDashboard,
+  MessageSquare,
+  Mic,
+  Presentation,
+  Radio,
+  Scroll,
+  Settings,
+  SunMedium,
+} from "lucide-react";
 import { formatDeadline, initials } from "@/lib/utils-cel";
 import type { Project } from "@shared/schema";
 
@@ -80,13 +101,79 @@ function getActiveGroup(section: ProjectSection) {
   return GROUPS.find((group) => group.sections.some((item) => item.id === section)) ?? GROUPS[0];
 }
 
+function getSectionLabel(section: ProjectSection) {
+  for (const group of GROUPS) {
+    const match = group.sections.find((item) => item.id === section);
+    if (match) return match.label;
+  }
+  return section;
+}
+
+const LAST_SECTION_KEY = (projectId: number) => `cel:last-section:${projectId}`;
+
+export function getLastProjectSection(projectId: number): ProjectSection | null {
+  try {
+    const stored = sessionStorage.getItem(LAST_SECTION_KEY(projectId));
+    if (!stored) return null;
+    const allSections = GROUPS.flatMap((group) => group.sections.map((s) => s.id));
+    return allSections.includes(stored as ProjectSection) ? (stored as ProjectSection) : null;
+  } catch {
+    return null;
+  }
+}
+
 export function ProjectFrame({ project, members, activeSection, children }: ProjectFrameProps) {
   const activeGroup = getActiveGroup(activeSection);
+  const sectionLabel = getSectionLabel(activeSection);
   const deadline = formatDeadline(project.deadline);
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(LAST_SECTION_KEY(project.id), activeSection);
+    } catch {
+      // sessionStorage may be unavailable in sandboxed contexts
+    }
+  }, [project.id, activeSection]);
 
   return (
     <div className="px-5 sm:px-6 lg:px-10 py-7 lg:py-10">
       <div className="mx-auto max-w-6xl space-y-6">
+        <Link
+          href="/dashboard"
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground lg:hidden"
+          data-testid="link-back-dashboard"
+        >
+          <ArrowLeft size={14} />
+          Back to dashboard
+        </Link>
+
+        <Breadcrumb className="hidden sm:block">
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              <BreadcrumbLink asChild>
+                <Link href="/dashboard" className="inline-flex items-center gap-1.5">
+                  <LayoutDashboard size={13} />
+                  Dashboard
+                </Link>
+              </BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbLink asChild>
+                <Link href={`/projects/${project.id}`}>{project.title}</Link>
+              </BreadcrumbLink>
+            </BreadcrumbItem>
+            {activeSection !== "overview" && (
+              <>
+                <BreadcrumbSeparator />
+                <BreadcrumbItem>
+                  <BreadcrumbPage>{sectionLabel}</BreadcrumbPage>
+                </BreadcrumbItem>
+              </>
+            )}
+          </BreadcrumbList>
+        </Breadcrumb>
+
         <header className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
           <div className="min-w-0">
             <div className="mb-2 flex items-center gap-2">
@@ -173,15 +260,15 @@ export function ProjectFrame({ project, members, activeSection, children }: Proj
 }
 
 function ProjectToolButton({ href, icon, label }: { href: string; icon: ReactNode; label: string }) {
+  const [, setLocation] = useLocation();
+
   return (
     <GlassButton
       type="button"
       variant="ghost"
       size="sm"
       className="h-9 border border-border/60 bg-background/72 text-foreground hover:bg-background/92"
-      onClick={() => {
-        window.location.hash = href;
-      }}
+      onClick={() => setLocation(href)}
     >
       {icon}
       {label}
@@ -193,7 +280,7 @@ export function ProjectQuickActions({ projectId }: { projectId: number }) {
   return (
     <LiquidGlassCard
       refract
-      displacement={3}
+      depth="normal"
       borderRadius={16}
       className="p-5"
     >

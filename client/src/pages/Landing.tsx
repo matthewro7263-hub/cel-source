@@ -42,7 +42,7 @@ export default function Landing() {
       <div className="fixed inset-0 z-0 landing-bg landing-dot-grid pointer-events-none" />
 
       {/* Top nav */}
-      <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-xl bg-white/55 dark:bg-black/25 border-b border-black/[0.06] dark:border-white/10" data-liquid-gl="true">
+      <nav className="fixed top-0 left-0 right-0 z-50 isolate overflow-hidden liquid-glass-host liquid-glass-depth bg-white/35 dark:bg-black/15 border-b border-black/[0.06] dark:border-white/10" data-liquid-gl="true" data-liquid-tilt="true" data-glass-depth="normal">
         <div className="flex justify-between items-center px-6 py-4 max-w-[1440px] mx-auto">
           <Link href="/" className="flex items-center gap-2 group">
             <CelLogo size={24} className="text-sky-600" />

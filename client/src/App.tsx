@@ -1,4 +1,5 @@
-import { useEffect, useState, useCallback, useRef, lazy, Suspense } from "react";
+import { useEffect, useState, useCallback, lazy, Suspense } from "react";
+import { useLiquidGL } from "@/hooks/useLiquidGL";
 import { Switch, Route, Router, Redirect } from "wouter";
 import { useHashLocation } from "wouter/use-hash-location";
 import { queryClient } from "./lib/queryClient";
@@ -72,117 +73,6 @@ function LazyRoute({ children }: { children: React.ReactNode }) {
   return <Suspense fallback={<RouteSpinner />}>{children}</Suspense>;
 }
 
-// ── liquidGL initializer ─────────────────────────────────────────────────────
-// liquidGL is a window-global loaded via <script> in index.html.
-// We call it after React mounts, and again on route changes, so new .liquidGL
-// elements picked up after navigation also get the WebGL treatment.
-// Defensive: wrapped in try/catch — CSS fallback (backdrop-filter) is already
-// beautiful if WebGL is unavailable (e.g. Firefox without hardware acceleration,
-// some sandboxed iframes, or old Safari).
-declare global {
-  interface Window {
-    liquidGL?: (opts: Record<string, unknown>) => { refresh?: () => void } | void;
-  }
-}
-
-let liquidGLScriptsPromise: Promise<void> | null = null;
-
-function loadLiquidGLScripts(): Promise<void> {
-  if (typeof window.liquidGL === "function") return Promise.resolve();
-  if (!liquidGLScriptsPromise) {
-    liquidGLScriptsPromise = new Promise((resolve, reject) => {
-      const loadScript = (src: string) =>
-        new Promise<void>((res, rej) => {
-          const script = document.createElement("script");
-          script.src = src;
-          script.defer = true;
-          script.onload = () => res();
-          script.onerror = () => rej(new Error(`Failed to load ${src}`));
-          document.head.appendChild(script);
-        });
-      loadScript("/html2canvas.min.js")
-        .then(() => loadScript("/liquidGL.js"))
-        .then(() => resolve())
-        .catch(reject);
-    });
-  }
-  return liquidGLScriptsPromise;
-}
-
-function useLiquidGL() {
-  const [location] = useHashLocation();
-  const disabled = /\/projects\//.test(location);
-  const debounceRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    if (disabled) return;
-    if (typeof window === "undefined") return;
-    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
-
-    let frame = 0;
-    let cancelled = false;
-
-    const initPending = () => {
-      const targets = Array.from(
-        document.querySelectorAll<HTMLElement>("[data-liquid-gl='true']:not([data-liquid-ready='true'])"),
-      );
-      if (targets.length === 0) return;
-
-      targets.forEach((target) => {
-        target.classList.add("liquidGL-pending");
-        target.setAttribute("data-liquid-ready", "true");
-      });
-
-      try {
-        window.liquidGL?.({
-          target: ".liquidGL-pending",
-          snapshot: "#root",
-          resolution: 1.2,
-          refraction: 0.006,
-          bevelDepth: 0.045,
-          bevelWidth: 0.1,
-          frost: 0.05,
-          shadow: false,
-          specular: true,
-          reveal: "fade",
-          tilt: false,
-        });
-      } catch (error) {
-        console.warn("liquidGL initialization failed; using CSS glass fallback.", error);
-      } finally {
-        targets.forEach((target) => target.classList.remove("liquidGL-pending"));
-      }
-    };
-
-    const schedule = () => {
-      if (debounceRef.current) window.clearTimeout(debounceRef.current);
-      debounceRef.current = window.setTimeout(() => {
-        window.cancelAnimationFrame(frame);
-        frame = window.requestAnimationFrame(initPending);
-      }, 200);
-    };
-
-    void loadLiquidGLScripts()
-      .then(() => {
-        if (!cancelled) schedule();
-      })
-      .catch((error) => {
-        console.warn("liquidGL scripts failed to load; using CSS glass fallback.", error);
-      });
-
-    const observer = new MutationObserver(schedule);
-    observer.observe(document.body, { childList: true, subtree: true });
-
-    return () => {
-      cancelled = true;
-      if (debounceRef.current) window.clearTimeout(debounceRef.current);
-      window.cancelAnimationFrame(frame);
-      observer.disconnect();
-    };
-  }, [disabled]);
-}
-// ────────────────────────────────────────────────────────────────────────────
-
 function Protected({ children, fullscreen = false }: { children: React.ReactNode; fullscreen?: boolean }) {
   const { user, isLoading } = useAuth();
   if (isLoading) {
@@ -234,6 +124,12 @@ function AppRouter() {
   // Signal to open new project dialog — propagated via event
   const handleNewProject = useCallback(() => {
     window.dispatchEvent(new CustomEvent("cel:new-project"));
+  }, []);
+
+  useEffect(() => {
+    const onOpenSearch = () => setSearchOpen(true);
+    window.addEventListener("cel:open-search", onOpenSearch);
+    return () => window.removeEventListener("cel:open-search", onOpenSearch);
   }, []);
 
   useGlobalShortcuts({

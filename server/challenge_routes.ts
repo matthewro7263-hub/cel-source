@@ -15,7 +15,18 @@ import { getLiveLeaderboard, snapshotWeekLeaderboard } from "./leaderboard_cron"
 const LEADERBOARD_CACHE_TTL_MS = 30_000;
 const leaderboardCache = new Map<string, { data: Awaited<ReturnType<typeof getLiveLeaderboard>>; expiresAt: number }>();
 
+function pruneLeaderboardCache(now = Date.now()) {
+  for (const [key, entry] of leaderboardCache) {
+    if (now >= entry.expiresAt) leaderboardCache.delete(key);
+  }
+}
+
+function bustLeaderboardCache() {
+  leaderboardCache.clear();
+}
+
 async function getCachedLiveLeaderboard(week: number, limit: number) {
+  pruneLeaderboardCache();
   const key = `${week}:${limit}`;
   const cached = leaderboardCache.get(key);
   if (cached && Date.now() < cached.expiresAt) return cached.data;
@@ -104,6 +115,7 @@ export function registerChallengeRoutes(app: Express) {
     }
 
     const submission = await (storage as any).createChallengeSubmission({ ...body, userId });
+    bustLeaderboardCache();
     res.json(submission);
   });
 
@@ -120,6 +132,7 @@ export function registerChallengeRoutes(app: Express) {
         userId,
         body.sticker,
       );
+      bustLeaderboardCache();
       res.json(result);
     } catch (error: any) {
       res.status(404).json({ message: error.message || "Submission not found" });

@@ -1,7 +1,7 @@
 import { Pool, neonConfig } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-serverless";
 import ws from "ws";
-import { eq, and, or, inArray, asc, desc, like, sql, isNull, lt } from "drizzle-orm";
+import { eq, and, or, inArray, asc, desc, ilike, sql, isNull, lt } from "drizzle-orm";
 import { randomBytes, scrypt, timingSafeEqual, createHmac } from "node:crypto";
 import { promisify } from "node:util";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -790,26 +790,111 @@ const extraStorage = {
   async getCommissionPricingPreset(id: number) { return await db.select().from(commissionPricingPresets).where(eq(commissionPricingPresets.id, id)).then(r => r[0]); },
   async deleteCommissionPricingPreset(id: number) { return await db.delete(commissionPricingPresets).where(eq(commissionPricingPresets.id, id)); },
 
-  // v4 Global Search — uses raw SQLite for LIKE queries across user's accessible projects
+  // v4 Global Search — ilike across user's accessible projects/scenes/etc.
   async globalSearch(userId: number, q: string, limit = 20) {
-      const likeQ = `%${q.toLowerCase()}%`;
-      // Get user's accessible project IDs
-      const memberRows = await db.select({ projectId: projectMembers.projectId }).from(projectMembers).where(eq(projectMembers.userId, userId));
-      const ownedProjects = await db.select({ id: projects.id }).from(projects).where(eq(projects.ownerId, userId));
-      const allIds = memberRows.map(r => r.projectId).concat(ownedProjects.map(r => r.id));
-      const projectIds = Array.from(new Set(allIds));
-      if (projectIds.length === 0) return { projects: [], scenes: [], scripts: [], assets: [], comments: [] };
-      const pIdList = projectIds.join(',');
+      const pattern = `%${q}%`;
+      const cap = Math.min(Math.max(limit, 1), 50);
 
-      const matchedProjects: any[] = [];
+      const memberRows = await db
+        .select({ projectId: projectMembers.projectId })
+        .from(projectMembers)
+        .where(eq(projectMembers.userId, userId));
+      const ownedProjects = await db
+        .select({ id: projects.id })
+        .from(projects)
+        .where(eq(projects.ownerId, userId));
+      const projectIds = Array.from(new Set([
+        ...memberRows.map((r) => r.projectId),
+        ...ownedProjects.map((r) => r.id),
+      ]));
 
-      const matchedScenes: any[] = [];
+      if (projectIds.length === 0) {
+        return { projects: [], scenes: [], scripts: [], assets: [], comments: [] };
+      }
 
-      const matchedScripts: any[] = [];
+      const inProjects = inArray(projects.id, projectIds);
+      const inProjectScope = inArray(scenes.projectId, projectIds);
 
-      const matchedAssets: any[] = [];
+      const matchedProjects = await db
+        .select({
+          id: projects.id,
+          title: projects.title,
+          description: projects.description,
+          coverColor: projects.coverColor,
+        })
+        .from(projects)
+        .where(and(
+          inProjects,
+          or(ilike(projects.title, pattern), ilike(projects.description, pattern)),
+        ))
+        .limit(cap);
 
-      const matchedComments: any[] = [];
+      const matchedScenes = await db
+        .select({
+          id: scenes.id,
+          projectId: scenes.projectId,
+          number: scenes.number,
+          title: scenes.title,
+          status: scenes.status,
+        })
+        .from(scenes)
+        .where(and(
+          inProjectScope,
+          isNull(scenes.deletedAt),
+          or(
+            ilike(scenes.title, pattern),
+            ilike(scenes.number, pattern),
+            ilike(scenes.description, pattern),
+          ),
+        ))
+        .limit(cap);
+
+      const matchedScripts = await db
+        .select({
+          id: scripts.id,
+          projectId: scripts.projectId,
+          title: scripts.title,
+        })
+        .from(scripts)
+        .where(and(
+          inArray(scripts.projectId, projectIds),
+          isNull(scripts.deletedAt),
+          or(ilike(scripts.title, pattern), ilike(scripts.content, pattern)),
+        ))
+        .limit(cap);
+
+      const matchedAssets = await db
+        .select({
+          id: assets.id,
+          projectId: assets.projectId,
+          filename: assets.filename,
+          category: assets.category,
+        })
+        .from(assets)
+        .where(and(
+          inArray(assets.projectId, projectIds),
+          isNull(assets.deletedAt),
+          or(
+            ilike(assets.filename, pattern),
+            ilike(assets.tags, pattern),
+            ilike(assets.notes, pattern),
+          ),
+        ))
+        .limit(cap);
+
+      const matchedComments = await db
+        .select({
+          id: comments.id,
+          projectId: comments.projectId,
+          sceneId: comments.sceneId,
+          body: comments.body,
+        })
+        .from(comments)
+        .where(and(
+          inArray(comments.projectId, projectIds),
+          ilike(comments.body, pattern),
+        ))
+        .limit(cap);
 
       return {
         projects: matchedProjects,

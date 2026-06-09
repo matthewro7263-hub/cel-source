@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect, useCallback, memo } from "react";
-import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { apiRequest, queryClient, getAuthToken } from "@/lib/queryClient";
@@ -18,6 +17,11 @@ import {
   arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, rectSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Image as ImageIcon, Plus, Trash2, Upload, Presentation, X, Pencil, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { Storyboard, Panel, Scene } from "@shared/schema";
@@ -28,6 +32,14 @@ import { SketchModal } from "@/components/storyboard-sketch";
 import { PanelPinsOverlay, PinModeToggle, type PinData } from "@/components/panel-pins";
 
 type StoryboardWithPanels = Storyboard & { panels: Panel[] };
+
+/** Parse query params from the hash route (#/projects/12/storyboards?panel=5), not window.location.search. */
+function getHashQueryParam(param: string): string | null {
+  const hash = window.location.hash.replace(/^#/, "");
+  const queryIndex = hash.indexOf("?");
+  if (queryIndex === -1) return null;
+  return new URLSearchParams(hash.slice(queryIndex + 1)).get(param);
+}
 
 function patchPanelInCache(projectId: number, panelId: number, patch: Partial<Panel>) {
   queryClient.setQueryData<StoryboardWithPanels[]>(
@@ -102,22 +114,49 @@ function invalidatePanelCaches(projectId: number) {
   queryClient.invalidateQueries({ queryKey: ["/api/production/queue"] });
 }
 
+function StoryboardsTabSkeleton() {
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex gap-2">
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-8 w-28 rounded-md" />
+          ))}
+        </div>
+        <Skeleton className="h-8 w-32 rounded-md" />
+      </div>
+      <div className="rounded-xl border border-card-border bg-card p-5 space-y-4">
+        <Skeleton className="h-6 w-48" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <Skeleton key={i} className="aspect-video rounded-lg" />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function StoryboardsTab({ projectId }: { projectId: number }) {
-  const [location] = useLocation();
-  const { data: boards } = useQuery<StoryboardWithPanels[]>({
+  const { data: boards, isLoading } = useQuery<StoryboardWithPanels[]>({
     queryKey: queryKeys.storyboards(projectId),
   });
   const [activeId, setActiveId] = useState<number | null>(null);
   const [deepLinkPanelId, setDeepLinkPanelId] = useState<number | null>(null);
 
   useEffect(() => {
-    const query = location.includes("?") ? location.split("?")[1] : "";
-    const panelParam = new URLSearchParams(query).get("panel");
-    if (panelParam) {
-      const panelId = parseInt(panelParam, 10);
-      if (!isNaN(panelId)) setDeepLinkPanelId(panelId);
-    }
-  }, [location]);
+    const readPanelDeepLink = () => {
+      const panelParam = getHashQueryParam("panel");
+      if (panelParam) {
+        const panelId = parseInt(panelParam, 10);
+        if (!isNaN(panelId)) setDeepLinkPanelId(panelId);
+      }
+    };
+
+    readPanelDeepLink();
+    window.addEventListener("hashchange", readPanelDeepLink);
+    return () => window.removeEventListener("hashchange", readPanelDeepLink);
+  }, []);
 
   useEffect(() => {
     if (deepLinkPanelId && boards) {
@@ -144,6 +183,10 @@ export default function StoryboardsTab({ projectId }: { projectId: number }) {
       setActiveId(null);
     },
   });
+
+  if (isLoading) {
+    return <StoryboardsTabSkeleton />;
+  }
 
   if (!boards || boards.length === 0) {
     return (
@@ -277,9 +320,13 @@ function StoryboardView({
       });
       await assertOk(r);
     },
+    onMutate: (newOrder) => {
+      const previousPanels = panels;
+      return { previousPanels };
+    },
     onSuccess: () => invalidatePanelCaches(projectId),
-    onError: () => {
-      setPanels(board.panels);
+    onError: (_err, _newOrder, context) => {
+      setPanels(context?.previousPanels ?? board.panels);
       toast({ title: "Reorder failed", description: "Panel order was restored.", variant: "destructive" });
     },
   });
@@ -300,14 +347,16 @@ function StoryboardView({
       const isCaptionOnly = Object.keys(patch).length === 1 && "caption" in patch;
       if (!isCaptionOnly) return {};
       const previous = queryClient.getQueryData<StoryboardWithPanels[]>(queryKeys.storyboards(projectId));
+      const previousPanels = panels;
       patchPanelInCache(projectId, id, patch);
       setPanels((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)));
-      return { previous };
+      return { previous, previousPanels };
     },
-    onError: (_err, { id, patch }, context) => {
+    onError: (_err, { patch }, context) => {
       const isCaptionOnly = Object.keys(patch).length === 1 && "caption" in patch;
       if (isCaptionOnly && context?.previous) {
         queryClient.setQueryData(queryKeys.storyboards(projectId), context.previous);
+        if (context.previousPanels) setPanels(context.previousPanels);
       }
     },
     onSuccess: (updated, { id, patch }) => {
@@ -522,9 +571,25 @@ function StoryboardView({
                 </>
               )}
             </Button>
-            <Button size="sm" variant="ghost" onClick={onDelete} className="text-destructive" data-testid="button-delete-storyboard">
-              <Trash2 size={14} />
-            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button size="sm" variant="ghost" className="text-destructive" data-testid="button-delete-storyboard">
+                  <Trash2 size={14} />
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete this storyboard?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    All panels in "{board.title}" will be permanently removed. This can't be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={onDelete}>Delete</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
         </div>
 
@@ -615,19 +680,30 @@ const SortablePanel = memo(function SortablePanel({
         <div className="absolute top-2 left-2 text-[10px] font-mono bg-background/90 px-1.5 py-0.5 rounded">
           #{String(index + 1).padStart(2, "0")}
         </div>
-        <Button
-          size="icon"
-          variant="ghost"
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete();
-          }}
-          onPointerDown={(e) => e.stopPropagation()}
-          className="absolute top-1.5 right-1.5 h-7 w-7 bg-background/90 opacity-0 group-hover:opacity-100 text-destructive hover:bg-destructive hover:text-white transition-all duration-150 shadow-sm"
-          data-testid={`button-delete-panel-${panel.id}`}
-        >
-          <Trash2 size={13} />
-        </Button>
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+              className="absolute top-1.5 right-1.5 h-7 w-7 bg-background/90 opacity-0 group-hover:opacity-100 text-destructive hover:bg-destructive hover:text-white transition-all duration-150 shadow-sm"
+              data-testid={`button-delete-panel-${panel.id}`}
+            >
+              <Trash2 size={13} />
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete this panel?</AlertDialogTitle>
+              <AlertDialogDescription>This storyboard panel will be permanently removed.</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={onDelete}>Delete</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
       <div className="p-3 space-y-2">
         <Input
@@ -808,9 +884,23 @@ function StoryboardInspector({
         <Button size="sm" variant="ghost" onClick={onClose} className="text-xs h-8">
           Close
         </Button>
-        <Button size="sm" variant="destructive" onClick={onDelete} className="text-xs h-8 px-2.5">
-          <Trash2 size={13} className="mr-1" /> Delete Panel
-        </Button>
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button size="sm" variant="destructive" className="text-xs h-8 px-2.5">
+              <Trash2 size={13} className="mr-1" /> Delete Panel
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete this panel?</AlertDialogTitle>
+              <AlertDialogDescription>This storyboard panel will be permanently removed.</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={onDelete}>Delete</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </div>
   );

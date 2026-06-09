@@ -29,6 +29,8 @@ const toastVariants = cva(
     variants: {
       variant: {
         default: "border glass text-foreground",
+        success:
+          "border-[var(--cel-tint-sage-border)] bg-[var(--cel-tint-sage)] text-foreground",
         destructive:
           "destructive group border-destructive bg-destructive text-destructive-foreground",
       },
@@ -83,6 +85,7 @@ const ToastClose = React.forwardRef<
     {...props}
   >
     <X className="h-4 w-4" />
+    <span className="sr-only">Dismiss notification</span>
   </ToastPrimitives.Close>
 ))
 ToastClose.displayName = ToastPrimitives.Close.displayName

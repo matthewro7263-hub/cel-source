@@ -50,12 +50,6 @@ export function AppShell({ children }: { children: ReactNode }) {
       <div className={cn("blob blob-lavender transition-opacity", isDenseWorkspace ? "opacity-30" : "opacity-100")} style={{ zIndex: 0 }} />
       <div className={cn("blob blob-peach transition-opacity", isDenseWorkspace ? "opacity-20" : "opacity-100")} style={{ zIndex: 0 }} />
       <div className={cn("blob blob-sky transition-opacity", isDenseWorkspace ? "opacity-25" : "opacity-100")} style={{ zIndex: 0 }} />
-      <div
-        aria-hidden="true"
-        data-liquid-gl="true"
-        className={cn("liquid-gl-ambient transition-opacity", isDenseWorkspace ? "opacity-40" : "opacity-100")}
-      />
-
       {/* Mobile top bar */}
       <header className="md:hidden fixed top-0 left-0 right-0 z-40 h-14 flex items-center justify-between px-4 border-b border-border/60 glass">
         <div className="flex items-center gap-2 text-primary">
@@ -66,6 +60,8 @@ export function AppShell({ children }: { children: ReactNode }) {
           variant="ghost"
           size="icon"
           onClick={() => setMobileOpen(!mobileOpen)}
+          aria-label={mobileOpen ? "Close menu" : "Open menu"}
+          aria-expanded={mobileOpen}
           data-testid="button-mobile-menu"
         >
           {mobileOpen ? <X size={18} /> : <Menu size={18} />}
@@ -85,9 +81,10 @@ export function AppShell({ children }: { children: ReactNode }) {
       <aside
         className={`${
           mobileOpen ? "block" : "hidden"
-        } md:block fixed md:relative left-0 top-14 md:top-0 bottom-0 md:inset-auto z-30 h-[calc(100vh-3.5rem)] md:h-screen w-[min(22rem,calc(100vw-2rem))] md:w-[82px] xl:w-[240px] flex-shrink-0 glass border-r border-sidebar-border backdrop-blur-xl`}
+        } md:block fixed md:relative left-0 top-14 md:top-0 bottom-0 md:inset-auto z-30 h-[calc(100vh-3.5rem)] md:h-screen w-[min(22rem,calc(100vw-2rem))] md:w-[82px] xl:w-[240px] flex-shrink-0 isolate overflow-hidden liquid-glass-host liquid-glass-depth glass border-r border-sidebar-border`}
         data-testid="sidebar-main"
         data-liquid-gl="true"
+        data-glass-depth="normal"
         style={{ borderRadius: 0 }}
       >
         <div className="flex h-full min-h-0 flex-col">
@@ -97,8 +94,23 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
 
           <nav className="min-h-0 flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new CustomEvent("cel:open-search"))}
+              className="sidebar-nav-item w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm cursor-pointer md:justify-center xl:justify-start min-h-[44px] md:min-h-0 text-muted-foreground hover:text-foreground transition-colors mb-1"
+              data-testid="button-open-search"
+              title="Search (⌘K)"
+            >
+              <Search size={15} />
+              <span className="hidden xl:block flex-1 text-left">Search</span>
+              <kbd className="hidden xl:inline-flex h-5 items-center rounded border border-border/60 bg-muted/50 px-1.5 font-mono text-[10px] text-muted-foreground">
+                ⌘K
+              </kbd>
+            </button>
+
             <Link href="/dashboard">
               <div
+                aria-current={location === "/dashboard" || location === "/" ? "page" : undefined}
                 className={`sidebar-nav-item flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm cursor-pointer md:justify-center xl:justify-start min-h-[44px] md:min-h-0 ${
                   location === "/dashboard" || location === "/"
                     ? "active font-medium"
@@ -197,27 +209,30 @@ export function AppShell({ children }: { children: ReactNode }) {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button
-                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl transition-all duration-150 hover:shadow-md text-left md:justify-center xl:justify-start"
+                    className="relative overflow-hidden w-full flex items-center gap-2.5 px-3 py-2 rounded-xl transition-all duration-150 hover:shadow-md text-left md:justify-center xl:justify-start"
                     data-testid="button-user-menu"
                   >
                     <LiquidGlass
-                      className="absolute inset-0 rounded-[inherit] pointer-events-none"
-                      displacement={3}
+                      overlay
+                      depth="normal"
                       borderRadius={12}
                       refract
+                      className="rounded-[inherit]"
                     />
-                    <Avatar className="h-7 w-7 flex-shrink-0 relative z-[2]">
-                      <AvatarFallback
-                        style={{ backgroundColor: user.avatarColor, color: "white" }}
-                        className="text-xs font-semibold"
-                      >
-                        {initials(user.name)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="hidden xl:block flex-1 min-w-0 relative z-[2]">
-                      <div className="text-sm font-medium truncate">{user.name}</div>
-                      <div className="text-xs text-muted-foreground truncate">{user.email}</div>
-                    </div>
+                    <span className="relative z-[1] flex w-full items-center gap-2.5 md:justify-center xl:justify-start min-w-0">
+                      <Avatar className="h-7 w-7 flex-shrink-0">
+                        <AvatarFallback
+                          style={{ backgroundColor: user.avatarColor, color: "white" }}
+                          className="text-xs font-semibold"
+                        >
+                          {initials(user.name)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="hidden xl:block flex-1 min-w-0">
+                        <div className="text-sm font-medium truncate">{user.name}</div>
+                        <div className="text-xs text-muted-foreground truncate">{user.email}</div>
+                      </div>
+                    </span>
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">

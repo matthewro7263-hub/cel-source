@@ -282,9 +282,22 @@ export function BulkImportDialog({ storyboardId, projectId, onSuccess }: BulkImp
           throw new Error("Bulk registration failed");
         }
       } catch (err: any) {
+        // Roll back orphaned R2 uploads when DB registration fails
+        await Promise.allSettled(
+          uploadedPanels.map((panel) =>
+            apiRequest("DELETE", `/api/uploads/object?key=${encodeURIComponent(panel.r2Key)}`),
+          ),
+        );
+        setFiles((prev) =>
+          prev.map((f) =>
+            f.r2Key && uploadedPanels.some((p) => p.r2Key === f.r2Key)
+              ? { ...f, status: "error" as const, error: "Registration failed — upload rolled back" }
+              : f,
+          ),
+        );
         toast({
           title: "Registration failed",
-          description: "Images uploaded but database registration failed. Please try again.",
+          description: "Images were uploaded but database registration failed. Orphaned uploads were cleaned up — please try again.",
           variant: "destructive",
         });
       }

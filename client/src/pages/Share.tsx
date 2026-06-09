@@ -33,7 +33,21 @@ export default function Share() {
     queryKey: ["/api/share", params.token],
   });
 
-  if (isLoading) return <div className="p-10 text-muted-foreground">Loading…</div>;
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background px-5 sm:px-8 py-10">
+        <div className="max-w-5xl mx-auto space-y-6">
+          <div className="h-14 glass rounded-xl animate-pulse" />
+          <div className="h-10 w-2/3 glass rounded-lg animate-pulse" />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="h-48 glass rounded-2xl animate-pulse" />
+            <div className="h-48 glass rounded-2xl animate-pulse" />
+          </div>
+          <div className="h-64 glass rounded-2xl animate-pulse" />
+        </div>
+      </div>
+    );
+  }
   if (isError || !data) {
     return (
       <div className="min-h-screen flex items-center justify-center px-6">

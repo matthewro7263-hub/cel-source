@@ -1,5 +1,6 @@
 import { Link } from "wouter";
 import { Home, ArrowRight } from "lucide-react";
+import { LiquidGlassCard } from "@/components/ui/liquid-glass";
 
 export default function NotFound() {
   return (
@@ -7,7 +8,13 @@ export default function NotFound() {
       {/* Ambient background */}
       <div className="fixed inset-0 z-0 landing-bg landing-dot-grid pointer-events-none" />
 
-      <div className="relative z-10 text-center px-6 max-w-lg mx-auto">
+      <LiquidGlassCard
+        refract
+        depth="strong"
+        displacement={12}
+        borderRadius={24}
+        className="relative z-10 mx-6 max-w-lg rounded-3xl p-8 sm:p-10 text-center"
+      >
         {/* Branded illustration - missing filmstrip frame */}
         <div className="mb-8 flex justify-center">
           <svg width="200" height="200" viewBox="0 0 200 200" className="opacity-80">
@@ -49,7 +56,7 @@ export default function NotFound() {
           Return to Home
           <ArrowRight className="w-4 h-4" />
         </Link>
-      </div>
+      </LiquidGlassCard>
     </div>
   );
 }
