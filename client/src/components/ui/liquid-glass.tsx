@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { cn } from "@/lib/utils";
+import { useLiquidGlass, getOptimalGlassMode, GlassMode } from "@/lib/useLiquidGlass";
 
 export type LiquidGlassDepth = "subtle" | "normal" | "strong";
 
@@ -59,14 +60,21 @@ interface LiquidGlassProps extends React.HTMLAttributes<HTMLDivElement> {
    * The caller is responsible for placing interactive content in a sibling with z-index.
    */
   overlay?: boolean;
+  /** Refraction mode: 'css' for CSS-only, 'svg' for SVG filters, 'hybrid' for auto-detect */
+  refractionMode?: GlassMode | 'hybrid';
+  /** SVG filter specific options */
+  lensW?: number;
+  lensH?: number;
+  scale?: number;
+  followPointer?: boolean;
 }
 
 /**
- * LiquidGlass — Simulated glass refraction using layered CSS techniques.
+ * LiquidGlass — Simulated glass refraction using layered CSS techniques and SVG filters.
  *
  * Produces a premium frosted-glass surface with backdrop blur, iridescent shimmer,
  * specular highlights, chromatic edge fringing, bevel depth, and lift shadows.
- * WebGL refraction is handled separately via data-liquid-gl hosts.
+ * Supports CSS-only mode for performance and SVG-filter mode for true refraction.
  */
 export const LiquidGlass = React.forwardRef<HTMLDivElement, LiquidGlassProps>(
   (
@@ -80,6 +88,11 @@ export const LiquidGlass = React.forwardRef<HTMLDivElement, LiquidGlassProps>(
       refract = true,
       depth = "normal",
       overlay = false,
+      refractionMode = "hybrid",
+      lensW = 180,
+      lensH = 112,
+      scale = 48,
+      followPointer = false,
       style,
       ...props
     },
@@ -90,10 +103,33 @@ export const LiquidGlass = React.forwardRef<HTMLDivElement, LiquidGlassProps>(
     const effectiveChroma = chromaAmount ?? preset.chromaAmount;
     const shouldRefract = active && refract;
 
+    // Determine optimal glass mode
+    const optimalMode = React.useMemo(() => {
+      if (refractionMode === "hybrid") {
+        return getOptimalGlassMode();
+      }
+      return refractionMode;
+    }, [refractionMode]);
+
+    const useSVG = optimalMode === "svg" && shouldRefract;
+    const svgRef = React.useRef<HTMLDivElement>(null);
+    const glassInstance = useLiquidGlass(
+      svgRef,
+      {
+        lensW,
+        lensH,
+        borderRadius,
+        scale,
+        followPointer,
+        active,
+      },
+      useSVG
+    );
+
     const blurPx = Math.round(20 + (effectiveDisplacement / 20) * 24);
     const iridescenceOpacity = Math.min(1, effectiveChroma * 3);
 
-    const depthLayers = shouldRefract ? (
+    const depthLayers = shouldRefract && !useSVG ? (
       <>
         <span
           className="liquid-glass-shimmer"
@@ -119,17 +155,18 @@ export const LiquidGlass = React.forwardRef<HTMLDivElement, LiquidGlassProps>(
     if (overlay) {
       return (
         <div
-          ref={ref}
+          ref={useSVG ? svgRef : ref}
           data-glass-depth={depth}
           className={cn(
             "absolute inset-0 z-0 overflow-hidden pointer-events-none liquid-glass-host",
-            shouldRefract ? "liquid-glass-surface liquid-glass-depth" : "glass",
+            shouldRefract && !useSVG ? "liquid-glass-surface liquid-glass-depth" : "glass",
+            useSVG ? "lgk-liquid-glass" : "",
             className
           )}
           style={{
             ...style,
             ...(borderRadius !== undefined ? { borderRadius } : {}),
-            ...(shouldRefract
+            ...(shouldRefract && !useSVG
               ? {
                   backdropFilter: `blur(${blurPx}px) saturate(${preset.saturate}%)`,
                   WebkitBackdropFilter: `blur(${blurPx}px) saturate(${preset.saturate}%)`,
@@ -140,23 +177,25 @@ export const LiquidGlass = React.forwardRef<HTMLDivElement, LiquidGlassProps>(
           {...props}
         >
           {depthLayers}
+          {children}
         </div>
       );
     }
 
     return (
       <div
-        ref={ref}
+        ref={useSVG ? svgRef : ref}
         data-glass-depth={depth}
         className={cn(
           "relative overflow-hidden liquid-glass-host",
-          shouldRefract ? "liquid-glass-surface liquid-glass-depth" : "glass",
+          shouldRefract && !useSVG ? "liquid-glass-surface liquid-glass-depth" : "glass",
+          useSVG ? "lgk-liquid-glass" : "",
           className
         )}
         style={{
           ...style,
           ...(borderRadius !== undefined ? { borderRadius } : {}),
-          ...(shouldRefract
+          ...(shouldRefract && !useSVG
             ? {
                 backdropFilter: `blur(${blurPx}px) saturate(${preset.saturate}%)`,
                 WebkitBackdropFilter: `blur(${blurPx}px) saturate(${preset.saturate}%)`,

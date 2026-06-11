@@ -93,21 +93,25 @@ export default function ReviewRoomPage() {
     ws.onopen = () => setConnected(true);
     ws.onclose = () => setConnected(false);
     ws.onmessage = (event) => {
-      const message = JSON.parse(event.data);
-      if (message.type === "presence") setPresence(message.count || 1);
-      if (message.type === "cursor") {
-        setCursors((prev) => ({ ...prev, [message.userId]: { x: message.x, y: message.y, userId: message.userId } }));
+      try {
+        const message = JSON.parse(event.data);
+        if (message.type === "presence") setPresence(message.count || 1);
+        if (message.type === "cursor") {
+          setCursors((prev) => ({ ...prev, [message.userId]: { x: message.x, y: message.y, userId: message.userId } }));
+        }
+        if (message.type === "stroke" && canvasRef.current) {
+          drawSegment(canvasRef.current, message.from, message.to, message.color || "#9DD0FF");
+        }
+        if (message.type === "clear" && canvasRef.current) {
+          canvasRef.current.getContext("2d")?.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+          setEvents((prev) => ["Telestrator cleared", ...prev].slice(0, 6));
+        }
+        if (message.type === "playhead") setPlayhead(message.value || 0);
+        if (message.type === "panel") setCurrentPanel(message.value || 0);
+        if (message.type === "note") setEvents((prev) => [message.body, ...prev].slice(0, 6));
+      } catch {
+        // Ignore malformed WebSocket messages
       }
-      if (message.type === "stroke" && canvasRef.current) {
-        drawSegment(canvasRef.current, message.from, message.to, message.color || "#9DD0FF");
-      }
-      if (message.type === "clear" && canvasRef.current) {
-        canvasRef.current.getContext("2d")?.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-        setEvents((prev) => ["Telestrator cleared", ...prev].slice(0, 6));
-      }
-      if (message.type === "playhead") setPlayhead(message.value || 0);
-      if (message.type === "panel") setCurrentPanel(message.value || 0);
-      if (message.type === "note") setEvents((prev) => [message.body, ...prev].slice(0, 6));
     };
 
     return () => ws.close();

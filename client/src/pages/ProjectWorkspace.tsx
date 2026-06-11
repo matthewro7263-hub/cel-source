@@ -393,9 +393,13 @@ function ScriptTab({ projectId }: { projectId: number }) {
     wsRef.current = ws;
 
     ws.onmessage = (event) => {
-      const msg = JSON.parse(event.data);
-      if (msg.type === "script-cursor") {
-        setOtherCursors(prev => ({ ...prev, [msg.userId]: msg.pos }));
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === "script-cursor") {
+          setOtherCursors(prev => ({ ...prev, [msg.userId]: msg.pos }));
+        }
+      } catch {
+        // Ignore malformed WebSocket messages
       }
     };
     return () => ws.close();

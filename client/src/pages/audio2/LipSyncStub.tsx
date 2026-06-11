@@ -49,7 +49,12 @@ export default function LipSyncStub({ projectId }: { projectId: number }) {
   });
 
   const latestLipsync = lipsyncData?.[lipsyncData.length - 1];
-  const timeline: VisemeKeyframe[] = latestLipsync ? JSON.parse(latestLipsync.timelineJson) : [];
+  let timeline: VisemeKeyframe[] = [];
+  try {
+    timeline = latestLipsync ? JSON.parse(latestLipsync.timelineJson) : [];
+  } catch {
+    timeline = [];
+  }
   const maxTimeMs = timeline.length > 0 ? timeline[timeline.length - 1].endMs : 0;
   const currentViseme = timeline.find((item) => playheadMs >= item.startMs && playheadMs < item.endMs)?.viseme || "rest";
 

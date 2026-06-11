@@ -1,4 +1,5 @@
 @import "./styles/cel-tokens.css";
+@import "./styles/liquid-glass-kit.css";
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

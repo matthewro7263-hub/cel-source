@@ -119,7 +119,10 @@ export default function PaletteMatcher() {
   const handleCompareUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reference = palettes[0] ? JSON.parse((palettes[0] as any).colors) as string[] : [];
+    let reference: string[] = [];
+    try {
+      reference = palettes[0] ? JSON.parse((palettes[0] as any).colors) as string[] : [];
+    } catch { /* ignore malformed colors */ }
     if (!reference.length) {
       toast({ title: "Extract a reference palette first", variant: "destructive" });
       return;
@@ -222,7 +225,9 @@ export default function PaletteMatcher() {
       ) : (
         <div className="space-y-6">
           {palettes.map((p: any) => {
-            const colors = JSON.parse(p.colors) as string[];
+            let colors: string[] = [];
+            try { colors = JSON.parse(p.colors) as string[]; } catch { /* ignore malformed colors */ }
+            if (!colors.length) return null;
             return (
               <div key={p.id} className="bg-card rounded-lg border p-6 flex flex-col sm:flex-row gap-6 items-center">
                 <div className="flex-1 w-full">
