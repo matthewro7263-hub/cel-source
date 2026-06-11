@@ -1,0 +1,24 @@
+{
+  "name": "liquid-glass-kit",
+  "version": "0.1.0",
+  "description": "Framework-free liquid glass refraction kit for websites.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0"
+  },
+  "keywords": [
+    "liquid-glass",
+    "glassmorphism",
+    "svg-filter",
+    "refraction",
+    "web-components"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "playwright": "^1.60.0",
+    "vite": "^5.4.11"
+  }
+}
