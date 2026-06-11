@@ -119,7 +119,10 @@ export default function PaletteMatcher() {
   const handleCompareUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reference = palettes[0] ? JSON.parse((palettes[0] as any).colors) as string[] : [];
+    let reference: string[] = [];
+    try {
+      reference = palettes[0] ? JSON.parse((palettes[0] as any).colors) as string[] : [];
+    } catch { /* ignore malformed colors */ }
     if (!reference.length) {
       toast({ title: "Extract a reference palette first", variant: "destructive" });
       return;
@@ -209,16 +212,22 @@ export default function PaletteMatcher() {
       )}
 
       {isLoading ? (
-        <div className="text-center">Loading...</div>
+        <div className="space-y-4">
+          {[1, 2].map((i) => (
+            <div key={i} className="h-36 glass rounded-xl animate-pulse" />
+          ))}
+        </div>
       ) : palettes.length === 0 ? (
-        <div className="bg-card border border-dashed rounded-lg p-16 text-center text-muted-foreground">
+        <div className="glass border border-dashed rounded-lg p-16 text-center text-muted-foreground">
           <ImageIcon size={48} className="mx-auto mb-4 opacity-50" />
           <p>No palettes generated yet. Upload some screenshots to start.</p>
         </div>
       ) : (
         <div className="space-y-6">
           {palettes.map((p: any) => {
-            const colors = JSON.parse(p.colors) as string[];
+            let colors: string[] = [];
+            try { colors = JSON.parse(p.colors) as string[]; } catch { /* ignore malformed colors */ }
+            if (!colors.length) return null;
             return (
               <div key={p.id} className="bg-card rounded-lg border p-6 flex flex-col sm:flex-row gap-6 items-center">
                 <div className="flex-1 w-full">

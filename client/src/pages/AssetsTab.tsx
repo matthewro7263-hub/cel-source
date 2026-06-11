@@ -1,11 +1,15 @@
 import { useState, useRef } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import {
   Upload, Download, Trash2, Search, Layers, User, Box, FileImage,
   Music, File as FileIcon, X, CloudRain
@@ -66,16 +70,30 @@ export function AssetsTab({ projectId }: AssetsTabProps) {
   const fileRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
-  const { data: assets, isLoading } = useQuery<AssetSafe[]>({
+  const PAGE_SIZE = 24;
+
+  const {
+    data: assetPages,
+    isLoading,
+    isFetchingNextPage,
+    hasNextPage,
+    fetchNextPage,
+  } = useInfiniteQuery({
     queryKey: ["/api/projects", projectId, "assets", activeCategory === "All" ? undefined : activeCategory],
-    queryFn: async () => {
-      const url = activeCategory !== "All"
-        ? `/api/projects/${projectId}/assets?category=${encodeURIComponent(activeCategory)}`
-        : `/api/projects/${projectId}/assets`;
-      const r = await apiRequest("GET", url);
-      return r.json();
+    queryFn: async ({ pageParam }) => {
+      const params = new URLSearchParams({ limit: String(PAGE_SIZE) });
+      if (activeCategory !== "All") params.set("category", activeCategory);
+      if (pageParam) params.set("cursor", String(pageParam));
+      const r = await apiRequest("GET", `/api/projects/${projectId}/assets?${params}`);
+      const data = await r.json();
+      if (Array.isArray(data)) return { items: data as AssetSafe[], nextCursor: null as number | null };
+      return { items: (data.items ?? []) as AssetSafe[], nextCursor: data.nextCursor ?? null };
     },
+    initialPageParam: undefined as number | undefined,
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
   });
+
+  const assets = assetPages?.pages.flatMap((p) => p.items) ?? [];
 
   const del = useMutation({
     mutationFn: async (id: number) => (await apiRequest("DELETE", `/api/assets/${id}`)).json(),
@@ -130,6 +148,7 @@ export function AssetsTab({ projectId }: AssetsTabProps) {
   const handleFiles = async (files: FileList | null) => {
     if (!files) return;
     setUploading(true);
+    let uploadedAny = false;
     for (const file of Array.from(files)) {
       if (file.size > 10 * 1024 * 1024) {
         toast({ title: "File too large", description: `${file.name} exceeds 10MB.`, variant: "destructive" });
@@ -176,10 +195,13 @@ export function AssetsTab({ projectId }: AssetsTabProps) {
           notes: "",
           tags: "",
         });
-        queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId, "assets"] });
+        uploadedAny = true;
       } catch (err: any) {
         toast({ title: "Upload failed", description: String(err.message || err), variant: "destructive" });
       }
+    }
+    if (uploadedAny) {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId, "assets"] });
     }
     setUploading(false);
     if (fileRef.current) fileRef.current.value = "";
@@ -284,23 +306,57 @@ export function AssetsTab({ projectId }: AssetsTabProps) {
       {filtered.length === 0 ? (
         <div className="border border-dashed border-border rounded-xl py-16 text-center text-sm text-muted-foreground bg-card">
           <FileImage size={24} className="mx-auto mb-3 opacity-40" />
-          <p className="font-medium mb-1">No assets yet</p>
-          <p className="text-xs mb-4 text-muted-foreground">Upload characters, backgrounds, props, references — any file type.</p>
-          <GlassButton variant="primary" size="sm" onClick={() => fileRef.current?.click()}>
-            <Upload size={13} className="mr-1" /> Upload files
-          </GlassButton>
+          {search ? (
+            <>
+              <p className="font-medium mb-1">No matching assets</p>
+              <p className="text-xs mb-4 text-muted-foreground">
+                Nothing matches "{search}". Try a different search or clear the filter.
+              </p>
+              <Button variant="outline" size="sm" onClick={() => setSearch("")} data-testid="button-clear-asset-search">
+                Clear search
+              </Button>
+            </>
+          ) : !assets || assets.length === 0 ? (
+            <>
+              <p className="font-medium mb-1">No assets yet</p>
+              <p className="text-xs mb-4 text-muted-foreground">Upload characters, backgrounds, props, references — any file type.</p>
+              <GlassButton variant="primary" size="sm" onClick={() => fileRef.current?.click()}>
+                <Upload size={13} className="mr-1" /> Upload files
+              </GlassButton>
+            </>
+          ) : (
+            <>
+              <p className="font-medium mb-1">No assets in this category</p>
+              <p className="text-xs text-muted-foreground">Try another category or upload new files.</p>
+            </>
+          )}
         </div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-          {filtered.map((asset) => (
-            <AssetCard
-              key={asset.id}
-              asset={asset}
-              onClick={() => setSelectedAsset(asset)}
-              onDownload={() => downloadAsset(asset)}
-            />
-          ))}
-        </div>
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+            {filtered.map((asset) => (
+              <AssetCard
+                key={asset.id}
+                asset={asset}
+                onClick={() => setSelectedAsset(asset)}
+                onDownload={() => downloadAsset(asset)}
+              />
+            ))}
+          </div>
+          {hasNextPage && !search && (
+            <div className="flex justify-center pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => fetchNextPage()}
+                disabled={isFetchingNextPage}
+                data-testid="button-load-more-assets"
+              >
+                {isFetchingNextPage ? "Loading…" : "Load more assets"}
+              </Button>
+            </div>
+          )}
+        </>
       )}
 
       {/* Asset detail modal */}
@@ -315,8 +371,14 @@ export function AssetsTab({ projectId }: AssetsTabProps) {
   );
 }
 
+function isDriveSyncedAsset(asset: AssetSafe): boolean {
+  const tags = asset.tags.toLowerCase();
+  return tags.includes("sync") || tags.includes("procreate") || asset.notes.toLowerCase().includes("google drive");
+}
+
 function AssetCard({ asset, onClick, onDownload }: { asset: AssetSafe; onClick: () => void; onDownload: () => void }) {
   const isImage = asset.mimeType.startsWith("image/") && asset.thumbnailData;
+  const driveSynced = isDriveSyncedAsset(asset);
   const sizeStr = "–"; // size not included in listing (fileData excluded)
 
   return (
@@ -328,7 +390,7 @@ function AssetCard({ asset, onClick, onDownload }: { asset: AssetSafe; onClick: 
       {/* Preview area */}
       <div className="aspect-square bg-muted flex items-center justify-center relative">
         {isImage ? (
-          <img src={asset.thumbnailData!} alt={asset.filename} className="w-full h-full object-cover" />
+          <img src={asset.thumbnailData!} alt={asset.filename} className="w-full h-full object-cover" loading="lazy" decoding="async" />
         ) : (
           <div className="flex flex-col items-center gap-2 p-4">
             {getAssetIcon(asset.mimeType, asset.filename)}
@@ -337,10 +399,20 @@ function AssetCard({ asset, onClick, onDownload }: { asset: AssetSafe; onClick: 
             </span>
           </div>
         )}
-        {/* Category badge */}
+        {/* Category + drive sync badges */}
         <span className="absolute top-2 left-2 text-[10px] font-medium px-1.5 py-0.5 rounded bg-black/50 text-white backdrop-blur-sm">
           {asset.category}
         </span>
+        {driveSynced && (
+          <span
+            className="absolute bottom-2 left-2 text-[9px] font-mono font-medium px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 backdrop-blur-sm flex items-center gap-1"
+            title="Imported via Drive Watcher"
+            data-testid={`badge-drive-sync-${asset.id}`}
+          >
+            <CloudRain size={9} />
+            Drive
+          </span>
+        )}
         {/* Download button overlay */}
         <button
           onClick={(e) => { e.stopPropagation(); onDownload(); }}
@@ -452,14 +524,23 @@ function AssetModal({
           >
             <Search size={13} className="mr-1" /> Find Similar
           </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-destructive mr-auto"
-            onClick={() => onDelete(asset.id)}
-          >
-            <Trash2 size={13} className="mr-1.5" /> Delete
-          </Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="ghost" size="sm" className="text-destructive mr-auto">
+                <Trash2 size={13} className="mr-1.5" /> Delete
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete this asset?</AlertDialogTitle>
+                <AlertDialogDescription>"{asset.filename}" will be permanently removed from the project.</AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={() => onDelete(asset.id)}>Delete</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
           {isImage && (
             <GlassButton variant="ghost" size="sm" onClick={() => onDownload(asset)}>
               <Download size={13} className="mr-1" /> Download

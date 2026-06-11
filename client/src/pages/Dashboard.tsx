@@ -11,8 +11,9 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Plus, Clapperboard, Calendar, ArrowRight, Activity, MessageSquare, Upload } from "lucide-react";
-import { formatDeadline } from "@/lib/utils-cel";
+import { chipClass, deadlineToneClass, formatAbsolute, formatDeadline, formatRelative, initials, STATUS_LABELS } from "@/lib/utils-cel";
 import { useToast } from "@/hooks/use-toast";
+import { PanelImage } from "@/components/PanelImage";
 
 const COLORS = ["#6E4FE8", "#E8744F", "#4FBFE8", "#E84F9F", "#4FE89A", "#E8C44F", "#E84F4F"];
 
@@ -68,7 +69,7 @@ export default function Dashboard() {
   const [, setLocation] = useLocation();
 
   // Query our new aggregated endpoint
-  const { data: queueData, isLoading } = useQuery<{
+  const { data: queueData, isLoading, isError, refetch, isFetching } = useQuery<{
     queueItems: QueueItem[];
     recentActivity: ActivityItem[];
   }>({
@@ -140,24 +141,6 @@ export default function Dashboard() {
     onError: (err: any) => toast({ title: "Couldn't create sandbox", description: String(err.message || err), variant: "destructive" }),
   });
 
-  const getPanelImageUrl = (panel: NonNullable<QueueItem["lastPanel"]>) => {
-    return panel.imageData || (panel.r2Key ? `/api/uploads/file?key=${encodeURIComponent(panel.r2Key)}` : "");
-  };
-
-  const getStatusChipClass = (status: string) => {
-    switch (status.toLowerCase()) {
-      case "storyboard":
-      case "animatic":
-        return "chip-lilac";
-      case "review":
-        return "chip-rose";
-      case "done":
-        return "chip-sage";
-      default:
-        return "chip";
-    }
-  };
-
   return (
     <div 
       className="relative z-10 min-h-screen text-[#e8ebf5] px-6 lg:px-10 py-8 lg:py-12"
@@ -197,53 +180,53 @@ export default function Dashboard() {
             </DialogTrigger>
             <DialogContent className="max-w-md">
               <DialogHeader>
-                <DialogTitle className="font-mono text-sm uppercase tracking-wider text-[#e8ebf5]">Create new project</DialogTitle>
+                <DialogTitle className="font-mono text-sm uppercase tracking-wider">Create new project</DialogTitle>
               </DialogHeader>
               <div className="space-y-4 pt-4">
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-mono text-[#8b8b84]">Title</Label>
+                  <Label className="text-xs font-mono text-muted-foreground">Title</Label>
                   <Input 
                     value={title} 
                     onChange={(e) => setTitle(e.target.value)} 
                     placeholder="Project title" 
                     data-testid="input-project-title" 
-                    className="rounded-[4px] border-[#282822] bg-[#0F0F0C] text-[#e8ebf5]" 
+                    className="rounded-lg border-border bg-card/50 text-foreground" 
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-mono text-[#8b8b84]">Description</Label>
+                  <Label className="text-xs font-mono text-muted-foreground">Description</Label>
                   <Textarea 
                     value={description} 
                     onChange={(e) => setDescription(e.target.value)} 
                     placeholder="Brief description (optional)" 
                     rows={3} 
                     data-testid="input-project-description" 
-                    className="rounded-[4px] border-[#282822] bg-[#0F0F0C] text-[#e8ebf5]"
+                    className="rounded-lg border-border bg-card/50 text-foreground"
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-mono text-[#8b8b84]">Deadline</Label>
+                  <Label className="text-xs font-mono text-muted-foreground">Deadline</Label>
                   <Input 
                     type="date" 
                     value={deadline} 
                     onChange={(e) => setDeadline(e.target.value)} 
                     data-testid="input-project-deadline" 
-                    className="rounded-[4px] border-[#282822] bg-[#0F0F0C] text-[#e8ebf5]" 
+                    className="rounded-lg border-border bg-card/50 text-foreground" 
                   />
                 </div>
-                <div className="flex items-center space-x-2 rounded-[4px] border border-[#282822] px-3 py-2.5 bg-[#0F0F0C]">
+                <div className="flex items-center space-x-2 rounded-lg border border-border px-3 py-2.5 glass">
                   <Checkbox
                     id="use-bible-template"
                     checked={useBibleTemplate}
                     onCheckedChange={(checked) => setUseBibleTemplate(checked === true)}
-                    className="rounded-[2px] border-[#282822]"
+                    className="rounded-sm border-border"
                   />
-                  <Label htmlFor="use-bible-template" className="text-xs font-mono text-[#8b8b84] cursor-pointer">
+                  <Label htmlFor="use-bible-template" className="text-xs font-mono text-muted-foreground cursor-pointer">
                     Seed with Bible template
                   </Label>
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-mono text-[#8b8b84]">Color</Label>
+                  <Label className="text-xs font-mono text-muted-foreground">Color</Label>
                   <div className="flex gap-2 flex-wrap">
                     {COLORS.map((c) => (
                       <button
@@ -251,7 +234,7 @@ export default function Dashboard() {
                         type="button"
                         onClick={() => setColor(c)}
                         className={`w-6 h-6 rounded-full border-2 transition-all ${
-                          color === c ? "border-[#e8ebf5] scale-110" : "border-transparent"
+                          color === c ? "border-foreground scale-110" : "border-transparent"
                         }`}
                         style={{ backgroundColor: c }}
                         data-testid={`button-color-${c}`}
@@ -261,7 +244,7 @@ export default function Dashboard() {
                 </div>
               </div>
               <DialogFooter className="mt-6 flex gap-2">
-                <Button variant="ghost" className="rounded-[4px] text-xs font-mono" onClick={() => { setOpen(false); setUseBibleTemplate(false); }}>
+                <Button variant="ghost" className="rounded-lg text-xs font-mono" onClick={() => { setOpen(false); setUseBibleTemplate(false); }}>
                   Cancel
                 </Button>
                 <Button
@@ -269,7 +252,7 @@ export default function Dashboard() {
                   onClick={() => create.mutate()}
                   disabled={!title || create.isPending}
                   data-testid="button-create-project"
-                  className="rounded-[4px] bg-[#3E63DD] hover:bg-[#3555c2] text-white text-xs font-mono"
+                  className="rounded-lg text-xs font-mono"
                 >
                   {create.isPending ? "Creating…" : "Create"}
                 </Button>
@@ -288,6 +271,19 @@ export default function Dashboard() {
           </div>
           <div className="h-96 glass rounded-2xl animate-pulse" />
         </div>
+      ) : isError ? (
+        <div className="glass py-16 px-6 flex flex-col items-center text-center">
+          <p className="text-sm text-[#8b8b84] mb-4 font-mono">Couldn't load the production queue.</p>
+          <Button
+            variant="default"
+            onClick={() => refetch()}
+            disabled={isFetching}
+            data-testid="button-retry-queue"
+            className="rounded-[4px] bg-[#3E63DD] hover:bg-[#3555c2] text-white text-xs font-mono h-9 px-4"
+          >
+            {isFetching ? "Retrying…" : "Retry"}
+          </Button>
+        </div>
       ) : !queueData || queueData.queueItems.length === 0 ? (
         <EmptyState onNew={() => setOpen(true)} />
       ) : (
@@ -302,17 +298,24 @@ export default function Dashboard() {
             <div className="space-y-3">
               {queueData.queueItems.map((item) => {
                 const deadlineInfo = formatDeadline(item.project.deadline);
-                const deadlineToneClass =
-                  deadlineInfo.tone === "red" ? "text-red-500" :
-                  deadlineInfo.tone === "amber" ? "text-amber-500" :
-                  deadlineInfo.tone === "green" ? "text-emerald-500" : "text-neutral-400";
+                const deadlineClass = deadlineToneClass(deadlineInfo.tone);
 
-                const panelImgSrc = item.lastPanel ? getPanelImageUrl(item.lastPanel) : "";
+                const statusLabel = STATUS_LABELS[item.currentScene?.status ?? ""] ?? item.currentScene?.status;
 
                 return (
                   <div
                     key={item.project.id}
-                    className="glass p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4 transition-all hover:shadow-[var(--neu-shadow-raised-hover)]"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setLocation(`/projects/${item.project.id}`)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setLocation(`/projects/${item.project.id}`);
+                      }
+                    }}
+                    className="glass p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4 transition-all hover:shadow-[var(--neu-shadow-raised-hover)] cursor-pointer"
+                    data-testid={`queue-item-${item.project.id}`}
                   >
                     {/* Project & Scene details */}
                     <div className="flex-1 min-w-0 flex items-start gap-3">
@@ -321,11 +324,12 @@ export default function Dashboard() {
                         style={{ backgroundColor: item.project.coverColor }}
                       />
                       <div className="space-y-1">
-                        <Link href={`/projects/${item.project.id}`}>
-                          <span className="font-mono font-bold text-sm tracking-tight text-[#e8ebf5] hover:text-[#3E63DD] cursor-pointer transition-colors block">
-                            {item.project.title}
-                          </span>
-                        </Link>
+                        <span
+                          className="font-mono font-bold text-sm tracking-tight text-[#e8ebf5] hover:text-[#3E63DD] transition-colors block"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {item.project.title}
+                        </span>
                         
                         {/* Current Shot / Scene */}
                         <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -335,8 +339,8 @@ export default function Dashboard() {
                                <span className="text-[#e8ebf5] font-semibold">
                                  Scene <span className="font-mono">{item.currentScene.number}</span> - {item.currentScene.title}
                                </span>
-                              <span className={`${getStatusChipClass(item.currentScene.status)} font-mono text-[10px] uppercase tracking-wider`}>
-                                {item.currentScene.status}
+                              <span className={`${chipClass(item.currentScene.status)} font-mono text-[10px] uppercase tracking-wider`}>
+                                {statusLabel}
                               </span>
                             </>
                           ) : (
@@ -344,7 +348,7 @@ export default function Dashboard() {
                           )}
 
                           {item.project.deadline && (
-                            <span className={`font-mono text-[11px] flex items-center gap-1 ml-1 ${deadlineToneClass}`}>
+                            <span className={`font-mono text-[11px] flex items-center gap-1 ml-1 ${deadlineClass}`}>
                               <Calendar size={11} /> {deadlineInfo.text}
                             </span>
                           )}
@@ -358,17 +362,24 @@ export default function Dashboard() {
                         <span className="text-[10px] uppercase font-mono tracking-wider text-[#8b8b84] block">Last edit</span>
                         {item.lastPanel ? (
                           <div className="flex items-center gap-2">
-                            {panelImgSrc ? (
-                              <img 
-                                src={panelImgSrc} 
-                                className="w-16 h-10 object-cover rounded-[4px] border border-[#282822] bg-black"
+                            <Link
+                              href={`/projects/${item.project.id}/storyboards?panel=${item.lastPanel.id}`}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <PanelImage
+                                panel={item.lastPanel}
+                                projectId={item.project.id}
+                                className="w-16 h-10 object-cover rounded-[4px] border border-[#282822] bg-black hover:ring-1 hover:ring-[#3E63DD] cursor-pointer transition-all"
                                 alt="Last edit thumbnail"
+                                loading="lazy"
+                                decoding="async"
+                                fallback={
+                                  <div className="w-16 h-10 bg-neutral-900 border border-[#282822] flex items-center justify-center text-[8px] text-neutral-600 rounded-[4px] font-mono">
+                                    NO IMAGE
+                                  </div>
+                                }
                               />
-                            ) : (
-                              <div className="w-16 h-10 bg-neutral-900 border border-[#282822] flex items-center justify-center text-[8px] text-neutral-600 rounded-[4px] font-mono">
-                                NO IMAGE
-                              </div>
-                            )}
+                            </Link>
                             <div className="max-w-[120px] text-left">
                               <div className="text-[10px] font-mono text-[#e8ebf5] truncate">
                                 Panel #{item.lastPanel.orderIdx + 1}
@@ -396,14 +407,17 @@ export default function Dashboard() {
                           </span>
                         </div>
 
-                        <Link href={`/projects/${item.project.id}`}>
-                          <button 
-                            type="button"
-                            className="w-7 h-7 rounded-[4px] bg-[#1a1a15] hover:bg-[#282822] border border-[#282822] flex items-center justify-center text-[#8b8b84] hover:text-[#e8ebf5] transition-colors"
-                          >
-                            <ArrowRight size={13} />
-                          </button>
-                        </Link>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setLocation(`/projects/${item.project.id}`);
+                          }}
+                          className="w-7 h-7 rounded-[4px] bg-[#1a1a15] hover:bg-[#282822] border border-[#282822] flex items-center justify-center text-[#8b8b84] hover:text-[#e8ebf5] transition-colors"
+                          aria-label={`Open ${item.project.title}`}
+                        >
+                          <ArrowRight size={13} />
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -435,14 +449,14 @@ export default function Dashboard() {
                           className="w-5 h-5 rounded-[4px] shrink-0 flex items-center justify-center font-mono font-bold text-[10px] text-white uppercase"
                           style={{ backgroundColor: activity.user.avatarColor }}
                         >
-                          {activity.user.name[0] || "?"}
+                          {initials(activity.user.name) || "?"}
                         </div>
 
                         <div className="flex-1 min-w-0 space-y-1">
                           <div className="flex items-baseline justify-between gap-2">
                             <span className="font-semibold text-[#e8ebf5] font-mono">{activity.user.name}</span>
                             <span className="text-[10px] text-[#8b8b84] shrink-0 font-mono">
-                              {timeAgo(activity.timestamp)}
+                              <span title={formatAbsolute(activity.timestamp)}>{formatRelative(activity.timestamp)}</span>
                             </span>
                           </div>
 
@@ -476,19 +490,6 @@ function sandboxPanelDataUrl(index: number): string {
   const title = ["OPEN", "TRY", "DONE"][index] || "CEL";
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720"><rect width="1280" height="720" fill="#10131a"/><rect x="140" y="110" width="1000" height="500" rx="4" fill="${colors[index % colors.length]}" opacity="0.18" stroke="${colors[index % colors.length]}" stroke-width="8"/><circle cx="${360 + index * 170}" cy="350" r="92" fill="${colors[index % colors.length]}"/><rect x="560" y="292" width="360" height="116" rx="4" fill="#ffffff" opacity="0.9"/><text x="740" y="365" text-anchor="middle" font-family="Arial, sans-serif" font-size="54" font-weight="700" fill="#10131a">${title}</text></svg>`;
   return `data:image/svg+xml;base64,${btoa(svg)}`;
-}
-
-function timeAgo(dateString: string): string {
-  const now = new Date();
-  const date = new Date(dateString);
-  const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
-  if (seconds < 60) return "just now";
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
 }
 
 function EmptyState({ onNew }: { onNew: () => void }) {

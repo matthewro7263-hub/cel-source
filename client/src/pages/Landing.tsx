@@ -42,7 +42,7 @@ export default function Landing() {
       <div className="fixed inset-0 z-0 landing-bg landing-dot-grid pointer-events-none" />
 
       {/* Top nav */}
-      <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-xl bg-white/55 dark:bg-black/25 border-b border-black/[0.06] dark:border-white/10" data-liquid-gl="true">
+      <nav className="fixed top-0 left-0 right-0 z-50 isolate overflow-hidden liquid-glass-host liquid-glass-depth bg-white/35 dark:bg-black/15 border-b border-black/[0.06] dark:border-white/10" data-liquid-gl="true" data-liquid-tilt="true" data-glass-depth="normal">
         <div className="flex justify-between items-center px-6 py-4 max-w-[1440px] mx-auto">
           <Link href="/" className="flex items-center gap-2 group">
             <CelLogo size={24} className="text-sky-600" />
@@ -217,7 +217,7 @@ export default function Landing() {
             <p className="text-on-surface/60 max-w-xl mx-auto">No tab juggling. No naming conventions. No spreadsheet.</p>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            {[
+            {([
               ["Storyboards", Layers],
               ["Animatic editor", Film],
               ["Video editor", Film],
@@ -227,11 +227,10 @@ export default function Landing() {
               ["Scratchpad", PenTool],
               ["Sprite sheets", Boxes],
               ["Couch mode review", Sparkles],
-            ].map(([label, Icon]) => (
-              <div key={label as string} className="landing-mini-feature flex items-center gap-3 px-4 py-3 rounded-2xl">
-                {/* @ts-ignore */}
+            ] as [string, React.ComponentType<{ className?: string }>][]).map(([label, Icon]) => (
+              <div key={label} className="landing-mini-feature flex items-center gap-3 px-4 py-3 rounded-2xl">
                 <Icon className="w-5 h-5 text-sky-600 shrink-0" />
-                <span className="font-medium text-sm">{label as string}</span>
+                <span className="font-medium text-sm">{label}</span>
               </div>
             ))}
           </div>

@@ -1,6 +1,7 @@
-import { ButtonHTMLAttributes, forwardRef } from "react";
+import React, { ButtonHTMLAttributes, forwardRef } from "react";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
+import { useLiquidGlass, getOptimalGlassMode, GlassMode } from "@/lib/useLiquidGlass";
 
 /**
  * GlassButton — Liquid Glass Neumorphic design system
@@ -21,6 +22,7 @@ import { cn } from "@/lib/utils";
  *
  * Uses neumorphic shadows for depth instead of translateY.
  * Active states use subtle scale + pressed shadow.
+ * Supports SVG-filter refraction for enhanced glass effects.
  */
 const glassButtonVariants = cva(
   [
@@ -93,13 +95,59 @@ const glassButtonVariants = cva(
 
 export interface GlassButtonProps
   extends ButtonHTMLAttributes<HTMLButtonElement>,
-    VariantProps<typeof glassButtonVariants> {}
+    VariantProps<typeof glassButtonVariants> {
+  /** Enable SVG-filter refraction for enhanced glass effect */
+  useRefraction?: boolean;
+  /** Refraction mode: 'css' for CSS-only, 'svg' for SVG filters, 'hybrid' for auto-detect */
+  refractionMode?: GlassMode | 'hybrid';
+  /** SVG lens width in pixels */
+  lensW?: number;
+  /** SVG lens height in pixels */
+  lensH?: number;
+  /** SVG displacement scale strength */
+  scale?: number;
+}
 
 export const GlassButton = forwardRef<HTMLButtonElement, GlassButtonProps>(
-  ({ className, variant, size, children, style, ...props }, ref) => {
+  ({ 
+    className, 
+    variant, 
+    size, 
+    useRefraction = false,
+    refractionMode = "hybrid",
+    lensW = 120,
+    lensH = 48,
+    scale = 24,
+    children, 
+    style, 
+    ...props 
+  }, ref) => {
     const resolvedVariant = variant ?? "primary";
     const resolvedSize = size ?? "md";
     const showOptics = resolvedVariant !== "toolbar";
+    
+    // Determine optimal glass mode
+    const optimalMode = React.useMemo(() => {
+      if (refractionMode === "hybrid") {
+        return getOptimalGlassMode();
+      }
+      return refractionMode;
+    }, [refractionMode]);
+
+    const useSVG = useRefraction && optimalMode === "svg" && showOptics;
+    const svgRef = React.useRef<HTMLButtonElement>(null);
+    const glassInstance = useLiquidGlass(
+      svgRef,
+      {
+        lensW,
+        lensH,
+        borderRadius: resolvedSize === "pill" || resolvedSize === "round" ? 999 : 12,
+        scale,
+        followPointer: true,
+      },
+      useSVG
+    );
+
     const materialStyle = showOptics
       ? {
           background:
@@ -112,8 +160,12 @@ export const GlassButton = forwardRef<HTMLButtonElement, GlassButtonProps>(
 
     return (
       <button
-        ref={ref}
-        className={cn(glassButtonVariants({ variant, size }), className)}
+        ref={useSVG ? svgRef : ref}
+        className={cn(
+          glassButtonVariants({ variant, size }), 
+          className,
+          useSVG ? "lgk-liquid-glass" : ""
+        )}
         data-variant={variant ?? "default"}
         data-caustic-glass={showOptics ? "" : undefined}
         data-glass-size={size ?? "md"}
@@ -122,7 +174,7 @@ export const GlassButton = forwardRef<HTMLButtonElement, GlassButtonProps>(
       >
         {showOptics && (
           <>
-            {resolvedVariant === "toolbar" && (
+            {resolvedVariant === "primary" && (
               <>
                 <span
                   aria-hidden="true"

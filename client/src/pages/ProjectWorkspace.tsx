@@ -1,7 +1,8 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback, lazy, Suspense } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient, getAuthToken } from "@/lib/queryClient";
+import { queryKeys } from "@/lib/queryKeys";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -37,13 +38,22 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { formatDeadline, STATUS_LABELS, STATUS_ORDER, statusClass, initials, youTubeId, vimeoId } from "@/lib/utils-cel";
-import type { Project, Script, Storyboard, Panel, Animatic, Scene, Render } from "@shared/schema";
+import type { Project, Script, Animatic, Scene, Render } from "@shared/schema";
 import { GlassButton } from "@/components/ui/glass-button";
-import { StoryboardReviewer } from "@/components/storyboard-reviewer";
+import { Skeleton } from "@/components/ui/skeleton";
 import { AssetsTab } from "@/pages/AssetsTab";
 import { BakSettingsExports } from "@/components/bak-settings-panel";
 import { ScriptUploadDialog } from "@/components/script-upload-dialog";
-import { BulkImportDialog } from "@/components/bulk-panel-import-dialog";
+
+const StoryboardsTab = lazy(() => import("@/pages/project-workspace/StoryboardsTab"));
+
+function SectionSpinner() {
+  return (
+    <div className="flex items-center justify-center py-16">
+      <div className="h-8 w-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
+}
 
 import { CliBrandSettings } from "@/components/cli-brand-settings";
 import ContinuityTab from "./lor/ContinuityTab";
@@ -52,20 +62,11 @@ import LoreSafeChecklist from "./lor/LoreSafeChecklist";
 import SignOffPanel from "./approval/SignOffPanel";
 
 // v4 feature imports
-import { SketchModal } from "@/components/storyboard-sketch";
-import { PanelPinsOverlay, PinModeToggle } from "@/components/panel-pins";
 import { TagsSettingsPanel, InlineTagSelector } from "@/components/tags-manager";
-import { SceneTimerButton, SceneTimeBreakdown } from "@/components/scene-timer";
-import { Pencil, MapPin, Sparkles, Tag, KeyRound, BookOpen, ClipboardCheck, Send, SunMedium } from "lucide-react";
+import { SceneTimerButton, SceneTimeBreakdown, type TimeData } from "@/components/scene-timer";
+import { MapPin, Sparkles, Tag, KeyRound, BookOpen, ClipboardCheck, Send, SunMedium } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ProjectFrame, ProjectQuickActions, type ProjectSection } from "@/components/layout/project-frame";
-import {
-  Tooltip as ShadcnTooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-
 interface ProjectDetail {
   project: Project;
   members: { id: number; userId: number; role: string; user: { id: number; name: string; email: string; avatarColor: string } | null }[];
@@ -84,8 +85,19 @@ function ProjectWorkspaceScaffold({ activeSection }: { activeSection: ProjectSec
   const params = useParams() as { id: string };
   const projectId = parseInt(params.id, 10);
 
-  const { data, isLoading } = useQuery<ProjectDetail>({
-    queryKey: ["/api/projects", projectId],
+  const { data, isLoading, isError, refetch, isFetching } = useQuery<ProjectDetail | null>({
+    queryKey: queryKeys.project(projectId),
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/projects/${projectId}`);
+      if (res.status === 404 || res.status === 403) return null;
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`${res.status}: ${text}`);
+      }
+      const json = await res.json();
+      if (!json?.project) return null;
+      return json as ProjectDetail;
+    },
   });
 
   if (isLoading) {
@@ -97,7 +109,26 @@ function ProjectWorkspaceScaffold({ activeSection }: { activeSection: ProjectSec
       </div>
     );
   }
-  if (!data) return <div className="p-10 text-muted-foreground">Project not found.</div>;
+  if (isError) {
+    return (
+      <div className="px-6 lg:px-10 py-8 lg:py-12 max-w-6xl mx-auto text-center">
+        <p className="text-muted-foreground mb-4">Couldn't load this project. Check your connection and try again.</p>
+        <Button onClick={() => refetch()} disabled={isFetching} data-testid="button-retry-project">
+          {isFetching ? "Retrying…" : "Retry"}
+        </Button>
+      </div>
+    );
+  }
+  if (!data) {
+    return (
+      <div className="px-6 lg:px-10 py-8 lg:py-12 max-w-6xl mx-auto text-center">
+        <p className="text-muted-foreground mb-4">Project not found or you don't have access.</p>
+        <Button variant="outline" onClick={() => { window.location.hash = "/dashboard"; }} data-testid="button-back-dashboard">
+          Back to dashboard
+        </Button>
+      </div>
+    );
+  }
 
   const { project, members } = data;
 
@@ -134,7 +165,13 @@ function renderProjectSection(
   }
 
   if (activeSection === "script") return <ScriptTab projectId={projectId} />;
-  if (activeSection === "storyboards") return <StoryboardsTab projectId={projectId} />;
+  if (activeSection === "storyboards") {
+    return (
+      <Suspense fallback={<SectionSpinner />}>
+        <StoryboardsTab projectId={projectId} />
+      </Suspense>
+    );
+  }
   if (activeSection === "assets") return <AssetsTab projectId={projectId} />;
   if (activeSection === "animatics") return <AnimaticsTab projectId={projectId} />;
   if (activeSection === "scenes") return <ScenesTab projectId={projectId} />;
@@ -155,7 +192,7 @@ function OverviewTab({
   members: ProjectDetail["members"];
   onOpenSection: (section: Exclude<ProjectSection, "overview">) => void;
 }) {
-  const { data: scenes } = useQuery<Scene[]>({ queryKey: ["/api/projects", project.id, "scenes"] });
+  const { data: scenes } = useQuery<Scene[]>({ queryKey: queryKeys.scenes(project.id) });
   const d = formatDeadline(project.deadline);
   const total = scenes?.length || 0;
   const done = scenes?.filter((s) => s.status === "done").length || 0;
@@ -290,13 +327,16 @@ function Stat({ title, value, sub }: { title: string; value: React.ReactNode; su
 
 // ===== SCRIPT =====
 function ScriptTab({ projectId }: { projectId: number }) {
-  const { data: scripts } = useQuery<Script[]>({ queryKey: ["/api/projects", projectId, "scripts"] });
+  const { data: scripts } = useQuery<Script[]>({ queryKey: queryKeys.scripts(projectId) });
   const [active, setActive] = useState<number | null>(null);
   const [draft, setDraft] = useState<{ title: string; content: string }>({ title: "", content: "" });
+  const [savedBaseline, setSavedBaseline] = useState<{ title: string; content: string }>({ title: "", content: "" });
   const [uploadOpen, setUploadOpen] = useState(false);
   const { toast } = useToast();
   const wsRef = useRef<WebSocket | null>(null);
   const [otherCursors, setOtherCursors] = useState<Record<number, number>>({});
+  const saveSourceRef = useRef<"auto" | "manual">("manual");
+  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (active === null && scripts && scripts.length > 0) {
@@ -306,11 +346,19 @@ function ScriptTab({ projectId }: { projectId: number }) {
 
   const current = scripts?.find((s) => s.id === active) as Script & { sourceType?: string, sourceFormat?: string, originalKey?: string };
   useEffect(() => {
-    if (current) setDraft({ title: current.title, content: current.content });
-  }, [active, current?.id]);
+    if (current) {
+      const baseline = { title: current.title, content: current.content };
+      setDraft(baseline);
+      setSavedBaseline(baseline);
+    }
+  }, [active, current?.id, current?.title, current?.content]);
+
+  const isDirty = current?.sourceType !== "upload" && (
+    draft.title !== savedBaseline.title || draft.content !== savedBaseline.content
+  );
 
   const { data: aiStatus } = useQuery<{ hasKey: boolean } | null>({
-    queryKey: ["/api/projects", projectId, "ai", "key"],
+    queryKey: queryKeys.aiKey(projectId),
   });
 
   const [agentFeedback, setAgentFeedback] = useState<string | null>(null);
@@ -345,9 +393,13 @@ function ScriptTab({ projectId }: { projectId: number }) {
     wsRef.current = ws;
 
     ws.onmessage = (event) => {
-      const msg = JSON.parse(event.data);
-      if (msg.type === "script-cursor") {
-        setOtherCursors(prev => ({ ...prev, [msg.userId]: msg.pos }));
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === "script-cursor") {
+          setOtherCursors(prev => ({ ...prev, [msg.userId]: msg.pos }));
+        }
+      } catch {
+        // Ignore malformed WebSocket messages
       }
     };
     return () => ws.close();
@@ -356,24 +408,57 @@ function ScriptTab({ projectId }: { projectId: number }) {
   const create = useMutation({
     mutationFn: async () => (await apiRequest("POST", `/api/projects/${projectId}/scripts`, { title: "New script", content: "# New script\n\nStart writing…" })).json(),
     onSuccess: (s: Script) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId, "scripts"] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.scripts(projectId) });
       setActive(s.id);
     },
   });
   const save = useMutation({
     mutationFn: async () => (await apiRequest("PATCH", `/api/projects/${projectId}/scripts/${active}`, draft)).json(),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId, "scripts"] });
-      toast({ title: "Script saved" });
+      setSavedBaseline({ ...draft });
+      queryClient.invalidateQueries({ queryKey: queryKeys.scripts(projectId) });
+      if (saveSourceRef.current === "manual") {
+        toast({ title: "Script saved" });
+      }
+    },
+    onError: () => {
+      if (saveSourceRef.current === "manual") {
+        toast({ title: "Save failed", variant: "destructive" });
+      }
     },
   });
   const del = useMutation({
     mutationFn: async (id: number) => (await apiRequest("DELETE", `/api/projects/${projectId}/scripts/${id}`)).json(),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId, "scripts"] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.scripts(projectId) });
       setActive(null);
     },
   });
+
+  const triggerSave = useCallback((source: "auto" | "manual") => {
+    if (!active || current?.sourceType === "upload") return;
+    saveSourceRef.current = source;
+    save.mutate();
+  }, [active, current?.sourceType, save]);
+
+  useEffect(() => {
+    if (!isDirty || !active || current?.sourceType === "upload" || save.isPending) return;
+    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    autosaveTimerRef.current = setTimeout(() => triggerSave("auto"), 2000);
+    return () => {
+      if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    };
+  }, [draft, isDirty, active, current?.sourceType, save.isPending, triggerSave]);
+
+  useEffect(() => {
+    if (!isDirty) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [isDirty]);
 
   if (!scripts || scripts.length === 0) {
     return (
@@ -444,12 +529,22 @@ function ScriptTab({ projectId }: { projectId: number }) {
               </span>
             )}
             <div className="flex items-center gap-2">
+              {isDirty && (
+                <span className="text-[10px] font-medium text-amber-500 shrink-0" data-testid="script-dirty-indicator">
+                  Unsaved changes
+                </span>
+              )}
+              {save.isPending && (
+                <span className="text-[10px] font-medium text-muted-foreground shrink-0">
+                  Saving…
+                </span>
+              )}
               {isAgentChecking && (
                 <div className="text-[10px] font-medium text-primary animate-pulse flex items-center gap-1.5 shrink-0">
                   <Sparkles size={10} /> Agent thinking...
                 </div>
               )}
-              <Button size="sm" onClick={() => save.mutate()} disabled={save.isPending}>
+              <Button size="sm" onClick={() => triggerSave("manual")} disabled={save.isPending || !isDirty}>
                 {save.isPending ? "Saving..." : "Save Draft"}
               </Button>
             </div>
@@ -569,7 +664,7 @@ function ScriptTab({ projectId }: { projectId: number }) {
             </div>
             
             {current.sourceType !== "upload" && (
-              <Button onClick={() => save.mutate()} disabled={save.isPending} data-testid="button-save-script">
+              <Button onClick={() => triggerSave("manual")} disabled={save.isPending || !isDirty} data-testid="button-save-script">
                 {save.isPending ? "Saving…" : "Save script"}
               </Button>
             )}
@@ -586,503 +681,6 @@ function ScriptTab({ projectId }: { projectId: number }) {
   );
 }
 
-// ===== STORYBOARDS =====
-function StoryboardsTab({ projectId }: { projectId: number }) {
-  const { data: boards } = useQuery<(Storyboard & { panels: Panel[] })[]>({
-    queryKey: ["/api/projects", projectId, "storyboards"],
-  });
-  const [activeId, setActiveId] = useState<number | null>(null);
-  const { toast } = useToast();
-
-  useEffect(() => {
-    if (activeId === null && boards && boards.length > 0) setActiveId(boards[0].id);
-  }, [boards, activeId]);
-
-  const create = useMutation({
-    mutationFn: async () => (await apiRequest("POST", `/api/projects/${projectId}/storyboards`, { title: "New storyboard" })).json(),
-    onSuccess: (sb: Storyboard) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId, "storyboards"] });
-      setActiveId(sb.id);
-    },
-  });
-  const del = useMutation({
-    mutationFn: async (id: number) => (await apiRequest("DELETE", `/api/projects/${projectId}/storyboards/${id}`)).json(),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId, "storyboards"] });
-      setActiveId(null);
-    },
-  });
-
-  if (!boards || boards.length === 0) {
-    return (
-      <EmptyTabState
-        icon={<ImageIcon size={20} />}
-        title="No storyboards yet"
-        body="Upload reference frames, sketch boards, or shot blocks. Drag to reorder."
-        ctaLabel="New storyboard"
-        onCta={() => create.mutate()}
-      />
-    );
-  }
-
-  const current = boards.find((b) => b.id === activeId);
-
-  return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div className="flex gap-1.5 overflow-x-auto pb-1">
-          {boards.map((b) => (
-            <button
-              key={b.id}
-              onClick={() => setActiveId(b.id)}
-              className={`text-sm px-3 py-1.5 rounded-md border whitespace-nowrap hover-elevate ${
-                activeId === b.id ? "bg-accent border-foreground/20 font-medium" : "border-border"
-              }`}
-              data-testid={`button-storyboard-${b.id}`}
-            >
-              {b.title}{" "}
-              <span className="text-muted-foreground text-xs">({b.panels.length})</span>
-            </button>
-          ))}
-        </div>
-        <Button variant="outline" size="sm" onClick={() => create.mutate()} data-testid="button-new-storyboard">
-          <Plus size={14} className="mr-1.5" />New storyboard
-        </Button>
-      </div>
-
-      {current && (
-        <StoryboardView
-          board={current}
-          projectId={projectId}
-          onDelete={() => del.mutate(current.id)}
-        />
-      )}
-    </div>
-  );
-}
-
-function StoryboardView({ board, projectId, onDelete }: { board: Storyboard & { panels: Panel[] }; projectId: number; onDelete: () => void }) {
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(false);
-  const [panels, setPanels] = useState<Panel[]>(board.panels);
-  const [reviewing, setReviewing] = useState(false);
-  const [selectedPanelId, setSelectedPanelId] = useState<number | null>(null);
-  const { toast } = useToast();
-
-  const selectedPanel = panels.find((p) => p.id === selectedPanelId);
-
-  useEffect(() => { setPanels(board.panels); }, [board.id, board.panels.length]);
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-  );
-
-  const upload = useMutation({
-    mutationFn: async (data: { imageData: string; caption: string }) => {
-      const r = await apiRequest("POST", `/api/storyboards/${board.id}/panels`, data);
-      return r.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId, "storyboards"] });
-    },
-    onError: (err: any) => toast({ title: "Upload failed", description: String(err.message || err), variant: "destructive" }),
-  });
-
-  const reorder = useMutation({
-    mutationFn: async (newOrder: Panel[]) => {
-      await Promise.all(newOrder.map((p, i) => apiRequest("PATCH", `/api/panels/${p.id}`, { orderIdx: i })));
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId, "storyboards"] }),
-  });
-
-  const delPanel = useMutation({
-    mutationFn: async (id: number) => (await apiRequest("DELETE", `/api/panels/${id}`)).json(),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId, "storyboards"] }),
-  });
-
-  const editPanel = useMutation({
-    mutationFn: async ({ id, patch }: { id: number; patch: Partial<Panel> }) =>
-      (await apiRequest("PATCH", `/api/panels/${id}`, patch)).json(),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId, "storyboards"] }),
-  });
-
-  const handleFiles = async (files: FileList | null) => {
-    if (!files) return;
-    setUploading(true);
-    for (const file of Array.from(files)) {
-      if (file.size > 10 * 1024 * 1024) {
-        toast({ title: "File too large", description: `${file.name} exceeds 10MB.`, variant: "destructive" });
-        continue;
-      }
-      const data = await new Promise<string>((resolve, reject) => {
-        const r = new FileReader();
-        r.onload = () => resolve(r.result as string);
-        r.onerror = () => reject(r.error);
-        r.readAsDataURL(file);
-      });
-      await upload.mutateAsync({ imageData: data, caption: file.name });
-    }
-    setUploading(false);
-    if (fileRef.current) fileRef.current.value = "";
-  };
-
-  const onDragEnd = (e: DragEndEvent) => {
-    const { active, over } = e;
-    if (!over || active.id === over.id) return;
-    const oldIdx = panels.findIndex((p) => p.id === active.id);
-    const newIdx = panels.findIndex((p) => p.id === over.id);
-    const next = arrayMove(panels, oldIdx, newIdx);
-    setPanels(next);
-    reorder.mutate(next);
-  };
-
-  return (
-    <>
-    {reviewing && panels.length > 0 && (
-      <StoryboardReviewer panels={panels} onClose={() => setReviewing(false)} />
-    )}
-    <div className="rounded-xl border border-card-border bg-card p-5">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="font-display font-semibold">{board.title}</h3>
-        <div className="flex gap-2">
-          {panels.length > 0 && (
-            <GlassButton
-              variant="primary"
-              size="sm"
-              onClick={() => setReviewing(true)}
-              data-testid="button-review-storyboard"
-            >
-              <Presentation size={13} className="mr-1" /> Review
-            </GlassButton>
-          )}
-          <input ref={fileRef} type="file" multiple accept="image/*" className="hidden" onChange={(e) => handleFiles(e.target.files)} data-testid="input-upload-panel" />
-          {/* v4: sketch button */}
-          <V4SketchButton storyboardId={board.id} projectId={projectId} />
-          <BulkImportDialog storyboardId={board.id} projectId={projectId} onSuccess={() => {}} />
-          <TooltipProvider>
-            <ShadcnTooltip>
-              <TooltipTrigger asChild>
-                <span>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={true}
-                    className="opacity-50 cursor-not-allowed"
-                    data-testid="button-upload-panels"
-                  >
-                    <Upload size={14} className="mr-1.5" />Upload panels
-                  </Button>
-                </span>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Bulk PNG import coming soon</p>
-              </TooltipContent>
-            </ShadcnTooltip>
-          </TooltipProvider>
-          <Button size="sm" variant="ghost" onClick={onDelete} className="text-destructive" data-testid="button-delete-storyboard">
-            <Trash2 size={14} />
-          </Button>
-        </div>
-      </div>
-
-      {panels.length === 0 ? (
-        <div className="border border-dashed border-border rounded-lg py-12 text-center text-sm text-muted-foreground">
-          No panels yet. Click <span className="font-medium text-foreground">Upload panels</span> to add images.
-        </div>
-      ) : (
-        <div className="flex gap-4 items-start">
-          <div className="flex-1 min-w-0">
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-              <SortableContext items={panels.map((p) => p.id)} strategy={rectSortingStrategy}>
-                <div className={`grid gap-4 ${selectedPanelId ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"}`}>
-                  {panels.map((p, i) => (
-                    <SortablePanel
-                      key={p.id}
-                      panel={p}
-                      index={i}
-                      onDelete={() => {
-                        delPanel.mutate(p.id);
-                        if (selectedPanelId === p.id) setSelectedPanelId(null);
-                      }}
-                      onEdit={(patch) => editPanel.mutate({ id: p.id, patch })}
-                      onClick={() => setSelectedPanelId(p.id)}
-                      isSelected={selectedPanelId === p.id}
-                    />
-                  ))}
-                </div>
-              </SortableContext>
-            </DndContext>
-          </div>
-          {selectedPanel && (
-            <StoryboardInspector
-              panel={selectedPanel}
-              index={panels.findIndex(p => p.id === selectedPanelId)}
-              onClose={() => setSelectedPanelId(null)}
-              onEdit={(patch) => editPanel.mutate({ id: selectedPanel.id, patch })}
-              onDelete={() => {
-                delPanel.mutate(selectedPanel.id);
-                setSelectedPanelId(null);
-              }}
-            />
-          )}
-        </div>
-      )}
-    </div>
-    </>
-  );
-}
-
-function SortablePanel({
-  panel,
-  index,
-  onDelete,
-  onEdit,
-  onClick,
-  isSelected,
-}: {
-  panel: Panel;
-  index: number;
-  onDelete: () => void;
-  onEdit: (patch: Partial<Panel>) => void;
-  onClick: () => void;
-  isSelected: boolean;
-}) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: panel.id });
-  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
-  const [caption, setCaption] = useState(panel.caption || "");
-
-  useEffect(() => {
-    setCaption(panel.caption || "");
-  }, [panel]);
-
-  const panelImageUrl = panel.imageData || (panel.r2Key ? `/api/uploads/file?key=${encodeURIComponent(panel.r2Key)}` : "");
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={`rounded-lg border bg-background overflow-hidden group transition-all duration-150 ${
-        isSelected ? "border-primary ring-1 ring-primary" : "border-border"
-      }`}
-      data-testid={`panel-${panel.id}`}
-    >
-      <div
-        {...attributes}
-        {...listeners}
-        onClick={onClick}
-        className="aspect-video bg-muted relative cursor-grab active:cursor-grabbing hover:brightness-95 transition-all duration-150"
-      >
-        <img
-          src={panelImageUrl}
-          alt={panel.caption || panel.dialogue || `Storyboard panel ${index + 1}`}
-          className="w-full h-full object-cover select-none pointer-events-none"
-        />
-        <div className="absolute top-2 left-2 text-[10px] font-mono bg-background/90 px-1.5 py-0.5 rounded">
-          #{String(index + 1).padStart(2, "0")}
-        </div>
-        <Button
-          size="icon"
-          variant="ghost"
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete();
-          }}
-          onPointerDown={(e) => e.stopPropagation()}
-          className="absolute top-1.5 right-1.5 h-7 w-7 bg-background/90 opacity-0 group-hover:opacity-100 text-destructive hover:bg-destructive hover:text-white transition-all duration-150 shadow-sm"
-          data-testid={`button-delete-panel-${panel.id}`}
-        >
-          <Trash2 size={13} />
-        </Button>
-      </div>
-      <div className="p-3 space-y-2">
-        <Input
-          value={caption}
-          onChange={(e) => setCaption(e.target.value)}
-          onBlur={() => caption !== panel.caption && onEdit({ caption })}
-          className="text-xs h-8"
-          placeholder="Caption…"
-          data-testid={`input-caption-${panel.id}`}
-        />
-        {panel.dialogue && <div className="text-xs italic text-muted-foreground">"{panel.dialogue}"</div>}
-        {/* v4: pin layer */}
-        <V4PanelPinLayer panelId={panel.id} />
-      </div>
-    </div>
-  );
-}
-
-function StoryboardInspector({
-  panel,
-  index,
-  onClose,
-  onEdit,
-  onDelete,
-}: {
-  panel: Panel;
-  index: number;
-  onClose: () => void;
-  onEdit: (patch: Partial<Panel>) => void;
-  onDelete: () => void;
-}) {
-  const [caption, setCaption] = useState(panel.caption || "");
-  const [notes, setNotes] = useState(panel.notes || "");
-  const [changeRequest, setChangeRequest] = useState(panel.changeRequest || "");
-  const [frameCount, setFrameCount] = useState<string>(String(panel.frameCount ?? 24));
-  const replaceInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    setCaption(panel.caption || "");
-    setNotes(panel.notes || "");
-    setChangeRequest(panel.changeRequest || "");
-    setFrameCount(String(panel.frameCount ?? 24));
-  }, [panel]);
-
-  const handleReplaceImage = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      onEdit({ imageData: reader.result as string, r2Key: null });
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const panelImageUrl = panel.imageData || (panel.r2Key ? `/api/uploads/file?key=${encodeURIComponent(panel.r2Key)}` : "");
-
-  return (
-    <div className="w-[320px] shrink-0 glass-strong rounded-2xl p-4 space-y-4 flex flex-col h-[calc(100vh-200px)] overflow-y-auto sticky top-4">
-      <div className="flex items-center justify-between">
-        <h4 className="font-semibold text-sm">
-          Panel #<span className="font-mono">{String(index + 1).padStart(2, "0")}</span>
-        </h4>
-        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={onClose}>
-          <X size={14} />
-        </Button>
-      </div>
-
-      <div className="space-y-4 flex-1">
-        {/* Panel Image Container */}
-        <div className="space-y-2">
-          <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Image</Label>
-          <div className="aspect-video bg-muted border border-border rounded overflow-hidden relative">
-            {panelImageUrl ? (
-              <img src={panelImageUrl} alt={caption} className="w-full h-full object-cover" />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center text-muted-foreground text-xs">
-                No image data
-              </div>
-            )}
-          </div>
-          <div className="flex gap-2 justify-end">
-            <input
-              ref={replaceInputRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={handleReplaceImage}
-            />
-            <Button size="sm" variant="outline" className="text-xs h-7 px-2" onClick={() => replaceInputRef.current?.click()}>
-              Replace image
-            </Button>
-          </div>
-        </div>
-
-        {/* Panel Caption */}
-        <div className="space-y-1">
-          <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Caption</Label>
-          <Input
-            value={caption}
-            onChange={(e) => setCaption(e.target.value)}
-            onBlur={() => caption !== panel.caption && onEdit({ caption })}
-            placeholder="No caption..."
-            className="text-xs h-8"
-          />
-        </div>
-
-        {/* Dialogue */}
-        {panel.dialogue && (
-          <div className="space-y-1">
-            <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Dialogue</Label>
-            <div className="text-xs italic text-muted-foreground p-2 bg-muted/30 rounded border border-border/50">
-              "{panel.dialogue}"
-            </div>
-          </div>
-        )}
-
-        {/* Notes */}
-        <div className="space-y-1">
-          <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Notes</Label>
-          <Textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            onBlur={() => notes !== panel.notes && onEdit({ notes })}
-            rows={3}
-            placeholder="Add notes..."
-            className="text-xs resize-none"
-          />
-        </div>
-
-        {/* Status Dropdown */}
-        <div className="space-y-1">
-          <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Status</Label>
-          <Select
-            value={panel.status || "ROUGH"}
-            onValueChange={(val) => onEdit({ status: val })}
-          >
-            <SelectTrigger className="text-xs h-8">
-              <SelectValue placeholder="Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ROUGH">Rough</SelectItem>
-              <SelectItem value="CLEAN">Clean</SelectItem>
-              <SelectItem value="FINAL">Final</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Frame Count Input */}
-        <div className="space-y-1">
-          <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Frame Count</Label>
-          <Input
-            type="number"
-            value={frameCount}
-            onChange={(e) => setFrameCount(e.target.value)}
-            onBlur={() => {
-              const val = parseInt(frameCount, 10);
-              if (!isNaN(val) && val !== panel.frameCount) {
-                onEdit({ frameCount: val });
-              }
-            }}
-            placeholder="24"
-            className="text-xs h-8 font-mono"
-          />
-        </div>
-
-        {/* Change Request */}
-        <div className="space-y-1">
-          <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground text-amber-500">Change Request</Label>
-          <Input
-            value={changeRequest}
-            onChange={(e) => setChangeRequest(e.target.value)}
-            onBlur={() => changeRequest !== panel.changeRequest && onEdit({ changeRequest })}
-            placeholder="Add a change request..."
-            className="text-xs h-8 border-amber-200 focus-visible:ring-amber-500"
-          />
-        </div>
-      </div>
-
-      <div className="pt-2 border-t border-border flex justify-between gap-2">
-        <Button size="sm" variant="ghost" onClick={onClose} className="text-xs h-8">
-          Close
-        </Button>
-        <Button size="sm" variant="destructive" onClick={onDelete} className="text-xs h-8 px-2.5">
-          <Trash2 size={13} className="mr-1" /> Delete Panel
-        </Button>
-      </div>
-    </div>
-  );
-}
 
 // ===== ANIMATICS =====
 // ── v4: AnimaticEditorSection ─────────────────────────────────────────────
@@ -1091,7 +689,7 @@ function AnimaticEditorSection({ projectId }: { projectId: number }) {
   const { toast } = useToast();
   interface AnimaticProjectBasic { id: number; projectId: number; title: string; fps: number; totalDurationMs: number; createdAt: string; }
   const { data: animatics } = useQuery<AnimaticProjectBasic[]>({
-    queryKey: ["/api/projects", projectId, "animatics-v2"],
+    queryKey: queryKeys.animaticsV2(projectId),
     queryFn: async () => (await apiRequest("GET", `/api/projects/${projectId}/animatics-v2`)).json(),
   });
 
@@ -1105,7 +703,7 @@ function AnimaticEditorSection({ projectId }: { projectId: number }) {
       return res.json();
     },
     onSuccess: (ap: AnimaticProjectBasic) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId, "animatics-v2"] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.animaticsV2(projectId) });
       navigate(`/projects/${projectId}/animatic/${ap.id}`);
     },
     onError: (e: any) => toast({ title: "Failed", description: String(e.message || e), variant: "destructive" }),
@@ -1113,7 +711,7 @@ function AnimaticEditorSection({ projectId }: { projectId: number }) {
 
   const del = useMutation({
     mutationFn: async (id: number) => (await apiRequest("DELETE", `/api/animatics-v2/${id}`)).json(),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId, "animatics-v2"] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.animaticsV2(projectId) }),
   });
 
   const formatDuration = (ms: number) => {
@@ -1167,15 +765,28 @@ function AnimaticEditorSection({ projectId }: { projectId: number }) {
                   <ExternalLink size={12} className="mr-1.5" />
                   Open Editor
                 </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="text-destructive hover:text-destructive"
-                  onClick={() => del.mutate(ap.id)}
-                  data-testid={`button-delete-animatic-v2-${ap.id}`}
-                >
-                  <Trash2 size={12} />
-                </Button>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-destructive hover:text-destructive"
+                      data-testid={`button-delete-animatic-v2-${ap.id}`}
+                    >
+                      <Trash2 size={12} />
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Delete this animatic?</AlertDialogTitle>
+                      <AlertDialogDescription>This permanently removes the multi-track animatic and all its clips.</AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction onClick={() => del.mutate(ap.id)}>Delete</AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               </div>
             </div>
           ))}
@@ -1193,7 +804,7 @@ function AnimaticEditorSection({ projectId }: { projectId: number }) {
 }
 
 function AnimaticsTab({ projectId }: { projectId: number }) {
-  const { data: items } = useQuery<Animatic[]>({ queryKey: ["/api/projects", projectId, "animatics"] });
+  const { data: items } = useQuery<Animatic[]>({ queryKey: queryKeys.animatics(projectId) });
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [url, setUrl] = useState("");
@@ -1206,7 +817,7 @@ function AnimaticsTab({ projectId }: { projectId: number }) {
     mutationFn: async (data: { title: string; videoData: string; notes: string }) =>
       (await apiRequest("POST", `/api/projects/${projectId}/animatics`, data)).json(),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId, "animatics"] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.animatics(projectId) });
       setOpen(false); setTitle(""); setUrl(""); setNotes("");
       toast({ title: "Animatic added" });
     },
@@ -1215,7 +826,7 @@ function AnimaticsTab({ projectId }: { projectId: number }) {
 
   const del = useMutation({
     mutationFn: async (id: number) => (await apiRequest("DELETE", `/api/projects/${projectId}/animatics/${id}`)).json(),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId, "animatics"] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.animatics(projectId) }),
   });
 
   const handleFile = async (f: File) => {
@@ -1294,9 +905,23 @@ function AnimaticCard({ a, onDelete }: { a: Animatic; onDelete: () => void }) {
       <div className="p-4">
         <div className="flex items-start justify-between mb-1.5">
           <h4 className="font-display font-semibold text-sm">{a.title}</h4>
-          <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={onDelete} data-testid={`button-delete-animatic-${a.id}`}>
-            <Trash2 size={13} />
-          </Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" data-testid={`button-delete-animatic-${a.id}`}>
+                <Trash2 size={13} />
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete this animatic?</AlertDialogTitle>
+                <AlertDialogDescription>This video animatic will be permanently removed.</AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={onDelete}>Delete</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
         {a.notes && <p className="text-xs text-muted-foreground">{a.notes}</p>}
       </div>
@@ -1359,7 +984,7 @@ function AddAnimaticDialog(props: AddAnimaticDialogProps) {
 
 // ===== SCENES =====
 function ScenesTab({ projectId }: { projectId: number }) {
-  const { data: scenes } = useQuery<Scene[]>({ queryKey: ["/api/projects", projectId, "scenes"] });
+  const { data: scenes } = useQuery<Scene[]>({ queryKey: queryKeys.scenes(projectId) });
   const { toast } = useToast();
   const [view, setView] = useState<"table" | "kanban" | "gantt">("table");
   const [open, setOpen] = useState(false);
@@ -1424,7 +1049,7 @@ function ScenesTab({ projectId }: { projectId: number }) {
                   });
                 }
               }
-              queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId, "scenes"] });
+              queryClient.invalidateQueries({ queryKey: queryKeys.scenes(projectId) });
               toast({ title: "Imported shots", description: `Added ${lines.length - startIdx} scenes.` });
             }}
           />
@@ -1448,14 +1073,24 @@ function ScenesTab({ projectId }: { projectId: number }) {
 function ScenesTable({ scenes, projectId }: { scenes: Scene[]; projectId: number }) {
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
 
+  const { data: sceneTimers = {} } = useQuery<Record<number, TimeData>>({
+    queryKey: queryKeys.sceneTimers(projectId),
+    queryFn: async () => (await apiRequest("GET", `/api/projects/${projectId}/scene-timers`)).json(),
+    refetchInterval: (query) => {
+      const timers = query.state.data;
+      if (!timers) return false;
+      return Object.values(timers).some((t) => t.active) ? 1000 : false;
+    },
+  });
+
   const update = useMutation({
     mutationFn: async ({ id, patch }: { id: number; patch: Partial<Scene> }) =>
       (await apiRequest("PATCH", `/api/projects/${projectId}/scenes/${id}`, patch)).json(),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId, "scenes"] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.scenes(projectId) }),
   });
   const del = useMutation({
     mutationFn: async (id: number) => (await apiRequest("DELETE", `/api/projects/${projectId}/scenes/${id}`)).json(),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId, "scenes"] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.scenes(projectId) }),
   });
 
   const toggleExpand = (id: number) => {
@@ -1541,12 +1176,26 @@ function ScenesTable({ scenes, projectId }: { scenes: Scene[]; projectId: number
                     </td>
                     <td className="px-4 py-2.5">
                       {/* v4: scene timer */}
-                      <SceneTimerButton sceneId={s.id} />
+                      <SceneTimerButton sceneId={s.id} projectId={projectId} timerData={sceneTimers[s.id]} />
                     </td>
                     <td className="px-4 py-2.5 text-right">
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => del.mutate(s.id)} data-testid={`button-delete-scene-${s.id}`}>
-                        <Trash2 size={13} />
-                      </Button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" data-testid={`button-delete-scene-${s.id}`}>
+                            <Trash2 size={13} />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Delete scene {s.number}?</AlertDialogTitle>
+                            <AlertDialogDescription>This removes "{s.title}" from your pipeline. This can't be undone.</AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => del.mutate(s.id)}>Delete</AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
                     </td>
                   </tr>
                   {isExp && (
@@ -1598,7 +1247,7 @@ function SceneRendersPanel({ sceneId }: { sceneId: number }) {
   const { toast } = useToast();
 
   const { data: renders, isLoading } = useQuery<Render[]>({
-    queryKey: ["/api/scenes", sceneId, "renders"],
+    queryKey: queryKeys.sceneRenders(sceneId),
     queryFn: async () => (await apiRequest("GET", `/api/scenes/${sceneId}/renders`)).json(),
   });
 
@@ -1614,7 +1263,7 @@ function SceneRendersPanel({ sceneId }: { sceneId: number }) {
       return r.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/scenes", sceneId, "renders"] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.sceneRenders(sceneId) });
       setAddOpen(false);
       setLabel(""); setStatus("queued"); setSoftware("Blender"); setDurationStr(""); setFileUrl(""); setNotes("");
       toast({ title: "Render added" });
@@ -1623,7 +1272,7 @@ function SceneRendersPanel({ sceneId }: { sceneId: number }) {
 
   const del = useMutation({
     mutationFn: async (id: number) => (await apiRequest("DELETE", `/api/renders/${id}`)).json(),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/scenes", sceneId, "renders"] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.sceneRenders(sceneId) }),
   });
 
   return (
@@ -1657,9 +1306,23 @@ function SceneRendersPanel({ sceneId }: { sceneId: number }) {
               <ExternalLink size={11} />
             </a>
           )}
-          <Button variant="ghost" size="icon" className="h-5 w-5 text-muted-foreground hover:text-destructive ml-auto" onClick={() => del.mutate(r.id)}>
-            <Trash2 size={11} />
-          </Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-5 w-5 text-muted-foreground hover:text-destructive ml-auto">
+                <Trash2 size={11} />
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete this render?</AlertDialogTitle>
+                <AlertDialogDescription>"{r.label}" will be permanently removed.</AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={() => del.mutate(r.id)}>Delete</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       ))}
 
@@ -1758,7 +1421,7 @@ function ScenesKanban({ scenes, projectId }: { scenes: Scene[]; projectId: numbe
   const update = useMutation({
     mutationFn: async ({ id, patch }: { id: number; patch: Partial<Scene> }) =>
       (await apiRequest("PATCH", `/api/projects/${projectId}/scenes/${id}`, patch)).json(),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId, "scenes"] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.scenes(projectId) }),
   });
 
   return (
@@ -1806,7 +1469,7 @@ function NewSceneDialog({ open, setOpen, projectId }: { open: boolean; setOpen: 
         number, title, status, deadline: deadline || null,
       })).json(),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId, "scenes"] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.scenes(projectId) });
       setOpen(false); setNumber(""); setTitle(""); setStatus("script"); setDeadline("");
     },
   });
@@ -1850,20 +1513,37 @@ function NewSceneDialog({ open, setOpen, projectId }: { open: boolean; setOpen: 
 
 // ===== COMMENTS =====
 function CommentsTab({ projectId }: { projectId: number }) {
-  const { data: comments } = useQuery<any[]>({ queryKey: ["/api/projects", projectId, "comments"] });
+  const { data: commentsData, isLoading } = useQuery<{ items: any[]; nextCursor: number | null }>({
+    queryKey: queryKeys.comments(projectId),
+    queryFn: async () => (await apiRequest("GET", `/api/projects/${projectId}/comments`)).json(),
+  });
+  const comments = commentsData?.items ?? (Array.isArray(commentsData) ? commentsData : []);
   const [body, setBody] = useState("");
 
   const create = useMutation({
     mutationFn: async () => (await apiRequest("POST", `/api/projects/${projectId}/comments`, { body })).json(),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId, "comments"] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.comments(projectId) });
       setBody("");
     },
   });
   const del = useMutation({
     mutationFn: async (id: number) => (await apiRequest("DELETE", `/api/projects/${projectId}/comments/${id}`)).json(),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId, "comments"] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.comments(projectId) }),
   });
+
+  if (isLoading) {
+    return (
+      <div className="space-y-5 max-w-2xl">
+        <Skeleton className="h-28 rounded-xl" />
+        <div className="space-y-3">
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-24 rounded-lg" />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5 max-w-2xl">
@@ -1900,9 +1580,23 @@ function CommentsTab({ projectId }: { projectId: number }) {
                 </div>
                 <p className="text-sm leading-relaxed whitespace-pre-wrap">{c.body}</p>
               </div>
-              <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => del.mutate(c.id)}>
-                <Trash2 size={12} />
-              </Button>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive">
+                    <Trash2 size={12} />
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Delete this comment?</AlertDialogTitle>
+                    <AlertDialogDescription>This note will be permanently removed from the project.</AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => del.mutate(c.id)}>Delete</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </div>
           </div>
         ))}
@@ -1919,13 +1613,15 @@ function SettingsTab({ project, members }: { project: Project; members: ProjectD
   const [deadline, setDeadline] = useState(project.deadline || "");
   const [shareEnabled, setShareEnabled] = useState(project.shareEnabled);
   const [inviteEmail, setInviteEmail] = useState("");
+  const [deleteConfirmName, setDeleteConfirmName] = useState("");
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const { toast } = useToast();
 
   const patch = useMutation({
     mutationFn: async (data: Partial<Project>) => (await apiRequest("PATCH", `/api/projects/${project.id}`, data)).json(),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/projects", project.id] });
-      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.project(project.id) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.projects() });
     },
   });
 
@@ -1940,14 +1636,14 @@ function SettingsTab({ project, members }: { project: Project; members: ProjectD
   const del = useMutation({
     mutationFn: async () => (await apiRequest("DELETE", `/api/projects/${project.id}`)).json(),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.projects() });
       setLocation("/dashboard");
     },
   });
   const invite = useMutation({
     mutationFn: async () => (await apiRequest("POST", `/api/projects/${project.id}/members`, { email: inviteEmail })).json(),
     onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/projects", project.id] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.project(project.id) });
       setInviteEmail("");
       if (data?.tempPassword) {
         toast({ title: "Invited & created", description: `Temp password for ${data.user.email}: ${data.tempPassword}` });
@@ -1960,7 +1656,7 @@ function SettingsTab({ project, members }: { project: Project; members: ProjectD
   const removeMember = useMutation({
     mutationFn: async (userId: number) =>
       (await apiRequest("DELETE", `/api/projects/${project.id}/members/${userId}`)).json(),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/projects", project.id] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.project(project.id) }),
   });
 
   const shareUrl = `${window.location.origin}${window.location.pathname}#/share/${project.shareToken}`;
@@ -2082,7 +1778,13 @@ function SettingsTab({ project, members }: { project: Project; members: ProjectD
       <BakSettingsExports projectId={project.id} />
 
       <SettingsSection title="Danger zone" tone="destructive">
-        <AlertDialog>
+        <AlertDialog
+          open={deleteDialogOpen}
+          onOpenChange={(open) => {
+            setDeleteDialogOpen(open);
+            if (!open) setDeleteConfirmName("");
+          }}
+        >
           <AlertDialogTrigger asChild>
             <Button variant="outline" className="text-destructive border-destructive/30 hover:bg-destructive/5" data-testid="button-delete-project">
               <Trash2 size={14} className="mr-1.5" />Delete this project
@@ -2092,13 +1794,26 @@ function SettingsTab({ project, members }: { project: Project; members: ProjectD
             <AlertDialogHeader>
               <AlertDialogTitle>Delete this project?</AlertDialogTitle>
               <AlertDialogDescription>
-                This permanently deletes all scripts, storyboards, animatics, scenes, and comments. This cannot be undone.
+                This permanently deletes all scripts, storyboards, animatics, scenes, and comments. Type{" "}
+                <span className="font-semibold text-foreground">{project.title}</span> to confirm.
               </AlertDialogDescription>
             </AlertDialogHeader>
+            <Input
+              value={deleteConfirmName}
+              onChange={(e) => setDeleteConfirmName(e.target.value)}
+              placeholder={project.title}
+              className="mt-2"
+              data-testid="input-delete-project-confirm"
+            />
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={() => del.mutate()} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                Yes, delete project
+              <AlertDialogAction
+                disabled={deleteConfirmName !== project.title || del.isPending}
+                onClick={() => del.mutate()}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                data-testid="button-confirm-delete-project"
+              >
+                {del.isPending ? "Deleting…" : "Delete project"}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -2165,7 +1880,7 @@ function AiAgentPanel({ projectId, scriptContent, open, onOpenChange, onApplyScr
   const { toast } = useToast();
 
   const { data: sessions } = useQuery<any[]>({
-    queryKey: ["/api/projects", projectId, "ai", "sessions"],
+    queryKey: queryKeys.aiSessions(projectId),
     enabled: open,
   });
 
@@ -2180,7 +1895,7 @@ function AiAgentPanel({ projectId, scriptContent, open, onOpenChange, onApplyScr
   }, [open, sessions, sessionId, projectId]);
 
   const { data: messages, refetch: refetchMessages } = useQuery<any[]>({
-    queryKey: ["/api/projects", projectId, "ai", "sessions", sessionId, "messages"],
+    queryKey: queryKeys.aiSessionMessages(projectId, sessionId!),
     enabled: !!sessionId && open,
   });
 
@@ -2373,7 +2088,7 @@ function AiAgentPanel({ projectId, scriptContent, open, onOpenChange, onApplyScr
 
 function AiAgentStatus({ projectId }: { projectId: number }) {
   const { data: status } = useQuery<{ hasKey: boolean; model: string | null } | null>({
-    queryKey: ["/api/projects", projectId, "ai", "key"],
+    queryKey: queryKeys.aiKey(projectId),
   });
 
   if (!status?.hasKey) return null;
@@ -2397,7 +2112,7 @@ function AiKeySettings({ projectId }: { projectId: number }) {
   const { toast } = useToast();
 
   const { data: status } = useQuery<{ hasKey: boolean; model: string | null } | null>({
-    queryKey: ["/api/projects", projectId, "ai", "key"],
+    queryKey: queryKeys.aiKey(projectId),
     queryFn: async () => {
       const res = await apiRequest("GET", `/api/projects/${projectId}/ai/key`);
       return await res.json();
@@ -2431,7 +2146,7 @@ function AiKeySettings({ projectId }: { projectId: number }) {
     onSuccess: () => {
       toast({ title: "AI Settings saved" });
       setKey("");
-      queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId, "ai", "key"] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.aiKey(projectId) });
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
@@ -2441,7 +2156,7 @@ function AiKeySettings({ projectId }: { projectId: number }) {
     onSuccess: () => {
       toast({ title: "API key removed" });
       setKey("");
-      queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId, "ai", "key"] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.aiKey(projectId) });
     },
   });
 
@@ -2562,31 +2277,6 @@ export function V4ScriptAiButton({ projectId, scriptContent, onApplyScriptEdit }
         onApplyScriptEdit={onApplyScriptEdit || (() => {})}
       />
     </>
-  );
-}
-
-// ===== v4 Storyboard Sketch Button =====
-export function V4SketchButton({ storyboardId, projectId }: { storyboardId: number; projectId: number }) {
-  const [open, setOpen] = useState(false);
-  const { toast } = useToast();
-  return (
-    <>
-      <Button size="sm" variant="outline" onClick={() => setOpen(true)} data-testid="button-sketch-panel">
-        <Pencil size={14} className="mr-1.5" />Sketch
-      </Button>
-      {open && <SketchModal storyboardId={storyboardId} projectId={projectId} onClose={() => setOpen(false)} />}
-    </>
-  );
-}
-
-// ===== v4 Panel Pin mode wrapper for SortablePanel =====
-export function V4PanelPinLayer({ panelId }: { panelId: number }) {
-  const [pinMode, setPinMode] = useState(false);
-  return (
-    <div className="mt-1 flex items-center gap-1">
-      <PinModeToggle panelId={panelId} pinMode={pinMode} onToggle={() => setPinMode((v) => !v)} />
-      {pinMode && <PanelPinsOverlay panelId={panelId} pinMode={pinMode} />}
-    </div>
   );
 }
 

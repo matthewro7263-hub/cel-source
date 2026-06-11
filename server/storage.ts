@@ -1,8 +1,17 @@
 import { Pool, neonConfig } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-serverless";
 import ws from "ws";
-import { eq, and, or, inArray, asc, desc, like, sql, isNull } from "drizzle-orm";
-import { randomBytes, scryptSync, timingSafeEqual, createHmac } from "node:crypto";
+import { eq, and, or, inArray, asc, desc, ilike, sql, isNull, lt } from "drizzle-orm";
+import { randomBytes, scrypt, timingSafeEqual, createHmac } from "node:crypto";
+import { promisify } from "node:util";
+import { AsyncLocalStorage } from "node:async_hooks";
+
+const scryptAsync = promisify(scrypt) as (
+  password: string | Buffer,
+  salt: string | Buffer,
+  keylen: number,
+  options?: { N?: number; r?: number; p?: number; maxmem?: number },
+) => Promise<Buffer>;
 
 import * as mainSchema from "@shared/schema";
 import * as a11ySchema from "@shared/a11y_schema";
@@ -78,24 +87,30 @@ import type {
 neonConfig.webSocketConstructor = ws;
 
 if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required");
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 export const db = drizzle(pool, { schema });
+
+const projectIdCache = new AsyncLocalStorage<Map<number, number[]>>();
+
+export function runWithProjectIdCache<T>(fn: () => T): T {
+  return projectIdCache.run(new Map(), fn);
+}
 
 // ===== PASSWORD UTILS =====
 const SCRYPT_PARAMS = { N: 65536, r: 8, p: 1, maxmem: 128 * 1024 * 1024 };
 
-export function hashPassword(password: string): string {
+export async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(16).toString("hex");
-  const hash = scryptSync(password, salt, 64, SCRYPT_PARAMS).toString("hex");
+  const hash = (await scryptAsync(password, salt, 64, SCRYPT_PARAMS)).toString("hex");
   return `v2:${salt}:${hash}`;
 }
-export function verifyPassword(password: string, stored: string): boolean {
+export async function verifyPassword(password: string, stored: string): Promise<boolean> {
   const parts = stored.split(":");
   if (parts.length === 2) {
     // Legacy format: salt:hash (uses default scrypt params)
     const [salt, hash] = parts;
-    const check = scryptSync(password, salt, 64).toString("hex");
+    const check = (await scryptAsync(password, salt, 64)).toString("hex");
     try {
       return timingSafeEqual(Buffer.from(hash, "hex"), Buffer.from(check, "hex"));
     } catch {
@@ -104,7 +119,7 @@ export function verifyPassword(password: string, stored: string): boolean {
   } else if (parts.length === 3 && parts[0] === "v2") {
     // New format: v2:salt:hash
     const [, salt, hash] = parts;
-    const check = scryptSync(password, salt, 64, SCRYPT_PARAMS).toString("hex");
+    const check = (await scryptAsync(password, salt, 64, SCRYPT_PARAMS)).toString("hex");
     try {
       return timingSafeEqual(Buffer.from(hash, "hex"), Buffer.from(check, "hex"));
     } catch {
@@ -130,30 +145,35 @@ export function createSession(userId: number, tokenVersion: number): string {
   return `${payload}:${signature}`;
 }
 
-export function getSessionUser(sid: string | undefined): number | undefined {
+export function getSessionPayload(sid: string | undefined): { userId: number; tokenVersion: number } | undefined {
   if (!sid) return undefined;
   const parts = sid.split(":");
   if (parts.length !== 4) return undefined;
   const [userIdStr, expiresAtStr, tokenVersionStr, signature] = parts;
   const userId = parseInt(userIdStr, 10);
   const expiresAt = parseInt(expiresAtStr, 10);
-  
-  if (isNaN(userId) || isNaN(expiresAt)) return undefined;
-  if (Date.now() > expiresAt) return undefined; // Session expired
-  
-    const payload = `${userIdStr}:${expiresAtStr}:${tokenVersionStr}`;
+  const tokenVersion = parseInt(tokenVersionStr, 10);
+
+  if (isNaN(userId) || isNaN(expiresAt) || isNaN(tokenVersion)) return undefined;
+  if (Date.now() > expiresAt) return undefined;
+
+  const payload = `${userIdStr}:${expiresAtStr}:${tokenVersionStr}`;
   const hmac = createHmac("sha256", SESSION_SECRET);
   hmac.update(payload);
   const expectedSignature = hmac.digest("hex");
-  
+
   try {
     if (timingSafeEqual(Buffer.from(signature, "hex"), Buffer.from(expectedSignature, "hex"))) {
-      return userId;
+      return { userId, tokenVersion };
     }
   } catch {
     return undefined;
   }
   return undefined;
+}
+
+export function getSessionUser(sid: string | undefined): number | undefined {
+  return getSessionPayload(sid)?.userId;
 }
 
 export function destroySession(sid: string) {
@@ -163,6 +183,11 @@ export function destroySession(sid: string) {
 const coreStorage = {
   // ===== USERS =====
   async getUser(id: number) { return await db.select().from(users).where(eq(users.id, id)).then(r => r[0]); },
+  async getUsersByIds(ids: number[]) {
+    if (ids.length === 0) return [];
+    const unique = Array.from(new Set(ids));
+    return await db.select().from(users).where(inArray(users.id, unique));
+  },
   async getUserByEmail(email: string) { return await db.select().from(users).where(eq(users.email, email)).then(r => r[0]); },
   async createUser(u: InsertUser) { return await db.insert(users).values(u).returning().then(r => r[0] as any); },
   async updateUser(id: number, patch: Partial<InsertUser>) { return await db.update(users).set(patch).where(eq(users.id, id)).returning().then(r => r[0] as any); },
@@ -226,6 +251,21 @@ const coreStorage = {
 
   // ===== SCRIPTS =====
   async listScripts(projectId: number) { return await db.select().from(scripts).where(eq(scripts.projectId, projectId)); },
+  async listScriptsLite(projectId: number) {
+    return await db
+      .select({
+        id: scripts.id,
+        projectId: scripts.projectId,
+        title: scripts.title,
+        sourceType: scripts.sourceType,
+        sourceFormat: scripts.sourceFormat,
+        originalKey: scripts.originalKey,
+        updatedAt: scripts.updatedAt,
+        deletedAt: scripts.deletedAt,
+      })
+      .from(scripts)
+      .where(eq(scripts.projectId, projectId));
+  },
   async getScript(id: number) { return await db.select().from(scripts).where(eq(scripts.id, id)).then(r => r[0]); },
   async createScript(s: InsertScript) { return await db.insert(scripts).values({ ...s, updatedAt: new Date() }).returning().then(r => r[0] as any); },
   async updateScript(id: number, patch: Partial<InsertScript>) { return await db.update(scripts).set({ ...patch, updatedAt: new Date() }).where(eq(scripts.id, id)).returning().then(r => r[0] as any); },
@@ -233,6 +273,10 @@ const coreStorage = {
 
   // ===== STORYBOARDS =====
   async listStoryboards(projectId: number) { return await db.select().from(storyboards).where(eq(storyboards.projectId, projectId)); },
+  async listStoryboardsForProjectIds(projectIds: number[]) {
+    if (projectIds.length === 0) return [];
+    return await db.select().from(storyboards).where(inArray(storyboards.projectId, projectIds));
+  },
   async getStoryboard(id: number) { return await db.select().from(storyboards).where(eq(storyboards.id, id)).then(r => r[0]); },
   async createStoryboard(s: InsertStoryboard) { return await db.insert(storyboards).values({ ...s, createdAt: new Date() }).returning().then(r => r[0] as any); },
   async deleteStoryboard(id: number) {
@@ -242,39 +286,207 @@ const coreStorage = {
 
   // ===== PANELS =====
   async listPanels(storyboardId: number) { return await db.select().from(storyboardPanels).where(eq(storyboardPanels.storyboardId, storyboardId)).orderBy(asc(storyboardPanels.orderIdx)); },
+  async listPanelsLite(storyboardId: number) {
+    return await db
+      .select({
+        id: storyboardPanels.id,
+        storyboardId: storyboardPanels.storyboardId,
+        orderIdx: storyboardPanels.orderIdx,
+        r2Key: storyboardPanels.r2Key,
+        sceneId: storyboardPanels.sceneId,
+        caption: storyboardPanels.caption,
+        dialogue: storyboardPanels.dialogue,
+        notes: storyboardPanels.notes,
+        changeRequest: storyboardPanels.changeRequest,
+        status: storyboardPanels.status,
+        frameCount: storyboardPanels.frameCount,
+        deletedAt: storyboardPanels.deletedAt,
+      })
+      .from(storyboardPanels)
+      .where(and(eq(storyboardPanels.storyboardId, storyboardId), isNull(storyboardPanels.deletedAt)))
+      .orderBy(asc(storyboardPanels.orderIdx));
+  },
+  async listPanelsLiteBatch(storyboardIds: number[]) {
+    if (storyboardIds.length === 0) return [];
+    return await db
+      .select({
+        id: storyboardPanels.id,
+        storyboardId: storyboardPanels.storyboardId,
+        orderIdx: storyboardPanels.orderIdx,
+        r2Key: storyboardPanels.r2Key,
+        sceneId: storyboardPanels.sceneId,
+        caption: storyboardPanels.caption,
+        dialogue: storyboardPanels.dialogue,
+        notes: storyboardPanels.notes,
+        changeRequest: storyboardPanels.changeRequest,
+        status: storyboardPanels.status,
+        frameCount: storyboardPanels.frameCount,
+        deletedAt: storyboardPanels.deletedAt,
+      })
+      .from(storyboardPanels)
+      .where(and(inArray(storyboardPanels.storyboardId, storyboardIds), isNull(storyboardPanels.deletedAt)))
+      .orderBy(asc(storyboardPanels.storyboardId), asc(storyboardPanels.orderIdx));
+  },
+  async listPanelsForStoryboardIds(ids: number[]) {
+    if (ids.length === 0) return [];
+    return await db
+      .select()
+      .from(storyboardPanels)
+      .where(inArray(storyboardPanels.storyboardId, ids))
+      .orderBy(asc(storyboardPanels.storyboardId), asc(storyboardPanels.orderIdx));
+  },
   async createPanel(p: InsertPanel) { return await db.insert(storyboardPanels).values(p).returning().then(r => r[0] as any); },
   async createPanelsBulk(panels: InsertPanel[]) {
     if (panels.length === 0) return [];
     return await db.insert(storyboardPanels).values(panels).returning();
   },
   async updatePanel(id: number, patch: Partial<InsertPanel>) { return await db.update(storyboardPanels).set(patch).where(eq(storyboardPanels.id, id)).returning().then(r => r[0] as any); },
+  async reorderPanels(storyboardId: number, orderedIds: number[]) {
+    if (orderedIds.length === 0) return;
+    await db.transaction(async (tx) => {
+      for (let i = 0; i < orderedIds.length; i++) {
+        await tx
+          .update(storyboardPanels)
+          .set({ orderIdx: i })
+          .where(and(eq(storyboardPanels.id, orderedIds[i]), eq(storyboardPanels.storyboardId, storyboardId)));
+      }
+    });
+  },
   async deletePanel(id: number) { return await db.delete(storyboardPanels).where(eq(storyboardPanels.id, id)); },
   async getPanel(id: number) { return await db.select().from(storyboardPanels).where(eq(storyboardPanels.id, id)).then(r => r[0]); },
+  async isR2KeyInProject(projectId: number, r2Key: string): Promise<boolean> {
+    if (!r2Key) return false;
+    const projectStoryboards = await db
+      .select({ id: storyboards.id })
+      .from(storyboards)
+      .where(eq(storyboards.projectId, projectId));
+    const sbIds = projectStoryboards.map((sb) => sb.id);
+    if (sbIds.length > 0) {
+      const panelHit = await db
+        .select({ id: storyboardPanels.id })
+        .from(storyboardPanels)
+        .where(and(inArray(storyboardPanels.storyboardId, sbIds), eq(storyboardPanels.r2Key, r2Key)))
+        .limit(1);
+      if (panelHit.length > 0) return true;
+    }
+    const assetHit = await db
+      .select({ id: assets.id })
+      .from(assets)
+      .where(and(eq(assets.projectId, projectId), eq(assets.r2Key, r2Key)))
+      .limit(1);
+    return assetHit.length > 0;
+  },
 
   // ===== ANIMATICS =====
   async listAnimatics(projectId: number) { return await db.select().from(animatics).where(eq(animatics.projectId, projectId)); },
+  async listAnimaticsLite(projectId: number) {
+    return await db
+      .select({
+        id: animatics.id,
+        projectId: animatics.projectId,
+        title: animatics.title,
+        notes: animatics.notes,
+        createdAt: animatics.createdAt,
+      })
+      .from(animatics)
+      .where(eq(animatics.projectId, projectId));
+  },
   async createAnimatic(a: InsertAnimatic) { return await db.insert(animatics).values({ ...a, createdAt: new Date() }).returning().then(r => r[0] as any); },
   async deleteAnimatic(id: number) { return await db.delete(animatics).where(eq(animatics.id, id)); },
 
   // ===== SCENES =====
   async listScenes(projectId: number) { return await db.select().from(scenes).where(eq(scenes.projectId, projectId)); },
+  async listScenesForProjectIds(projectIds: number[]) {
+    if (projectIds.length === 0) return [];
+    return await db.select().from(scenes).where(inArray(scenes.projectId, projectIds));
+  },
   async getScene(id: number) { return await db.select().from(scenes).where(eq(scenes.id, id)).then(r => r[0]); },
   async createScene(s: InsertScene) { return await db.insert(scenes).values(s).returning().then(r => r[0] as any); },
   async updateScene(id: number, patch: Partial<InsertScene>) { return await db.update(scenes).set(patch).where(eq(scenes.id, id)).returning().then(r => r[0] as any); },
   async deleteScene(id: number) { return await db.delete(scenes).where(eq(scenes.id, id)); },
 
   // ===== COMMENTS =====
-  async listComments(projectId: number) { return await db.select().from(comments).where(eq(comments.projectId, projectId)).orderBy(desc(comments.createdAt)); },
+  async listComments(projectId: number, opts?: { limit?: number; cursor?: number }) {
+    const limit = Math.min(Math.max(opts?.limit ?? 50, 1), 200);
+    const conditions = [eq(comments.projectId, projectId)];
+    if (opts?.cursor) conditions.push(lt(comments.id, opts.cursor));
+    const rows = await db
+      .select()
+      .from(comments)
+      .where(and(...conditions))
+      .orderBy(desc(comments.id))
+      .limit(limit + 1);
+    const hasMore = rows.length > limit;
+    const items = hasMore ? rows.slice(0, limit) : rows;
+    const nextCursor = hasMore ? items[items.length - 1]?.id ?? null : null;
+    return { items, nextCursor };
+  },
+  async listCommentsForProjectIds(projectIds: number[]) {
+    if (projectIds.length === 0) return [];
+    return await db
+      .select()
+      .from(comments)
+      .where(inArray(comments.projectId, projectIds))
+      .orderBy(desc(comments.createdAt));
+  },
   async createComment(c: InsertComment) { return await db.insert(comments).values({ ...c, createdAt: new Date() }).returning().then(r => r[0] as any); },
   async deleteComment(id: number) { return await db.delete(comments).where(eq(comments.id, id)); },
 
   // ===== ASSETS =====
-  async listAssets(projectId: number, category?: string) {
-      if (category) {
-        return await db.select().from(assets).where(and(eq(assets.projectId, projectId), eq(assets.category, category))).orderBy(desc(assets.createdAt));
-      }
-      return await db.select().from(assets).where(eq(assets.projectId, projectId)).orderBy(desc(assets.createdAt));
+  async listAssets(projectId: number, category?: string, opts?: { limit?: number; cursor?: number }) {
+      const limit = Math.min(Math.max(opts?.limit ?? 50, 1), 200);
+      const cols = {
+        id: assets.id,
+        projectId: assets.projectId,
+        category: assets.category,
+        filename: assets.filename,
+        mimeType: assets.mimeType,
+        r2Key: assets.r2Key,
+        thumbnailData: assets.thumbnailData,
+        notes: assets.notes,
+        tags: assets.tags,
+        uploaderId: assets.uploaderId,
+        createdAt: assets.createdAt,
+        deletedAt: assets.deletedAt,
+      };
+      const baseConditions = category
+        ? and(eq(assets.projectId, projectId), eq(assets.category, category))
+        : eq(assets.projectId, projectId);
+      const conditions = opts?.cursor
+        ? and(baseConditions, lt(assets.id, opts.cursor))
+        : baseConditions;
+      const rows = await db
+        .select(cols)
+        .from(assets)
+        .where(conditions)
+        .orderBy(desc(assets.id))
+        .limit(limit + 1);
+      const hasMore = rows.length > limit;
+      const items = hasMore ? rows.slice(0, limit) : rows;
+      const nextCursor = hasMore ? items[items.length - 1]?.id ?? null : null;
+      return { items, nextCursor };
     },
+  async listAssetsForProjectIds(projectIds: number[]) {
+    if (projectIds.length === 0) return [];
+    const cols = {
+      id: assets.id,
+      projectId: assets.projectId,
+      category: assets.category,
+      filename: assets.filename,
+      mimeType: assets.mimeType,
+      r2Key: assets.r2Key,
+      notes: assets.notes,
+      tags: assets.tags,
+      uploaderId: assets.uploaderId,
+      createdAt: assets.createdAt,
+      deletedAt: assets.deletedAt,
+    };
+    return await db
+      .select(cols)
+      .from(assets)
+      .where(inArray(assets.projectId, projectIds))
+      .orderBy(desc(assets.createdAt));
+  },
   async getAsset(id: number) { return await db.select().from(assets).where(eq(assets.id, id)).then(r => r[0]); },
   async createAsset(a: InsertAsset) { return await db.insert(assets).values({ ...a, createdAt: new Date() }).returning().then(r => r[0] as any); },
   async updateAsset(id: number, patch: Partial<Pick<InsertAsset, 'notes' | 'tags' | 'category'>>) { return await db.update(assets).set(patch).where(eq(assets.id, id)).returning().then(r => r[0] as any); },
@@ -320,9 +532,16 @@ const coreStorage = {
         { kind: "sfx", name: "SFX", orderIdx: 2 },
         { kind: "music", name: "Music", orderIdx: 3 },
       ];
-      for (const t of defaultTracks) {
-        await db.insert(animaticTracks).values({ animaticProjectId: ap.id, kind: t.kind, name: t.name, orderIdx: t.orderIdx, muted: false, volume: 1000 });
-      }
+      await db.insert(animaticTracks).values(
+        defaultTracks.map((t) => ({
+          animaticProjectId: ap.id,
+          kind: t.kind,
+          name: t.name,
+          orderIdx: t.orderIdx,
+          muted: false,
+          volume: 1000,
+        })),
+      );
       return ap;
     },
 
@@ -398,6 +617,9 @@ try {  } catch {}
 const extraStorage = {
   // Helper to resolve all project IDs for a user (owned + member of)
   async getProjectIdsForUser(userId: number): Promise<number[]> {
+    const cache = projectIdCache.getStore();
+    if (cache?.has(userId)) return cache.get(userId)!;
+
     const memberRows = await db
       .select({ projectId: projectMembers.projectId })
       .from(projectMembers)
@@ -408,7 +630,9 @@ const extraStorage = {
       .from(projects)
       .where(eq(projects.ownerId, userId));
     const allIds = new Set([...ids, ...owned.map(p => p.id)]);
-    return Array.from(allIds);
+    const result = Array.from(allIds);
+    cache?.set(userId, result);
+    return result;
   },
   async countAllScenesForUser(userId: number): Promise<number> {
     const ids = await this.getProjectIdsForUser(userId);
@@ -471,6 +695,15 @@ const extraStorage = {
 
   // v4 Panel Pins
   async listPanelPins(panelId: number) { return await db.select().from(panelPins).where(eq(panelPins.panelId, panelId)); },
+  async listPanelPinsForStoryboard(storyboardId: number) {
+    const panelRows = await db
+      .select({ id: storyboardPanels.id })
+      .from(storyboardPanels)
+      .where(eq(storyboardPanels.storyboardId, storyboardId));
+    const panelIds = panelRows.map((p) => p.id);
+    if (panelIds.length === 0) return [];
+    return await db.select().from(panelPins).where(inArray(panelPins.panelId, panelIds));
+  },
   async createPanelPin(p: InsertPanelPin) { return await db.insert(panelPins).values({ ...p, createdAt: new Date() }).returning().then(r => r[0] as any); },
   async deletePanelPin(id: number) { return await db.delete(panelPins).where(eq(panelPins.id, id)); },
   async getPanelPin(id: number) { return await db.select().from(panelPins).where(eq(panelPins.id, id)).then(r => r[0]); },
@@ -479,6 +712,7 @@ const extraStorage = {
   async listCommissionLineItems(commissionId: number) { return await db.select().from(commissionLineItems).where(eq(commissionLineItems.commissionId, commissionId)); },
   async createCommissionLineItem(item: InsertCommissionLineItem) { return await db.insert(commissionLineItems).values({ ...item, createdAt: new Date() }).returning().then(r => r[0] as any); },
   async updateCommissionLineItem(id: number, patch: Partial<InsertCommissionLineItem>) { return await db.update(commissionLineItems).set(patch).where(eq(commissionLineItems.id, id)).returning().then(r => r[0] as any); },
+  async getCommissionLineItem(id: number) { return await db.select().from(commissionLineItems).where(eq(commissionLineItems.id, id)).then(r => r[0]); },
   async deleteCommissionLineItem(id: number) { return await db.delete(commissionLineItems).where(eq(commissionLineItems.id, id)); },
   async updateCommissionQuote(id: number, quoteCents: number | null, invoicedAt?: string | null) {
       const patch: any = {};
@@ -512,6 +746,34 @@ const extraStorage = {
 
   // v4 Scene Time Entries
   async listSceneTimeEntries(sceneId: number) { return await db.select().from(sceneTimeEntries).where(eq(sceneTimeEntries.sceneId, sceneId)); },
+  async listSceneTimeEntriesForUser(sceneId: number, userId: number) {
+    return await db
+      .select()
+      .from(sceneTimeEntries)
+      .where(and(eq(sceneTimeEntries.sceneId, sceneId), eq(sceneTimeEntries.userId, userId)));
+  },
+  async getActiveSceneTimersForProject(projectId: number, userId: number) {
+    const projectScenes = await db
+      .select({ id: scenes.id })
+      .from(scenes)
+      .where(eq(scenes.projectId, projectId));
+    const sceneIds = projectScenes.map((s) => s.id);
+    if (sceneIds.length === 0) return {};
+    const entries = await db
+      .select()
+      .from(sceneTimeEntries)
+      .where(and(inArray(sceneTimeEntries.sceneId, sceneIds), eq(sceneTimeEntries.userId, userId)));
+    const byScene: Record<number, { entries: typeof entries; totalMs: number; active: (typeof entries)[number] | null }> = {};
+    for (const sceneId of sceneIds) {
+      const sceneEntries = entries.filter((e) => e.sceneId === sceneId);
+      const totalMs = sceneEntries
+        .filter((e) => e.durationMs != null)
+        .reduce((sum, e) => sum + (e.durationMs ?? 0), 0);
+      const active = sceneEntries.find((e) => e.endedAt == null) ?? null;
+      byScene[sceneId] = { entries: sceneEntries, totalMs, active };
+    }
+    return byScene;
+  },
   async getActiveTimeEntry(sceneId: number, userId: number) { const entries = await db.select().from(sceneTimeEntries).where(and(eq(sceneTimeEntries.sceneId, sceneId), eq(sceneTimeEntries.userId, userId))); return entries.find(e => e.endedAt === null || e.endedAt === undefined); },
   async startTimer(sceneId: number, userId: number) { return await db.insert(sceneTimeEntries).values({ sceneId, userId, startedAt: Date.now(), endedAt: null, durationMs: null }).returning().then(r => r[0] as any); },
   async stopTimer(id: number) {
@@ -525,28 +787,114 @@ const extraStorage = {
   async listCommissionPricingPresets(projectId: number) { return await db.select().from(commissionPricingPresets).where(eq(commissionPricingPresets.projectId, projectId)); },
   async createCommissionPricingPreset(p: InsertCommissionPricingPreset) { return await db.insert(commissionPricingPresets).values({ ...p, createdAt: new Date() }).returning().then(r => r[0] as any); },
   async updateCommissionPricingPreset(id: number, patch: Partial<InsertCommissionPricingPreset>) { return await db.update(commissionPricingPresets).set(patch).where(eq(commissionPricingPresets.id, id)).returning().then(r => r[0] as any); },
+  async getCommissionPricingPreset(id: number) { return await db.select().from(commissionPricingPresets).where(eq(commissionPricingPresets.id, id)).then(r => r[0]); },
   async deleteCommissionPricingPreset(id: number) { return await db.delete(commissionPricingPresets).where(eq(commissionPricingPresets.id, id)); },
 
-  // v4 Global Search — uses raw SQLite for LIKE queries across user's accessible projects
+  // v4 Global Search — ilike across user's accessible projects/scenes/etc.
   async globalSearch(userId: number, q: string, limit = 20) {
-      const likeQ = `%${q.toLowerCase()}%`;
-      // Get user's accessible project IDs
-      const memberRows = await db.select({ projectId: projectMembers.projectId }).from(projectMembers).where(eq(projectMembers.userId, userId));
-      const ownedProjects = await db.select({ id: projects.id }).from(projects).where(eq(projects.ownerId, userId));
-      const allIds = memberRows.map(r => r.projectId).concat(ownedProjects.map(r => r.id));
-      const projectIds = Array.from(new Set(allIds));
-      if (projectIds.length === 0) return { projects: [], scenes: [], scripts: [], assets: [], comments: [] };
-      const pIdList = projectIds.join(',');
+      const pattern = `%${q}%`;
+      const cap = Math.min(Math.max(limit, 1), 50);
 
-      const matchedProjects: any[] = [];
+      const memberRows = await db
+        .select({ projectId: projectMembers.projectId })
+        .from(projectMembers)
+        .where(eq(projectMembers.userId, userId));
+      const ownedProjects = await db
+        .select({ id: projects.id })
+        .from(projects)
+        .where(eq(projects.ownerId, userId));
+      const projectIds = Array.from(new Set([
+        ...memberRows.map((r) => r.projectId),
+        ...ownedProjects.map((r) => r.id),
+      ]));
 
-      const matchedScenes: any[] = [];
+      if (projectIds.length === 0) {
+        return { projects: [], scenes: [], scripts: [], assets: [], comments: [] };
+      }
 
-      const matchedScripts: any[] = [];
+      const inProjects = inArray(projects.id, projectIds);
+      const inProjectScope = inArray(scenes.projectId, projectIds);
 
-      const matchedAssets: any[] = [];
+      const matchedProjects = await db
+        .select({
+          id: projects.id,
+          title: projects.title,
+          description: projects.description,
+          coverColor: projects.coverColor,
+        })
+        .from(projects)
+        .where(and(
+          inProjects,
+          or(ilike(projects.title, pattern), ilike(projects.description, pattern)),
+        ))
+        .limit(cap);
 
-      const matchedComments: any[] = [];
+      const matchedScenes = await db
+        .select({
+          id: scenes.id,
+          projectId: scenes.projectId,
+          number: scenes.number,
+          title: scenes.title,
+          status: scenes.status,
+        })
+        .from(scenes)
+        .where(and(
+          inProjectScope,
+          isNull(scenes.deletedAt),
+          or(
+            ilike(scenes.title, pattern),
+            ilike(scenes.number, pattern),
+            ilike(scenes.description, pattern),
+          ),
+        ))
+        .limit(cap);
+
+      const matchedScripts = await db
+        .select({
+          id: scripts.id,
+          projectId: scripts.projectId,
+          title: scripts.title,
+        })
+        .from(scripts)
+        .where(and(
+          inArray(scripts.projectId, projectIds),
+          isNull(scripts.deletedAt),
+          or(ilike(scripts.title, pattern), ilike(scripts.content, pattern)),
+        ))
+        .limit(cap);
+
+      const matchedAssets = await db
+        .select({
+          id: assets.id,
+          projectId: assets.projectId,
+          filename: assets.filename,
+          category: assets.category,
+        })
+        .from(assets)
+        .where(and(
+          inArray(assets.projectId, projectIds),
+          isNull(assets.deletedAt),
+          or(
+            ilike(assets.filename, pattern),
+            ilike(assets.tags, pattern),
+            ilike(assets.notes, pattern),
+          ),
+        ))
+        .limit(cap);
+
+      const matchedComments = await db
+        .select({
+          id: comments.id,
+          projectId: comments.projectId,
+          sceneId: comments.sceneId,
+          body: comments.body,
+        })
+        .from(comments)
+        .where(and(
+          inArray(comments.projectId, projectIds),
+          ilike(comments.body, pattern),
+        ))
+        .limit(cap);
 
       return {
         projects: matchedProjects,
@@ -565,7 +913,7 @@ const extraStorage = {
   async getAudVoiceTakesByProject(projectId: number) { return await db.select().from(audVoiceTakes).where(eq(audVoiceTakes.projectId, projectId)); },
   
   async createAudCaption(caption: InsertAudCaption) { return await db.insert(audCaptions).values(caption).returning().then(r => r[0] as any); },
-    
+  async getAudCaption(id: number) { return await db.select().from(audCaptions).where(eq(audCaptions.id, id)).then(r => r[0]); },
   async getAudCaptionsByAnimatic(animaticProjectId: number) { return await db.select().from(audCaptions).where(eq(audCaptions.animaticProjectId, animaticProjectId)); },
     
   async deleteAudCaption(id: number) { return await db.delete(audCaptions).where(eq(audCaptions.id, id)); },
@@ -604,11 +952,26 @@ const extraStorage = {
 
   async createChallengeSubmission(submission: InsertChallengeSubmission & { userId: number }) { return await db.insert(challenge_submissions).values({ ...submission, createdAt: new Date() }).returning().then(r => r[0] as any); },
 
-  async listChallengeFeed(userId: number) {
+  async listChallengeFeed(userId: number, opts?: { limit?: number; offset?: number }) {
+      const limit = Math.min(Math.max(opts?.limit ?? 20, 1), 100);
+      const offset = Math.max(opts?.offset ?? 0, 0);
       const prompts = await db.select().from(challenge_prompts);
-      const submissions = await db.select().from(challenge_submissions).orderBy(desc(challenge_submissions.createdAt));
-      const reactions = await db.select().from(challenge_reactions);
-      return submissions.map((submission) => {
+      const submissions = await db
+        .select()
+        .from(challenge_submissions)
+        .orderBy(desc(challenge_submissions.createdAt))
+        .limit(limit)
+        .offset(offset);
+      if (submissions.length === 0) return { items: [], total: 0, limit, offset };
+      const submissionIds = submissions.map((s) => s.id);
+      const reactions = await db
+        .select()
+        .from(challenge_reactions)
+        .where(inArray(challenge_reactions.submissionId, submissionIds));
+      const totalRow = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(challenge_submissions);
+      const items = submissions.map((submission) => {
         const counts = reactions
           .filter((reaction) => reaction.submissionId === submission.id)
           .reduce<Record<string, number>>((acc, reaction) => {
@@ -622,6 +985,7 @@ const extraStorage = {
           myReaction: reactions.find((reaction) => reaction.submissionId === submission.id && reaction.userId === userId)?.sticker || null,
         };
       });
+      return { items, total: totalRow[0]?.count ?? items.length, limit, offset };
     },
 
   async toggleChallengeReaction(submissionId: number, userId: number, sticker: string) {

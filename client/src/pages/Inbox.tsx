@@ -11,9 +11,13 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter,
 } from "@/components/ui/dialog";
 import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Inbox, Plus, Trash2, MoveRight, X } from "lucide-react";
+import { Inbox, Plus, Trash2, MoveRight, X, Search } from "lucide-react";
 import type { InboxItem, Project } from "@shared/schema";
 
 export default function InboxPage() {
@@ -21,6 +25,7 @@ export default function InboxPage() {
   const { data: projects } = useQuery<Project[]>({ queryKey: ["/api/projects"] });
   const { toast } = useToast();
   const [filterTag, setFilterTag] = useState<string>("");
+  const [search, setSearch] = useState("");
 
   const delMutation = useMutation({
     mutationFn: async (id: number) => (await apiRequest("DELETE", `/api/inbox/${id}`)).json(),
@@ -59,8 +64,13 @@ export default function InboxPage() {
   ));
 
   const filtered = items?.filter((i) => {
-    if (!filterTag) return true;
-    return i.tags && i.tags.split(",").map((t) => t.trim()).includes(filterTag);
+    if (filterTag && !(i.tags && i.tags.split(",").map((t) => t.trim()).includes(filterTag))) {
+      return false;
+    }
+    if (!search.trim()) return true;
+    const q = search.trim().toLowerCase();
+    const haystack = [i.body, i.tags ?? ""].join(" ").toLowerCase();
+    return haystack.includes(q);
   });
 
   if (isLoading) {
@@ -75,6 +85,17 @@ export default function InboxPage() {
           <p className="text-sm text-muted-foreground">{items?.length ?? 0} captured ideas</p>
         </div>
         <AddInboxItemDialog />
+      </div>
+
+      <div className="relative mb-5 max-w-md">
+        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search ideas…"
+          className="pl-9 glass-pill"
+          data-testid="input-inbox-search"
+        />
       </div>
 
       {allTags.length > 0 && (
@@ -175,9 +196,23 @@ function InboxCard({
               ))}
             </SelectContent>
           </Select>
-          <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={onDelete} data-testid={`button-delete-inbox-${item.id}`}>
-            <Trash2 size={13} />
-          </Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" data-testid={`button-delete-inbox-${item.id}`}>
+                <Trash2 size={13} />
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete this idea?</AlertDialogTitle>
+                <AlertDialogDescription>This captured idea will be permanently removed from your inbox.</AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={onDelete}>Delete</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </div>
       <div className="text-[10px] text-muted-foreground mt-2">{new Date(item.createdAt).toLocaleString()}</div>

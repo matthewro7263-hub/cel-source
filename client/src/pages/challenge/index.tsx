@@ -66,9 +66,16 @@ export default function ChallengeFeed() {
     queryKey: ["/api/challenges/submissions"],
   });
 
-  const { data: feed = [], isLoading: feedLoading } = useQuery<ChallengeFeedItem[]>({
+  const { data: feedData, isLoading: feedLoading } = useQuery<{
+    items: ChallengeFeedItem[];
+    total: number;
+    limit: number;
+    offset: number;
+  }>({
     queryKey: ["/api/challenges/feed"],
+    queryFn: async () => (await apiRequest("GET", "/api/challenges/feed?limit=20&offset=0")).json(),
   });
+  const feed = feedData?.items ?? (Array.isArray(feedData) ? feedData : []);
 
   const submitMutation = useMutation({
     mutationFn: async (data: { promptId: number; imageUrl?: string; notes?: string }) => {
@@ -139,7 +146,7 @@ export default function ChallengeFeed() {
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-xl font-semibold">Submission Feed</h2>
           <span className="text-xs text-muted-foreground">
-            {feed.length} local submissions
+            {feedData?.total ?? feed.length} submissions
           </span>
         </div>
         {feed.length === 0 ? (

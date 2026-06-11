@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { initials, formatDeadline, vimeoId } from "./utils-cel.ts";
+import { initials, formatDeadline, formatRelative, formatAbsolute, vimeoId } from "./utils-cel.ts";
 // --- initials tests ---
 
 // Standard two names
@@ -116,4 +116,18 @@ assert.equal(vimeoId("https://youtube.com/123456789"), null);
 // Invalid URL (letters instead of numbers)
 assert.equal(vimeoId("https://vimeo.com/abcdef"), null);
 
+// --- formatRelative / formatAbsolute tests ---
+const recent = new Date(Date.now() - 30_000).toISOString();
+assert.equal(formatRelative(recent), "just now");
+
+const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+assert.equal(formatRelative(twoHoursAgo), "2h ago");
+
+const sample = new Date("2026-06-09T15:30:00");
+assert.ok(formatAbsolute(sample).includes("Jun"));
+assert.ok(formatAbsolute(sample).includes("2026"));
+
+assert.equal(formatAbsolute("not-a-date"), "—");
+
+console.log("utils-cel formatRelative/formatAbsolute tests passed");
 console.log("utils-cel tests passed");

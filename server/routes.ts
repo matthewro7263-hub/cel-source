@@ -1,7 +1,4 @@
 import multer from "multer";
-import * as pdfParseModule from "pdf-parse";
-const pdfParse = (pdfParseModule as any).default || pdfParseModule;
-import mammoth from "mammoth";
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { randomUUID, createCipheriv, createDecipheriv, randomBytes, createHash } from "node:crypto";
@@ -11,9 +8,16 @@ import type { Server } from "node:http";
 import { z } from "zod";
 import {
   storage, db, hashPassword, verifyPassword, createSession,
-  getSessionUser, destroySession, genToken,
+  getSessionUser, getSessionPayload, destroySession, genToken,
 } from "./storage";
+import { presignDownload } from "./r2";
 import { notifyDiscord } from "./discord";
+import { sendError } from "./errors";
+import { checkAchievements } from "./achievements";
+
+function fireAchievements(ctx: Parameters<typeof checkAchievements>[0]) {
+  checkAchievements(ctx).catch((err) => console.error("[achievements]", err));
+}
 import {
   insertCommissionSchema,
   audVoiceTakes, insertAudVoiceTakeSchema, audCaptions, insertAudCaptionSchema,
@@ -40,19 +44,51 @@ function extractToken(req: Request): string | undefined {
 
 async function requireAuth(req: Request, res: Response, next: NextFunction) {
   const token = extractToken(req);
-  const userId = getSessionUser(token);
-  if (!userId) return res.status(401).json({ message: "Not authenticated" });
-  const user = await storage.getUser(userId);
+  const session = getSessionPayload(token);
+  if (!session) return res.status(401).json({ message: "Not authenticated" });
+  const user = await storage.getUser(session.userId);
   if (!user) return res.status(401).json({ message: "User not found" });
+  if (session.tokenVersion !== user.tokenVersion) {
+    return res.status(401).json({ message: "Session revoked" });
+  }
   req.user = user;
   next();
 }
 
+const ACCESS_CACHE_TTL_MS = 60_000;
+const accessCache = new Map<string, { allowed: boolean; expiresAt: number }>();
+
+function pruneAccessCache(now = Date.now()) {
+  for (const [key, entry] of accessCache) {
+    if (now >= entry.expiresAt) accessCache.delete(key);
+  }
+}
+
+function invalidateProjectAccess(projectId: number, userId?: number) {
+  if (userId !== undefined) {
+    accessCache.delete(`${projectId}:${userId}`);
+    return;
+  }
+  const prefix = `${projectId}:`;
+  for (const key of accessCache.keys()) {
+    if (key.startsWith(prefix)) accessCache.delete(key);
+  }
+}
+
 async function canAccessProject(projectId: number, userId: number): Promise<boolean> {
+  pruneAccessCache();
+  const key = `${projectId}:${userId}`;
+  const cached = accessCache.get(key);
+  if (cached && Date.now() < cached.expiresAt) return cached.allowed;
+
   const p = await storage.getProject(projectId);
-  if (!p) return false;
-  if (p.ownerId === userId) return true;
-  return await storage.isMember(projectId, userId);
+  if (!p) {
+    accessCache.set(key, { allowed: false, expiresAt: Date.now() + ACCESS_CACHE_TTL_MS });
+    return false;
+  }
+  const allowed = p.ownerId === userId || await storage.isMember(projectId, userId);
+  accessCache.set(key, { allowed, expiresAt: Date.now() + ACCESS_CACHE_TTL_MS });
+  return allowed;
 }
 
 import { bakRouter } from "./routes/bak/index.js";
@@ -88,10 +124,16 @@ const upload = multer({
 
   // ===== RATE LIMITER =====
   const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
+  function pruneRateLimitMap(now: number) {
+    for (const [ip, bucket] of rateLimitMap) {
+      if (now > bucket.resetTime) rateLimitMap.delete(ip);
+    }
+  }
   function rateLimiter(options: { windowMs: number; max: number; message: string }) {
     return (req: any, res: any, next: any) => {
       const ip = req.ip || req.headers["x-forwarded-for"] || req.socket.remoteAddress || "unknown-ip";
       const now = Date.now();
+      pruneRateLimitMap(now);
       let bucket = rateLimitMap.get(ip);
       if (!bucket || now > bucket.resetTime) {
         bucket = { count: 1, resetTime: now + options.windowMs };
@@ -132,7 +174,7 @@ const upload = multer({
     const user = await storage.createUser({
       email: body.email,
       name: body.name,
-      passwordHash: hashPassword(body.password),
+      passwordHash: await hashPassword(body.password),
       avatarColor: colors[Math.floor(Math.random() * colors.length)],
     });
     const token = createSession(user.id, user.tokenVersion);
@@ -144,7 +186,7 @@ const upload = multer({
     const schema = z.object({ email: z.string().email(), password: z.string() });
     const body = schema.parse(req.body);
     const user = await storage.getUserByEmail(body.email);
-    if (!user || !verifyPassword(body.password, user.passwordHash)) {
+    if (!user || !(await verifyPassword(body.password, user.passwordHash))) {
       return res.status(401).json({ message: "Invalid email or password" });
     }
     const token = createSession(user.id, user.tokenVersion);
@@ -160,10 +202,13 @@ const upload = multer({
 
   app.get("/api/auth/me", async (req, res) => {
     const token = extractToken(req);
-    const userId = getSessionUser(token);
-    if (!userId) return res.status(401).json({ message: "Not authenticated" });
-    const user = await storage.getUser(userId);
+    const session = getSessionPayload(token);
+    if (!session) return res.status(401).json({ message: "Not authenticated" });
+    const user = await storage.getUser(session.userId);
     if (!user) return res.status(401).json({ message: "User not found" });
+    if (session.tokenVersion !== user.tokenVersion) {
+      return res.status(401).json({ message: "Session revoked" });
+    }
     const { passwordHash, ...safe } = user;
     res.json(safe);
   });
@@ -186,36 +231,67 @@ const upload = multer({
     try {
       const userId = req.user!.id;
       const userProjects = await storage.listProjectsForUser(userId);
-      
-      const userCache = new Map<number, { name: string; avatarColor: string }>();
-      const getUserInfo = async (id: number) => {
-        if (userCache.has(id)) return userCache.get(id)!;
-        const u = await storage.getUser(id);
-        const info = u ? { name: u.name, avatarColor: u.avatarColor } : { name: "System", avatarColor: "#6E4FE8" };
-        userCache.set(id, info);
-        return info;
-      };
+      const projectIds = userProjects.map((p: any) => p.id);
+      const projectTitleById = new Map(userProjects.map((p: any) => [p.id, p.title]));
 
-      const queueItems = await Promise.all(userProjects.map(async (project: any) => {
-        const projectScenes = await storage.listScenes(project.id);
+      const [allScenes, allStoryboards, allComments, allAssets] = await Promise.all([
+        storage.listScenesForProjectIds(projectIds),
+        storage.listStoryboardsForProjectIds(projectIds),
+        storage.listCommentsForProjectIds(projectIds),
+        storage.listAssetsForProjectIds(projectIds),
+      ]);
+      const allPanels = await storage.listPanelsLiteBatch(allStoryboards.map((sb: any) => sb.id));
+
+      const activityUserIds = Array.from(new Set([
+        ...allComments.map((c: any) => c.authorId),
+        ...allAssets.map((a: any) => a.uploaderId),
+      ]));
+      const activityUsers = await storage.getUsersByIds(activityUserIds);
+      const userCache = new Map<number, { name: string; avatarColor: string }>(
+        activityUsers.map((u) => [u.id, { name: u.name, avatarColor: u.avatarColor }]),
+      );
+      const getUserInfo = (id: number) => userCache.get(id) ?? { name: "System", avatarColor: "#6E4FE8" };
+
+      const scenesByProject = new Map<number, any[]>();
+      for (const scene of allScenes) {
+        const list = scenesByProject.get(scene.projectId) ?? [];
+        list.push(scene);
+        scenesByProject.set(scene.projectId, list);
+      }
+
+      const storyboardsByProject = new Map<number, any[]>();
+      for (const sb of allStoryboards) {
+        const list = storyboardsByProject.get(sb.projectId) ?? [];
+        list.push(sb);
+        storyboardsByProject.set(sb.projectId, list);
+      }
+
+      const panelsByStoryboard = new Map<number, any[]>();
+      for (const panel of allPanels) {
+        const list = panelsByStoryboard.get(panel.storyboardId) ?? [];
+        list.push(panel);
+        panelsByStoryboard.set(panel.storyboardId, list);
+      }
+
+      const queueItems = userProjects.map((project: any) => {
+        const projectScenes = scenesByProject.get(project.id) ?? [];
         const activeScenes = projectScenes.filter((s: any) => s.status !== "done" && !s.deletedAt);
         const currentScene = activeScenes[0] || null;
 
-        const projectStoryboards = await storage.listStoryboards(project.id);
-        let lastPanel: any = null;
-        const allPanels: any[] = [];
+        const projectStoryboards = storyboardsByProject.get(project.id) ?? [];
+        const projectPanels: any[] = [];
         for (const sb of projectStoryboards) {
-          const panels = await storage.listPanels(sb.id);
-          allPanels.push(...panels.filter((p: any) => !p.deletedAt));
+          projectPanels.push(...(panelsByStoryboard.get(sb.id) ?? []).filter((p: any) => !p.deletedAt));
         }
 
-        if (allPanels.length > 0) {
-          allPanels.sort((a, b) => b.id - a.id);
-          lastPanel = allPanels[0];
+        let lastPanel: any = null;
+        if (projectPanels.length > 0) {
+          projectPanels.sort((a, b) => b.id - a.id);
+          lastPanel = projectPanels[0];
         }
 
         const pendingScenesCount = activeScenes.length;
-        const pendingChangeRequestsCount = allPanels.filter(p => p.changeRequest && p.changeRequest.trim() !== "").length;
+        const pendingChangeRequestsCount = projectPanels.filter((p) => p.changeRequest && p.changeRequest.trim() !== "").length;
         const pendingItemsCount = pendingScenesCount + pendingChangeRequestsCount;
 
         return {
@@ -237,50 +313,42 @@ const upload = multer({
             id: lastPanel.id,
             storyboardId: lastPanel.storyboardId,
             orderIdx: lastPanel.orderIdx,
-            imageData: lastPanel.imageData,
             r2Key: lastPanel.r2Key,
             caption: lastPanel.caption,
             dialogue: lastPanel.dialogue,
           } : null,
           pendingItemsCount,
         };
-      }));
+      });
 
       const activityFeed: any[] = [];
-      for (const project of userProjects) {
-        const commentsList = await storage.listComments(project.id);
-        const enrichedComments = await Promise.all(commentsList.map(async (c: any) => {
-          const user = await getUserInfo(c.authorId);
-          return {
-            id: `comment-${c.id}`,
-            projectId: project.id,
-            projectTitle: project.title,
-            type: "comment",
-            user,
-            content: c.body,
-            timestamp: c.createdAt,
-          };
-        }));
-        activityFeed.push(...enrichedComments);
-
-        const assetsList = await storage.listAssets(project.id);
-        const enrichedAssets = await Promise.all(assetsList.map(async (a: any) => {
-          const user = await getUserInfo(a.uploaderId);
-          return {
-            id: `asset-${a.id}`,
-            projectId: project.id,
-            projectTitle: project.title,
-            type: "asset",
-            user,
-            content: `Uploaded asset: ${a.filename} (${a.category})`,
-            timestamp: a.createdAt,
-          };
-        }));
-        activityFeed.push(...enrichedAssets);
+      for (const c of allComments) {
+        const user = await getUserInfo(c.authorId);
+        activityFeed.push({
+          id: `comment-${c.id}`,
+          projectId: c.projectId,
+          projectTitle: projectTitleById.get(c.projectId) ?? "Project",
+          type: "comment",
+          user,
+          content: c.body,
+          timestamp: c.createdAt,
+        });
+      }
+      for (const a of allAssets) {
+        const user = await getUserInfo(a.uploaderId);
+        activityFeed.push({
+          id: `asset-${a.id}`,
+          projectId: a.projectId,
+          projectTitle: projectTitleById.get(a.projectId) ?? "Project",
+          type: "asset",
+          user,
+          content: `Uploaded asset: ${a.filename} (${a.category})`,
+          timestamp: a.createdAt,
+        });
       }
 
       activityFeed.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-      const recentActivity = activityFeed.slice(0, 15);
+      const recentActivity = activityFeed.slice(0, 20);
 
       res.json({
         queueItems,
@@ -310,6 +378,7 @@ const upload = multer({
       shareEnabled: false,
     });
     await storage.addMember({ projectId: p.id, userId: req.user!.id, role: "owner" });
+    fireAchievements({ userId: req.user!.id, event: "create_project", projectId: p.id });
     res.json(p);
   });
 
@@ -340,7 +409,11 @@ const upload = multer({
       dltDiscordWebhookUrl: z.string().url().nullable().optional(),
     });
     const patch = schema.parse(req.body);
+    const before = await storage.getProject(id);
     const updated = await storage.updateProject(id, patch as any);
+    if (patch.shareEnabled === true && !before?.shareEnabled) {
+      fireAchievements({ userId: req.user!.id, event: "enable_share_link", projectId: id });
+    }
     res.json(updated);
   });
 
@@ -367,12 +440,14 @@ const upload = multer({
       user = await storage.createUser({
         email: body.email,
         name: body.email.split("@")[0],
-        passwordHash: hashPassword(tempPassword),
+        passwordHash: await hashPassword(tempPassword),
         avatarColor: colors[Math.floor(Math.random() * colors.length)],
       });
     }
     if (!(await storage.isMember(id, user.id))) {
       await storage.addMember({ projectId: id, userId: user.id, role: body.role || "editor" });
+      invalidateProjectAccess(id, user.id);
+      fireAchievements({ userId: req.user!.id, event: "add_member", projectId: id });
     }
     res.json({ user: { id: user.id, email: user.email, name: user.name, avatarColor: user.avatarColor }, tempPassword });
   });
@@ -382,7 +457,23 @@ const upload = multer({
     const userId = parseInt(String(req.params.userId), 10);
     if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
     await storage.removeMember(id, userId);
+    invalidateProjectAccess(id, userId);
     res.json({ ok: true });
+  });
+
+  // Project-scoped R2 media (presigned URL for panels/assets in this project)
+  app.get("/api/projects/:id/media", requireAuth, async (req, res) => {
+    const id = parseInt(String(req.params.id), 10);
+    if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
+    const key = String(req.query.key ?? "");
+    if (!key) return res.status(400).json({ message: "key required" });
+    if (!(await storage.isR2KeyInProject(id, key))) return res.status(404).json({ message: "Media not found" });
+    try {
+      const url = await presignDownload(key, 300);
+      res.json({ url, expiresIn: 300 });
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message ?? "Failed to presign media" });
+    }
   });
 
   // ===== SCRIPTS =====
@@ -428,9 +519,12 @@ const upload = multer({
       let extractedText = "";
 
       if (sourceFormat === "pdf") {
+        const pdfParseModule = await import("pdf-parse");
+        const pdfParse = (pdfParseModule as any).default || pdfParseModule;
         const data = await pdfParse(buffer);
         extractedText = data.text;
       } else if (sourceFormat === "docx") {
+        const mammoth = (await import("mammoth")).default;
         const result = await mammoth.extractRawText({ buffer });
         extractedText = result.value;
       } else {
@@ -536,7 +630,7 @@ const upload = multer({
   app.get("/api/projects/:id/scripts", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
-    res.json(await storage.listScripts(id));
+    res.json(await storage.listScriptsLite(id));
   });
   app.post("/api/projects/:id/scripts", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
@@ -566,7 +660,15 @@ const upload = multer({
     const id = parseInt(String(req.params.id), 10);
     if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
     const sbs = await storage.listStoryboards(id);
-    const out = await Promise.all(sbs.map(async (sb: any) => ({ ...sb, panels: await storage.listPanels(sb.id) })));
+    const sbIds = sbs.map((sb: any) => sb.id);
+    const allPanels = sbIds.length > 0 ? await storage.listPanelsLiteBatch(sbIds) : [];
+    const panelsByStoryboard = new Map<number, typeof allPanels>();
+    for (const panel of allPanels) {
+      const list = panelsByStoryboard.get(panel.storyboardId) ?? [];
+      list.push(panel);
+      panelsByStoryboard.set(panel.storyboardId, list);
+    }
+    const out = sbs.map((sb: any) => ({ ...sb, panels: panelsByStoryboard.get(sb.id) ?? [] }));
     res.json(out);
   });
   app.post("/api/projects/:id/storyboards", requireAuth, async (req, res) => {
@@ -591,12 +693,13 @@ const upload = multer({
     if (!sb) return res.status(404).json({ message: "Storyboard not found" });
     if (!(await canAccessProject(sb.projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
     const schema = z.object({
-      imageData: z.string().min(1),
+      imageData: z.string().min(1).optional(),
+      r2Key: z.string().min(1).optional(),
       caption: z.string().optional().default(""),
       dialogue: z.string().optional().default(""),
-    });
+    }).refine((data) => data.imageData || data.r2Key, { message: "imageData or r2Key required" });
     const body = schema.parse(req.body);
-    if (body.imageData.length > 14 * 1024 * 1024) {
+    if (body.imageData && body.imageData.length > 14 * 1024 * 1024) {
       return res.status(413).json({ message: "Image too large (max 10MB)" });
     }
     const panels = await storage.listPanels(sbId);
@@ -604,10 +707,12 @@ const upload = multer({
     const panel = await storage.createPanel({
       storyboardId: sbId,
       orderIdx,
-      imageData: body.imageData,
+      imageData: body.imageData || null,
+      r2Key: body.r2Key || null,
       caption: body.caption || "",
       dialogue: body.dialogue || "",
     });
+    fireAchievements({ userId: req.user!.id, event: "create_panel", projectId: sb.projectId });
     res.json(panel);
   });
   app.post ("/api/storyboards/:sbId/panels/bulk", requireAuth, async (req, res) => {
@@ -641,6 +746,7 @@ const upload = multer({
     }));
 
     const created = await storage.createPanelsBulk(panelsToCreate);
+    fireAchievements({ userId: req.user!.id, event: "create_panel", projectId: sb.projectId });
     res.json(created);
   });
   app.patch ("/api/panels/:id", requireAuth, async (req, res) => {
@@ -673,6 +779,35 @@ const upload = multer({
     res.json({ ok: true });
   });
 
+  app.post("/api/storyboards/:sbId/panels/reorder", requireAuth, async (req, res) => {
+    const sbId = parseInt(String(req.params.sbId), 10);
+    const sb = await storage.getStoryboard(sbId);
+    if (!sb) return res.status(404).json({ message: "Storyboard not found" });
+    if (!(await canAccessProject(sb.projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
+    const schema = z.object({ orderedIds: z.array(z.number().int()) });
+    const { orderedIds } = schema.parse(req.body);
+    await storage.reorderPanels(sbId, orderedIds);
+    res.json({ ok: true });
+  });
+
+  app.get("/api/storyboards/:sbId/pins", requireAuth, async (req, res) => {
+    const sbId = parseInt(String(req.params.sbId), 10);
+    const sb = await storage.getStoryboard(sbId);
+    if (!sb) return res.status(404).json({ message: "Storyboard not found" });
+    if (!(await canAccessProject(sb.projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
+    const pins = await (storage as any).listPanelPinsForStoryboard(sbId);
+    const authorIds = [...new Set<number>(pins.map((p: any) => p.authorId as number))];
+    const authors = await storage.getUsersByIds(authorIds);
+    const authorMap = new Map(authors.map((a) => [a.id, a]));
+    res.json(pins.map((p: any) => {
+      const author = authorMap.get(p.authorId);
+      return {
+        ...p,
+        author: author ? { id: author.id, name: author.name, avatarColor: author.avatarColor } : null,
+      };
+    }));
+  });
+
   // ===== ANIMATICS =====
   app.get("/api/projects/:id/animatics", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
@@ -694,6 +829,7 @@ const upload = multer({
     const created = await storage.createAnimatic({
       projectId: id, title: body.title || "Animatic", videoData: body.videoData, notes: body.notes || "",
     });
+    fireAchievements({ userId: req.user!.id, event: "create_animatic", projectId: id });
     notifyDiscord(id, `Animatic Published`, `Animatic "${created.title}" has been published.`);
     res.json(created);
   });
@@ -723,7 +859,7 @@ const upload = multer({
       assigneeId: z.number().nullable().optional(),
     });
     const body = schema.parse(req.body);
-    res.json(await storage.createScene({
+    const scene = await storage.createScene({
       projectId: id,
       number: body.number || "1",
       title: body.title || "Untitled Scene",
@@ -731,7 +867,9 @@ const upload = multer({
       status: body.status || "script",
       deadline: body.deadline ?? null,
       assigneeId: body.assigneeId ?? null,
-    }));
+    });
+    fireAchievements({ userId: req.user!.id, event: "create_scene", projectId: id });
+    res.json(scene);
   });
   app.patch("/api/projects/:id/scenes/:sceneId", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
@@ -762,16 +900,31 @@ const upload = multer({
     res.json({ ok: true });
   });
 
+  app.get("/api/projects/:id/scene-timers", requireAuth, async (req, res) => {
+    const id = parseInt(String(req.params.id), 10);
+    if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
+    const timers = await (storage as any).getActiveSceneTimersForProject(id, req.user!.id);
+    res.json(timers);
+  });
+
   // ===== COMMENTS =====
   app.get("/api/projects/:id/comments", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
-    const list = await storage.listComments(id);
-    const enriched = await Promise.all(list.map(async (c: any) => ({ ...c, author: await storage.getUser(c.authorId) || null })));
-    res.json(enriched.map((c) => ({
-      ...c,
-      author: c.author ? { id: c.author.id, name: c.author.name, avatarColor: c.author.avatarColor } : null,
-    })));
+    const limit = Math.min(parseInt(String(req.query.limit || "50"), 10) || 50, 200);
+    const cursor = req.query.cursor ? parseInt(String(req.query.cursor), 10) : undefined;
+    const { items, nextCursor } = await storage.listComments(id, { limit, cursor });
+    const authorIds = Array.from(new Set(items.map((c) => c.authorId)));
+    const authors = await storage.getUsersByIds(authorIds);
+    const authorMap = new Map(authors.map((a) => [a.id, a]));
+    const enriched = items.map((c) => {
+      const author = authorMap.get(c.authorId);
+      return {
+        ...c,
+        author: author ? { id: author.id, name: author.name, avatarColor: author.avatarColor } : null,
+      };
+    });
+    res.json({ items: enriched, nextCursor });
   });
   app.post("/api/projects/:id/comments", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
@@ -783,7 +936,8 @@ const upload = multer({
     });
     
     notifyDiscord(id, `New Comment from ${req.user!.name}`, body.body);
-    
+    fireAchievements({ userId: req.user!.id, event: "create_comment", projectId: id });
+
     res.json(comment);
   });
   app.delete("/api/projects/:id/comments/:commentId", requireAuth, async (req, res) => {
@@ -799,10 +953,10 @@ const upload = multer({
     const id = parseInt(String(req.params.id), 10);
     if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
     const category = req.query.category as string | undefined;
-    // Exclude fileData from listing for performance; client fetches individual for download
-    const list = await storage.listAssets(id, category);
-    const safe = list.map(({ fileData, ...rest }: any) => rest);
-    res.json(safe);
+    const limit = Math.min(parseInt(String(req.query.limit || "50"), 10) || 50, 200);
+    const cursor = req.query.cursor ? parseInt(String(req.query.cursor), 10) : undefined;
+    const { items, nextCursor } = await storage.listAssets(id, category, { limit, cursor });
+    res.json({ items, nextCursor });
   });
 
   app.post("/api/projects/:id/assets", requireAuth, async (req, res) => {
@@ -812,20 +966,27 @@ const upload = multer({
       category: z.string().optional().default("Other"),
       filename: z.string().min(1),
       mimeType: z.string().optional().default(""),
-      fileData: z.string().min(1),
+      fileData: z.string().optional(),
+      r2Key: z.string().optional(),
       thumbnailData: z.string().nullable().optional(),
       notes: z.string().optional().default(""),
       tags: z.string().optional().default(""),
-    });
+    }).refine((body) => Boolean(body.r2Key || body.fileData), { message: "r2Key or fileData required" });
     const body = schema.parse(req.body);
-    if (body.fileData.length > 14 * 1024 * 1024) {
+    if (body.fileData && body.fileData.length > 14 * 1024 * 1024) {
       return res.status(413).json({ message: "File too large (max 10MB)" });
     }
     const asset = await storage.createAsset({
       projectId: id,
       uploaderId: req.user!.id,
-      ...body,
-      thumbnailData: body.thumbnailData ?? null,
+      category: body.category,
+      filename: body.filename,
+      mimeType: body.mimeType,
+      r2Key: body.r2Key ?? null,
+      fileData: body.r2Key ? null : (body.fileData ?? null),
+      thumbnailData: body.r2Key ? null : (body.thumbnailData ?? null),
+      notes: body.notes,
+      tags: body.tags,
     });
     const { fileData, ...safe } = asset;
     res.json(safe);
@@ -862,7 +1023,14 @@ const upload = multer({
     const asset = await storage.getAsset(id);
     if (!asset) return res.status(404).json({ message: "Not found" });
     if (!(await canAccessProject(asset.projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
-    // fileData is a base64 data URL — send it as-is for client-side download
+    if (asset.r2Key) {
+      try {
+        const url = await presignDownload(asset.r2Key, 300);
+        return res.json({ url, filename: asset.filename, mimeType: asset.mimeType, r2Key: asset.r2Key });
+      } catch (err: any) {
+        return res.status(500).json({ message: err?.message ?? "Failed to presign asset" });
+      }
+    }
     res.json({ fileData: asset.fileData, filename: asset.filename, mimeType: asset.mimeType });
   });
 
@@ -870,9 +1038,16 @@ const upload = multer({
   // In-memory rate limiter: max 5 submissions per IP per hour
   const commissionRateLimit = new Map<string, { count: number; resetAt: number }>();
 
+  function pruneCommissionRateLimit(now = Date.now()) {
+    for (const [ip, entry] of commissionRateLimit) {
+      if (now >= entry.resetAt) commissionRateLimit.delete(ip);
+    }
+  }
+
   app.post("/api/commissions", async (req, res) => {
     const ip = req.ip || req.socket.remoteAddress || "unknown";
     const now = Date.now();
+    pruneCommissionRateLimit(now);
     const entry = commissionRateLimit.get(ip);
     if (entry) {
       if (now < entry.resetAt && entry.count >= 5) {
@@ -914,6 +1089,7 @@ const upload = multer({
       status: "new",
       notes: "",
     });
+    fireAchievements({ userId: body.ownerUserId, event: "create_commission" });
     res.json(commission);
   });
 
@@ -943,12 +1119,15 @@ const upload = multer({
     });
     const patch = schema.parse(req.body);
     const updated = await storage.updateCommission(id, patch);
-    
+
     // If it's linked to a project and status changed, notify Discord
     if (patch.status && updated?.linkedProjectId) {
       notifyDiscord(updated.linkedProjectId, `Commission Status Updated`, `Commission from ${updated.clientName} is now **${patch.status}**`);
     }
-    
+    if (patch.status === "delivered") {
+      fireAchievements({ userId: req.user!.id, event: "deliver_commission" });
+    }
+
     res.json(updated);
   });
 
@@ -1058,6 +1237,7 @@ const upload = multer({
     });
     const body = schema.parse(req.body);
     const ap = await storage.createAnimaticProject({ projectId, title: body.title, fps: body.fps, totalDurationMs: body.totalDurationMs });
+    fireAchievements({ userId: req.user!.id, event: "create_animatic", projectId });
     res.json(ap);
   });
 
@@ -1272,10 +1452,16 @@ const upload = multer({
     const p = await storage.getProjectByToken(token);
     if (!p || !p.shareEnabled) return res.status(404).json({ message: "Share link not found or disabled" });
     const owner = await storage.getUser(p.ownerId);
-    const scripts = await storage.listScripts(p.id);
-    const storyboards = await Promise.all((await storage.listStoryboards(p.id)).map(async (sb: any) => ({
-      ...sb, panels: await storage.listPanels(sb.id),
-    })));
+    const scripts = await storage.listScriptsLite(p.id);
+    const sbs = await storage.listStoryboards(p.id);
+    const sharePanels = await storage.listPanelsForStoryboardIds(sbs.map((sb: any) => sb.id));
+    const sharePanelsByStoryboard = new Map<number, any[]>();
+    for (const panel of sharePanels) {
+      const list = sharePanelsByStoryboard.get(panel.storyboardId) ?? [];
+      list.push(panel);
+      sharePanelsByStoryboard.set(panel.storyboardId, list);
+    }
+    const storyboards = sbs.map((sb: any) => ({ ...sb, panels: sharePanelsByStoryboard.get(sb.id) ?? [] }));
     const animatics = await storage.listAnimatics(p.id);
     const scenes = await storage.listScenes(p.id);
     res.json({
@@ -1283,6 +1469,21 @@ const upload = multer({
       owner: owner ? { name: owner.name, avatarColor: owner.avatarColor } : null,
       scripts, storyboards, animatics, scenes,
     });
+  });
+
+  app.get("/api/share/:token/media", async (req, res) => {
+    const token = req.params.token;
+    const p = await storage.getProjectByToken(token);
+    if (!p || !p.shareEnabled) return res.status(404).json({ message: "Share link not found or disabled" });
+    const key = String(req.query.key ?? "");
+    if (!key) return res.status(400).json({ message: "key required" });
+    if (!(await storage.isR2KeyInProject(p.id, key))) return res.status(404).json({ message: "Media not found" });
+    try {
+      const url = await presignDownload(key, 300);
+      res.json({ url, expiresIn: 300 });
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message ?? "Failed to presign media" });
+    }
   });
 
   // Public share meta endpoint (for watermark)
@@ -1572,6 +1773,7 @@ ${body.scriptContent}
 
   app.post("/api/projects/:projectId/ai/agent/check", requireAuth, async (req, res) => {
     const projectId = parseInt(String(req.params.projectId), 10);
+    if (!(await canAccessProject(projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
     const { scriptContent, lastVersion } = req.body;
 
     const apiKey = await (storage as any).getProjectAiKey(projectId);
@@ -1629,14 +1831,16 @@ ${body.scriptContent}
     const sb = await storage.getStoryboard(panel.storyboardId);
     if (!sb || !(await canAccessProject(sb.projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
     const pins = await (storage as any).listPanelPins(id);
-    const enriched = await Promise.all(pins.map(async (p: any) => {
-      const author = await storage.getUser(p.authorId);
+    const authorIds = [...new Set<number>(pins.map((p: any) => p.authorId as number))];
+    const authors = await storage.getUsersByIds(authorIds);
+    const authorMap = new Map(authors.map((a) => [a.id, a]));
+    res.json(pins.map((p: any) => {
+      const author = authorMap.get(p.authorId);
       return {
         ...p,
         author: author ? { id: author.id, name: author.name, avatarColor: author.avatarColor } : null,
       };
     }));
-    res.json(enriched);
   });
 
   app.post ("/api/panels/:id/pins", requireAuth, async (req, res) => {
@@ -1879,10 +2083,10 @@ ${body.scriptContent}
     const scene = await storage.getScene(id);
     if (!scene) return res.status(404).json({ message: "Scene not found" });
     if (!(await canAccessProject(scene.projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
-    const entries = await (storage as any).listSceneTimeEntries(id);
-    const totalMs = entries.filter((e: any) => e.durationMs).reduce((sum: number, e: any) => sum + e.durationMs, 0);
-    const active = entries.find((e: any) => !e.endedAt);
-    res.json({ entries, totalMs, active: active || null });
+    const entries = await storage.listSceneTimeEntriesForUser(id, req.user!.id);
+    const totalMs = entries.filter((e) => e.durationMs).reduce((sum, e) => sum + (e.durationMs ?? 0), 0);
+    const active = entries.find((e) => !e.endedAt) ?? null;
+    res.json({ entries, totalMs, active });
   });
 
   app.post ("/api/scenes/:id/timer/start", requireAuth, async (req, res) => {
@@ -1913,13 +2117,13 @@ ${body.scriptContent}
   // ===== v4 GLOBAL SEARCH =====
   app.get("/api/search", requireAuth, async (req, res) => {
     const q = String(req.query.q || "").trim();
-    const limit = Math.min(parseInt(String(req.query.limit || "20"), 10), 50);
+    const limit = Math.min(parseInt(String(req.query.limit || "20"), 10) || 20, 50);
     if (!q || q.length < 1) return res.json({ projects: [], scenes: [], scripts: [], assets: [], comments: [] });
     try {
-      const results = await (storage as any).globalSearch(req.user!.id, q, limit);
+      const results = await storage.globalSearch(req.user!.id, q, limit);
       res.json(results);
-    } catch (e: any) {
-      res.status(500).json({ message: e.message });
+    } catch (e) {
+      sendError(res, e);
     }
   });
 

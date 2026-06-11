@@ -41,6 +41,11 @@ export default {
           foreground: "hsl(var(--muted-foreground) / <alpha-value>)",
           border: "var(--muted-border)",
         },
+        "on-surface": {
+          DEFAULT: "var(--cel-ink)",
+          muted: "var(--cel-ink-muted)",
+          subtle: "var(--cel-ink-subtle)",
+        },
         accent: {
           DEFAULT: "hsl(var(--accent) / <alpha-value>)",
           foreground: "hsl(var(--accent-foreground) / <alpha-value>)",
@@ -115,11 +120,24 @@ export default {
           },
         },
       },
+      fontSize: {
+        xs: ["var(--text-xs)", { lineHeight: "1.4" }],
+        sm: ["var(--text-sm)", { lineHeight: "1.45" }],
+        base: ["var(--text-base)", { lineHeight: "1.5" }],
+        lg: ["var(--text-lg)", { lineHeight: "1.35" }],
+        xl: ["var(--text-xl)", { lineHeight: "1.25" }],
+        "2xl": ["var(--text-2xl)", { lineHeight: "1.15" }],
+        "3xl": ["var(--text-3xl)", { lineHeight: "1.1" }],
+      },
       fontFamily: {
-        sans: ['Geist', 'Inter', 'system-ui'],
+        sans: ["Geist", "Inter", "system-ui", "var(--font-sans)"],
         serif: ["var(--font-serif)"],
-          mono: ['Geist Mono', 'JetBrains Mono', 'var(--font-mono)', 'monospace'],
-                  celmono: ["JetBrains Mono", "Fira Code", "monospace"],
+        mono: ["Geist Mono", "JetBrains Mono", "var(--font-mono)", "monospace"],
+        celmono: ["JetBrains Mono", "Fira Code", "monospace"],
+      },
+      transitionTimingFunction: {
+        cel: "var(--ease-out)",
+        "cel-toast": "var(--cel-transition-toast, cubic-bezier(0.34, 1.2, 0.64, 1))",
       },
       keyframes: {
         "accordion-down": {

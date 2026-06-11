@@ -9,7 +9,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { MapPin, X, Pin } from "lucide-react";
 import { initials } from "@/lib/utils-cel";
 
-interface PinData {
+export interface PinData {
   id: number;
   panelId: number;
   xPercent: number;
@@ -24,23 +24,35 @@ interface PanelPinsProps {
   panelId: number;
   pinMode: boolean;
   readOnly?: boolean;
+  allPins?: PinData[];
+  storyboardId?: number;
 }
 
-export function PanelPinsOverlay({ panelId, pinMode, readOnly = false }: PanelPinsProps) {
-  const { data: pins = [] } = useQuery<PinData[]>({
+export function PanelPinsOverlay({ panelId, pinMode, readOnly = false, allPins, storyboardId }: PanelPinsProps) {
+  const { data: panelPins } = useQuery<PinData[]>({
     queryKey: ["/api/panels", panelId, "pins"],
     queryFn: async () => (await apiRequest("GET", `/api/panels/${panelId}/pins`)).json(),
+    enabled: false,
   });
+  const pins = (allPins ?? panelPins ?? []).filter((p) => p.panelId === panelId);
+
   const { toast } = useToast();
   const [pendingPin, setPendingPin] = useState<{ x: number; y: number } | null>(null);
   const [draftBody, setDraftBody] = useState("");
   const [openPinId, setOpenPinId] = useState<number | null>(null);
 
+  const invalidatePins = () => {
+    if (storyboardId) {
+      queryClient.invalidateQueries({ queryKey: ["/api/storyboards", storyboardId, "pins"] });
+    }
+    queryClient.invalidateQueries({ queryKey: ["/api/panels", panelId, "pins"] });
+  };
+
   const createPin = useMutation({
     mutationFn: async (data: { xPercent: number; yPercent: number; body: string }) =>
       (await apiRequest("POST", `/api/panels/${panelId}/pins`, data)).json(),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/panels", panelId, "pins"] });
+      invalidatePins();
       setPendingPin(null);
       setDraftBody("");
       toast({ title: "Pin added" });
@@ -49,7 +61,7 @@ export function PanelPinsOverlay({ panelId, pinMode, readOnly = false }: PanelPi
 
   const deletePin = useMutation({
     mutationFn: async (id: number) => (await apiRequest("DELETE", `/api/pins/${id}`)).json(),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/panels", panelId, "pins"] }),
+    onSuccess: invalidatePins,
   });
 
   const handleImageClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -67,7 +79,6 @@ export function PanelPinsOverlay({ panelId, pinMode, readOnly = false }: PanelPi
       style={{ cursor: pinMode && !readOnly ? "crosshair" : "default" }}
       onClick={handleImageClick}
     >
-      {/* Existing pins */}
       {pins.map((pin, i) => (
         <Popover
           key={pin.id}
@@ -119,7 +130,6 @@ export function PanelPinsOverlay({ panelId, pinMode, readOnly = false }: PanelPi
         </Popover>
       ))}
 
-      {/* Pending pin creation */}
       {pendingPin && (
         <div
           className="absolute transform -translate-x-1/2 -translate-y-1/2 z-20"
@@ -171,11 +181,23 @@ export function PanelPinsOverlay({ panelId, pinMode, readOnly = false }: PanelPi
   );
 }
 
-export function PinModeToggle({ panelId, pinMode, onToggle }: { panelId: number; pinMode: boolean; onToggle: () => void }) {
-  const { data: pins = [] } = useQuery<PinData[]>({
+export function PinModeToggle({
+  panelId,
+  pinMode,
+  onToggle,
+  allPins,
+}: {
+  panelId: number;
+  pinMode: boolean;
+  onToggle: () => void;
+  allPins?: PinData[];
+}) {
+  const { data: panelPins } = useQuery<PinData[]>({
     queryKey: ["/api/panels", panelId, "pins"],
     queryFn: async () => (await apiRequest("GET", `/api/panels/${panelId}/pins`)).json(),
+    enabled: false,
   });
+  const pins = (allPins ?? panelPins ?? []).filter((p) => p.panelId === panelId);
 
   return (
     <Button

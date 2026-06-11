@@ -8,6 +8,8 @@ import {
 import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { queryKeys } from "@/lib/queryKeys";
+import { resolvePanelImageUrl } from "@/lib/panelMedia";
 import { useToast } from "@/hooks/use-toast";
 import {
   Play, Pause, SkipBack, SkipForward, ChevronsLeft, ChevronsRight,
@@ -103,7 +105,7 @@ export default function AnimaticEditor() {
   const { toast } = useToast();
 
   // ── Data ─────────────────────────────────────────────────────────────────
-  const { data: animatic, isLoading } = useQuery<AnimaticProjectFull>({
+  const { data: animatic, isLoading, isError, refetch, isFetching } = useQuery<AnimaticProjectFull>({
     queryKey: ["/api/animatics-v2", animaticId],
     queryFn: async () => (await apiRequest("GET", `/api/animatics-v2/${animaticId}`)).json(),
   });
@@ -130,23 +132,39 @@ export default function AnimaticEditor() {
   const panelImageCache = useRef<Map<number, string>>(new Map());
 
   const { data: storyboards } = useQuery<{ id: number; title: string; panels: Panel[] }[]>({
-    queryKey: ["/api/projects", projectId, "storyboards"],
-    queryFn: async () =>
-      (await apiRequest("GET", `/api/projects/${projectId}/storyboards`)).json(),
+    queryKey: queryKeys.storyboards(projectId),
     enabled: !!animatic,
   });
+
+  const [, bumpPanelCache] = useState(0);
+
+  useEffect(() => {
+    if (!storyboards || !projectId) return;
+    const allPanels = storyboards.flatMap((sb) => sb.panels);
+    for (const p of allPanels) {
+      if (p.imageData) panelImageCache.current.set(p.id, p.imageData);
+      else if (p.r2Key) {
+        resolvePanelImageUrl(p, { projectId }).then((url) => {
+          if (url) {
+            panelImageCache.current.set(p.id, url);
+            bumpPanelCache((n) => n + 1);
+          }
+        });
+      }
+    }
+  }, [storyboards, projectId]);
 
   const panelImageUrl = useCallback(
     (panelId: number | null | undefined): string | undefined => {
       if (!panelId) return undefined;
       if (panelImageCache.current.has(panelId)) return panelImageCache.current.get(panelId);
       const allPanels = storyboards?.flatMap((sb) => sb.panels) ?? [];
-      const p = allPanels.find((p) => p.id === panelId);
+      const p = allPanels.find((panel) => panel.id === panelId);
       if (p?.imageData) {
         panelImageCache.current.set(panelId, p.imageData);
         return p.imageData;
       }
-      return undefined;
+      return panelImageCache.current.get(panelId);
     },
     [storyboards],
   );
@@ -263,19 +281,25 @@ export default function AnimaticEditor() {
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const markSaving = useCallback(() => setSaveState("saving"), []);
+  const markSaved = useCallback(() => {
+    setSaveState("saved");
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = setTimeout(() => setSaveState("idle"), 2000);
+  }, []);
+  const markSaveIdle = useCallback(() => setSaveState("idle"), []);
+
   const patchAnimatic = useMutation({
     mutationFn: async (patch: { title?: string; fps?: number; totalDurationMs?: number }) => {
-      setSaveState("saving");
       const res = await apiRequest("PATCH", `/api/animatics-v2/${animaticId}`, patch);
       return res.json();
     },
+    onMutate: markSaving,
     onSuccess: () => {
-      setSaveState("saved");
-      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-      saveTimeoutRef.current = setTimeout(() => setSaveState("idle"), 2000);
+      markSaved();
       queryClient.invalidateQueries({ queryKey: ["/api/animatics-v2", animaticId] });
     },
-    onError: () => setSaveState("idle"),
+    onError: markSaveIdle,
   });
 
   const patchTrack = useMutation({
@@ -283,9 +307,12 @@ export default function AnimaticEditor() {
       const res = await apiRequest("PATCH", `/api/tracks/${id}`, patch);
       return res.json();
     },
+    onMutate: markSaving,
     onSuccess: () => {
+      markSaved();
       queryClient.invalidateQueries({ queryKey: ["/api/animatics-v2", animaticId] });
     },
+    onError: markSaveIdle,
   });
 
   const createClip = useMutation({
@@ -293,10 +320,15 @@ export default function AnimaticEditor() {
       const res = await apiRequest("POST", `/api/tracks/${trackId}/clips`, data);
       return res.json();
     },
+    onMutate: markSaving,
     onSuccess: () => {
+      markSaved();
       queryClient.invalidateQueries({ queryKey: ["/api/animatics-v2", animaticId] });
     },
-    onError: (e: Error) => toast({ title: "Failed to add clip", description: String(e.message || e), variant: "destructive" }),
+    onError: (e: Error) => {
+      markSaveIdle();
+      toast({ title: "Failed to add clip", description: String(e.message || e), variant: "destructive" });
+    },
   });
 
   const patchClip = useMutation({
@@ -304,9 +336,12 @@ export default function AnimaticEditor() {
       const res = await apiRequest("PATCH", `/api/clips/${id}`, patch);
       return res.json();
     },
+    onMutate: markSaving,
     onSuccess: () => {
+      markSaved();
       queryClient.invalidateQueries({ queryKey: ["/api/animatics-v2", animaticId] });
     },
+    onError: markSaveIdle,
   });
 
   const deleteClip = useMutation({
@@ -314,9 +349,12 @@ export default function AnimaticEditor() {
       const res = await apiRequest("DELETE", `/api/clips/${id}`);
       return res.json();
     },
+    onMutate: markSaving,
     onSuccess: () => {
+      markSaved();
       queryClient.invalidateQueries({ queryKey: ["/api/animatics-v2", animaticId] });
     },
+    onError: markSaveIdle,
   });
 
   // Optimistic clip move
@@ -519,6 +557,18 @@ export default function AnimaticEditor() {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <Loader2 size={24} className="animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4">
+        <p className="text-muted-foreground">Couldn't load this animatic.</p>
+        <Button onClick={() => refetch()} disabled={isFetching} data-testid="button-retry-animatic">
+          {isFetching ? "Retrying…" : "Retry"}
+        </Button>
+        <Button variant="ghost" onClick={() => navigate(`/projects/${projectId}`)}>Back to project</Button>
       </div>
     );
   }

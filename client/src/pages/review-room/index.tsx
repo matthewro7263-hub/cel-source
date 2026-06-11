@@ -4,7 +4,9 @@ import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Brush, Eraser, Radio, FileDown, CheckCircle2 } from "lucide-react";
 import { getAuthToken, apiRequest, queryClient } from "@/lib/queryClient";
-import jsPDF from "jspdf";
+import { queryKeys } from "@/lib/queryKeys";
+import { PanelImage } from "@/components/PanelImage";
+
 import { useToast } from "@/hooks/use-toast";
 import { ToolSurface, ToolWorkspace } from "@/components/layout/tool-workspace";
 import type { Panel, Storyboard } from "@shared/schema";
@@ -54,7 +56,7 @@ export default function ReviewRoomPage() {
   const { toast } = useToast();
 
   const { data: storyboards = [] } = useQuery<StoryboardWithPanels[]>({
-    queryKey: [`/api/projects/${projectId}/storyboards`],
+    queryKey: queryKeys.storyboards(projectId),
     enabled: !!projectId,
   });
 
@@ -91,21 +93,25 @@ export default function ReviewRoomPage() {
     ws.onopen = () => setConnected(true);
     ws.onclose = () => setConnected(false);
     ws.onmessage = (event) => {
-      const message = JSON.parse(event.data);
-      if (message.type === "presence") setPresence(message.count || 1);
-      if (message.type === "cursor") {
-        setCursors((prev) => ({ ...prev, [message.userId]: { x: message.x, y: message.y, userId: message.userId } }));
+      try {
+        const message = JSON.parse(event.data);
+        if (message.type === "presence") setPresence(message.count || 1);
+        if (message.type === "cursor") {
+          setCursors((prev) => ({ ...prev, [message.userId]: { x: message.x, y: message.y, userId: message.userId } }));
+        }
+        if (message.type === "stroke" && canvasRef.current) {
+          drawSegment(canvasRef.current, message.from, message.to, message.color || "#9DD0FF");
+        }
+        if (message.type === "clear" && canvasRef.current) {
+          canvasRef.current.getContext("2d")?.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+          setEvents((prev) => ["Telestrator cleared", ...prev].slice(0, 6));
+        }
+        if (message.type === "playhead") setPlayhead(message.value || 0);
+        if (message.type === "panel") setCurrentPanel(message.value || 0);
+        if (message.type === "note") setEvents((prev) => [message.body, ...prev].slice(0, 6));
+      } catch {
+        // Ignore malformed WebSocket messages
       }
-      if (message.type === "stroke" && canvasRef.current) {
-        drawSegment(canvasRef.current, message.from, message.to, message.color || "#9DD0FF");
-      }
-      if (message.type === "clear" && canvasRef.current) {
-        canvasRef.current.getContext("2d")?.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-        setEvents((prev) => ["Telestrator cleared", ...prev].slice(0, 6));
-      }
-      if (message.type === "playhead") setPlayhead(message.value || 0);
-      if (message.type === "panel") setCurrentPanel(message.value || 0);
-      if (message.type === "note") setEvents((prev) => [message.body, ...prev].slice(0, 6));
     };
 
     return () => ws.close();
@@ -158,7 +164,8 @@ export default function ReviewRoomPage() {
     send({ type: "clear" });
   };
 
-  const exportPDF = () => {
+  const exportPDF = async () => {
+    const { default: jsPDF } = await import("jspdf");
     const doc = new jsPDF("landscape");
     doc.setFontSize(18);
     doc.text(`Review Session: Project ${projectId}`, 10, 20);
@@ -191,7 +198,7 @@ export default function ReviewRoomPage() {
       await apiRequest("POST", `/api/projects/${projectId}/comments`, {
         body: `✅ APPROVED in Review Room: ${panel.label}`,
       });
-      queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}/comments`] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.comments(projectId) });
       toast({ title: "Status Updated", description: "Marked as approved in project logs." });
       send({ type: "note", body: `✅ ${panel.label} approved by reviewer` });
     } catch (e) {
@@ -230,7 +237,7 @@ export default function ReviewRoomPage() {
       main={
         <ToolSurface className="relative aspect-video bg-black">
           {panel ? (
-            <img src={panel.imageData || undefined} alt={panel.label} className="absolute inset-0 h-full w-full object-contain" />
+            <PanelImage panel={panel} projectId={projectId} alt={panel.label} className="absolute inset-0 h-full w-full object-contain" />
           ) : (
             <div className="absolute inset-0 grid place-items-center text-sm text-white/45">No panels available for review.</div>
           )}

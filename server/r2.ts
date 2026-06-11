@@ -96,3 +96,17 @@ export async function listUserObjects(userId: string, prefix?: string) {
 export function isOwnedKey(userId: string, key: string): boolean {
   return key.startsWith(`uploads/${userId}/`);
 }
+
+export type R2HealthStatus = "connected" | "not_configured" | "disconnected";
+
+/** Lightweight readiness probe — list 1 object in the configured bucket. */
+export async function checkR2Health(): Promise<R2HealthStatus> {
+  const required = ["R2_BUCKET", "R2_ENDPOINT", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY"] as const;
+  if (required.some((name) => !process.env[name])) return "not_configured";
+  try {
+    await getR2Client().send(new ListObjectsV2Command({ Bucket: getR2Bucket(), MaxKeys: 1 }));
+    return "connected";
+  } catch {
+    return "disconnected";
+  }
+}

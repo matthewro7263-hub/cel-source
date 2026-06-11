@@ -8,6 +8,11 @@ interface ShortcutHandlers {
   onOpenCheatsheet: () => void;
 }
 
+function isOnScenesTab() {
+  const hashRoute = window.location.hash.replace(/^#/, "");
+  return /\/projects\/\d+\/scenes(?:\?|$)/.test(hashRoute);
+}
+
 const SHORTCUTS = [
   { keys: ["?"], description: "Open keyboard shortcuts", category: "General" },
   { keys: ["Cmd/Ctrl", "K"], description: "Open search", category: "General" },
@@ -58,6 +63,21 @@ export function useGlobalShortcuts(handlers: ShortcutHandlers) {
           handlers.onOpenCheatsheet();
           clearSequence();
           return;
+        }
+
+        if (isOnScenesTab()) {
+          if (e.key === "j") {
+            e.preventDefault();
+            window.dispatchEvent(new CustomEvent("cel:scene-next"));
+            clearSequence();
+            return;
+          }
+          if (e.key === "k") {
+            e.preventDefault();
+            window.dispatchEvent(new CustomEvent("cel:scene-prev"));
+            clearSequence();
+            return;
+          }
         }
 
         // Sequence shortcuts (g d, g c, g a, g i, n p)

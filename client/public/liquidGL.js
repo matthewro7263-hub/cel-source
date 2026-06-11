@@ -94,6 +94,15 @@
       this.scaleFactor = 1;
       this.startTime = Date.now();
       this._scrollUpdateCounter = 0;
+      this._scrollRafId = null;
+      this._paused = false;
+      this._destroyed = false;
+      this._pendingReveal = [];
+      this._revealAnimating = false;
+      this._revealRafId = null;
+      this._lensByElement = new WeakMap();
+      this._onResize = null;
+      this._resizeObs = null;
 
       this._initGL();
 
@@ -105,6 +114,7 @@
       let lastScrollY = window.scrollY;
       let scrollTimeout;
       const scrollCheck = () => {
+        if (this._destroyed) return;
         if (window.scrollY !== lastScrollY) {
           this._isScrolling = true;
           lastScrollY = window.scrollY;
@@ -113,9 +123,9 @@
             this._isScrolling = false;
           }, 200);
         }
-        requestAnimationFrame(scrollCheck);
+        this._scrollRafId = requestAnimationFrame(scrollCheck);
       };
-      requestAnimationFrame(scrollCheck);
+      this._scrollRafId = requestAnimationFrame(scrollCheck);
 
       const onResize = debounce(() => {
         if (this._capturing || this._isScrolling) return;
@@ -137,10 +147,12 @@
         this.lenses.forEach((l) => l.updateMetrics());
         this.captureSnapshot();
       }, 250);
+      this._onResize = onResize;
       window.addEventListener("resize", onResize, { passive: true });
 
       if ("ResizeObserver" in window) {
-        new ResizeObserver(onResize).observe(this.snapshotTarget);
+        this._resizeObs = new ResizeObserver(onResize);
+        this._resizeObs.observe(this.snapshotTarget);
       }
 
       /* --------------------------------------------------
@@ -157,8 +169,6 @@
 
       this._resizeCanvas();
       this.captureSnapshot();
-
-      this._pendingReveal = [];
 
       /* --------------------------------------------------
        *  Dynamic media (video) support
@@ -545,15 +555,93 @@
 
       this.render();
 
-      if (this._pendingReveal.length) {
+      if (this._pendingReveal?.length) {
         this._pendingReveal.forEach((ln) => ln._reveal());
         this._pendingReveal.length = 0;
       }
     }
 
     /* ----------------------------- */
+    destroy() {
+      if (this._destroyed) return;
+      this._destroyed = true;
+      this._paused = true;
+
+      if (this._rafId) {
+        cancelAnimationFrame(this._rafId);
+        this._rafId = null;
+      }
+      if (this._scrollRafId) {
+        cancelAnimationFrame(this._scrollRafId);
+        this._scrollRafId = null;
+      }
+      if (this._revealRafId) {
+        cancelAnimationFrame(this._revealRafId);
+        this._revealRafId = null;
+      }
+
+      [...this.lenses].forEach((lens) => lens.destroy());
+
+      if (this._onResize) {
+        window.removeEventListener("resize", this._onResize);
+        this._onResize = null;
+      }
+      this._resizeObs?.disconnect();
+      this._resizeObs = null;
+
+      this._revealAnimating = false;
+      this._pendingReveal = [];
+
+      this._dynWorker?.terminate();
+      this._dynJobs?.clear();
+
+      if (this.texture) this.gl.deleteTexture(this.texture);
+      if (this.program) this.gl.deleteProgram(this.program);
+      this.canvas?.remove();
+      document.getElementById("liquid-gl-dynamic-styles")?.remove();
+
+      if (window.__liquidGLRenderer__ === this) {
+        window.__liquidGLRenderer__ = null;
+      }
+      this.lenses = [];
+    }
+
+    pause(paused = true) {
+      if (this._destroyed) return;
+      this._paused = !!paused;
+
+      if (this._paused) {
+        if (this._rafId && !this.useExternalTicker) {
+          cancelAnimationFrame(this._rafId);
+          this._rafId = null;
+        }
+        if (this._revealRafId) {
+          cancelAnimationFrame(this._revealRafId);
+          this._revealRafId = null;
+          this._revealAnimating = false;
+        }
+        return;
+      }
+
+      if (!this._rafId && !this.useExternalTicker) {
+        const loop = () => {
+          if (this._destroyed || this._paused) return;
+          this.render();
+          this._rafId = requestAnimationFrame(loop);
+        };
+        this._rafId = requestAnimationFrame(loop);
+      }
+    }
+
+    /* ----------------------------- */
     addLens(element, options) {
+      if (this._destroyed) return null;
+
+      const existing = this._lensByElement.get(element);
+      if (existing) return existing;
+
       const lens = new liquidGLLens(this, element, options);
+      this._lensByElement.set(element, lens);
       this.lenses.push(lens);
 
       const maxZ = this._getMaxLensZ();
@@ -571,6 +659,7 @@
 
     /* ----------------------------- */
     render() {
+      if (this._paused || this._destroyed) return;
       const gl = this.gl;
       if (!this.texture) return;
 
@@ -1371,9 +1460,26 @@
       this.tiltX = 0;
       this.tiltY = 0;
 
-      this.originalShadow = this.el.style.boxShadow;
-      this.originalOpacity = this.el.style.opacity;
-      this.originalTransition = this.el.style.transition;
+      this._destroyed = false;
+      this._savedInline = {
+        boxShadow: this.el.style.boxShadow,
+        opacity: this.el.style.opacity,
+        transition: this.el.style.transition,
+        position: this.el.style.position,
+        backdropFilter: this.el.style.backdropFilter,
+        webkitBackdropFilter: this.el.style.webkitBackdropFilter,
+        backgroundImage: this.el.style.backgroundImage,
+        background: this.el.style.background,
+        backgroundColor: this.el.style.backgroundColor,
+        pointerEvents: this.el.style.pointerEvents,
+        transform: this.el.style.transform,
+        transformStyle: this.el.style.transformStyle,
+        transformOrigin: this.el.style.transformOrigin,
+      };
+
+      this.originalShadow = this._savedInline.boxShadow;
+      this.originalOpacity = this._savedInline.opacity;
+      this.originalTransition = this._savedInline.transition;
       this.el.style.transition = "none";
       this.el.style.opacity = 0;
 
@@ -1581,6 +1687,7 @@
       }
 
       if (this.renderer._revealAnimating) return;
+      if (this.renderer._destroyed) return;
 
       this.renderer._revealAnimating = true;
 
@@ -1588,6 +1695,12 @@
       const start = performance.now();
 
       const animate = () => {
+        if (this.renderer._destroyed) {
+          this.renderer._revealAnimating = false;
+          this.renderer._revealRafId = null;
+          return;
+        }
+
         const progress = Math.min(1, (performance.now() - start) / dur);
 
         this.renderer.lenses.forEach((ln) => {
@@ -1603,9 +1716,10 @@
         this.renderer.render();
 
         if (progress < 1) {
-          requestAnimationFrame(animate);
+          this.renderer._revealRafId = requestAnimationFrame(animate);
         } else {
           this.renderer._revealAnimating = false;
+          this.renderer._revealRafId = null;
           this.renderer.lenses.forEach((ln) => {
             ln.el.style.transition = ln.originalTransition || "";
             ln._TriggerInit();
@@ -1613,7 +1727,7 @@
         }
       };
 
-      requestAnimationFrame(animate);
+      this.renderer._revealRafId = requestAnimationFrame(animate);
     }
 
     /* ----------------------------- */
@@ -1776,9 +1890,6 @@
           });
         }
 
-        document.addEventListener("mousemove", this._boundCheckLeave, {
-          passive: true,
-        });
       };
 
       this._onMouseMove = (e) => this._applyTilt(e.clientX, e.clientY);
@@ -1801,19 +1912,19 @@
         this._smoothReset();
       };
 
-      this.el.addEventListener("mouseenter", this._onMouseEnter.bind(this), {
+      this.el.addEventListener("mouseenter", this._onMouseEnter, {
         passive: true,
       });
-      this.el.addEventListener("mousemove", this._onMouseMove.bind(this), {
+      this.el.addEventListener("mousemove", this._onMouseMove, {
         passive: true,
       });
-      this.el.addEventListener("touchstart", this._onTouchStart.bind(this), {
+      this.el.addEventListener("touchstart", this._onTouchStart, {
         passive: true,
       });
-      this.el.addEventListener("touchmove", this._onTouchMove.bind(this), {
+      this.el.addEventListener("touchmove", this._onTouchMove, {
         passive: true,
       });
-      this.el.addEventListener("touchend", this._onTouchEnd.bind(this), {
+      this.el.addEventListener("touchend", this._onTouchEnd, {
         passive: true,
       });
 
@@ -1851,12 +1962,21 @@
 
     _unbindTiltHandlers() {
       if (!this._tiltHandlersBound) return;
-      this.el.removeEventListener("mouseenter", this._onMouseEnter.bind(this));
-      this.el.removeEventListener("mousemove", this._onMouseMove.bind(this));
-      document.removeEventListener("mousemove", this._boundCheckLeave);
-      this.el.removeEventListener("touchstart", this._onTouchStart.bind(this));
-      this.el.removeEventListener("touchmove", this._onTouchMove.bind(this));
-      this.el.removeEventListener("touchend", this._onTouchEnd.bind(this));
+      if (this._onMouseEnter) {
+        this.el.removeEventListener("mouseenter", this._onMouseEnter);
+      }
+      if (this._onMouseMove) {
+        this.el.removeEventListener("mousemove", this._onMouseMove);
+      }
+      if (this._onTouchStart) {
+        this.el.removeEventListener("touchstart", this._onTouchStart);
+      }
+      if (this._onTouchMove) {
+        this.el.removeEventListener("touchmove", this._onTouchMove);
+      }
+      if (this._onTouchEnd) {
+        this.el.removeEventListener("touchend", this._onTouchEnd);
+      }
 
       if (this._docPointerMove) {
         document.removeEventListener("pointermove", this._docPointerMove);
@@ -1914,6 +2034,39 @@
       this._mirrorActive = false;
     }
 
+    destroy() {
+      if (this._destroyed) return;
+      this._destroyed = true;
+
+      if (this._resetCleanupTimer) clearTimeout(this._resetCleanupTimer);
+      this._unbindTiltHandlers();
+      this._sizeObs?.disconnect();
+      this._destroyMirrorCanvas();
+
+      if (this._shadowEl) {
+        if (this._shadowSyncFn) {
+          window.removeEventListener("resize", this._shadowSyncFn);
+        }
+        this._shadowEl.remove();
+        this._shadowEl = null;
+      }
+
+      if (this._savedInline) {
+        Object.entries(this._savedInline).forEach(([prop, val]) => {
+          this.el.style[prop] = val;
+        });
+      }
+
+      const idx = this.renderer.lenses.indexOf(this);
+      if (idx !== -1) this.renderer.lenses.splice(idx, 1);
+      this.renderer._lensByElement.delete(this.el);
+
+      if (this.renderer._pendingReveal) {
+        const pi = this.renderer._pendingReveal.indexOf(this);
+        if (pi !== -1) this.renderer._pendingReveal.splice(pi, 1);
+      }
+    }
+
     _TriggerInit() {
       if (this._initCalled) return;
       this._initCalled = true;
@@ -1958,15 +2111,16 @@
 
     if (noWebGL) {
       console.warn(
-        "liquidGL: WebGL not available – falling back to CSS backdrop-filter."
+        "liquidGL: WebGL not available – falling back to CSS glass depth."
       );
       const fallbackNodes = document.querySelectorAll(options.target);
       fallbackNodes.forEach((node) => {
-        Object.assign(node.style, {
-          background: "rgba(255, 255, 255, 0.07)",
-          backdropFilter: "blur(12px)",
-          webkitBackdropFilter: "blur(12px)",
-        });
+        node.classList.add(
+          "liquid-glass-css-fallback",
+          "liquid-glass-host",
+          "liquid-glass-depth",
+        );
+        node.setAttribute("data-liquid-engine", "css");
       });
       return fallbackNodes.length === 1
         ? fallbackNodes[0]
@@ -1974,7 +2128,7 @@
     }
 
     let renderer = window.__liquidGLRenderer__;
-    if (!renderer) {
+    if (!renderer || renderer._destroyed) {
       renderer = new liquidGLRenderer(options.snapshot, options.resolution);
       window.__liquidGLRenderer__ = renderer;
     }
@@ -1987,12 +2141,13 @@
       return;
     }
 
-    const instances = Array.from(nodeList).map((el) =>
-      renderer.addLens(el, options)
-    );
+    const instances = Array.from(nodeList)
+      .map((el) => renderer.addLens(el, options))
+      .filter(Boolean);
 
-    if (!renderer._rafId && !renderer.useExternalTicker) {
+    if (!renderer._rafId && !renderer.useExternalTicker && !renderer._paused) {
       const loop = () => {
+        if (renderer._destroyed || renderer._paused) return;
         renderer.render();
         renderer._rafId = requestAnimationFrame(loop);
       };
@@ -2000,6 +2155,29 @@
     }
 
     return instances.length === 1 ? instances[0] : instances;
+  };
+
+  window.liquidGL.destroy = function () {
+    const renderer = window.__liquidGLRenderer__;
+    if (renderer) renderer.destroy();
+
+    document
+      .querySelectorAll(
+        ".liquid-glass-css-fallback, [data-liquid-engine='css']"
+      )
+      .forEach((el) => {
+        el.classList.remove(
+          "liquid-glass-css-fallback",
+          "liquid-glass-host",
+          "liquid-glass-depth"
+        );
+        el.removeAttribute("data-liquid-engine");
+      });
+  };
+
+  window.liquidGL.pause = function (paused = true) {
+    const renderer = window.__liquidGLRenderer__;
+    if (renderer) renderer.pause(paused);
   };
 
   /* --------------------------------------------------
@@ -2085,12 +2263,14 @@
 
     if (useGSAP) {
       G.ticker.add((time) => {
+        if (renderer._destroyed || renderer._paused) return;
         if (lenis) lenis.raf(time * 1000);
         renderer.render();
       });
       G.ticker.lagSmoothing(0);
     } else {
       const loop = (time) => {
+        if (renderer._destroyed || renderer._paused) return;
         if (lenis) lenis.raf(time);
         if (loco) loco.update();
         renderer.render();

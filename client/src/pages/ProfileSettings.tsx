@@ -35,7 +35,7 @@ export default function ProfileSettings() {
       </div>
 
       <div className="space-y-5">
-        <div className="rounded-xl border border-card-border bg-card p-5">
+        <div className="glass p-5">
           <h3 className="font-display font-semibold mb-4">Identity</h3>
           <div className="flex items-center gap-4 mb-5">
             <Avatar className="h-14 w-14">

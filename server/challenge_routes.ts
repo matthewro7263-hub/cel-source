@@ -11,6 +11,30 @@ import { z } from "zod";
 import { challenge_leaderboard_snapshots } from "@shared/challenge_leaderboard_schema";
 import { getLiveLeaderboard, snapshotWeekLeaderboard } from "./leaderboard_cron";
 
+// Live leaderboard cache — 30s TTL to reduce DB load from polling clients
+const LEADERBOARD_CACHE_TTL_MS = 30_000;
+const leaderboardCache = new Map<string, { data: Awaited<ReturnType<typeof getLiveLeaderboard>>; expiresAt: number }>();
+
+function pruneLeaderboardCache(now = Date.now()) {
+  for (const [key, entry] of leaderboardCache) {
+    if (now >= entry.expiresAt) leaderboardCache.delete(key);
+  }
+}
+
+function bustLeaderboardCache() {
+  leaderboardCache.clear();
+}
+
+async function getCachedLiveLeaderboard(week: number, limit: number) {
+  pruneLeaderboardCache();
+  const key = `${week}:${limit}`;
+  const cached = leaderboardCache.get(key);
+  if (cached && Date.now() < cached.expiresAt) return cached.data;
+  const data = await getLiveLeaderboard(week, limit);
+  leaderboardCache.set(key, { data, expiresAt: Date.now() + LEADERBOARD_CACHE_TTL_MS });
+  return data;
+}
+
 // ---------------------------------------------------------------------------
 // Local auth helpers — mirror the pattern used in biz_routes.ts.
 // ---------------------------------------------------------------------------
@@ -59,7 +83,9 @@ export function registerChallengeRoutes(app: Express) {
 
   app.get("/api/challenges/feed", requireAuth, async (req, res) => {
     const userId = (req as any).user.id;
-    res.json(await (storage as any).listChallengeFeed(userId));
+    const limit = Math.min(parseInt(String(req.query.limit || "20"), 10) || 20, 100);
+    const offset = Math.max(parseInt(String(req.query.offset || "0"), 10) || 0, 0);
+    res.json(await (storage as any).listChallengeFeed(userId, { limit, offset }));
   });
 
   // ── Authed: create submission (with speedrun deadline guard) ───────────────
@@ -89,6 +115,7 @@ export function registerChallengeRoutes(app: Express) {
     }
 
     const submission = await (storage as any).createChallengeSubmission({ ...body, userId });
+    bustLeaderboardCache();
     res.json(submission);
   });
 
@@ -105,6 +132,7 @@ export function registerChallengeRoutes(app: Express) {
         userId,
         body.sticker,
       );
+      bustLeaderboardCache();
       res.json(result);
     } catch (error: any) {
       res.status(404).json({ message: error.message || "Submission not found" });
@@ -136,7 +164,7 @@ export function registerChallengeRoutes(app: Express) {
     }
     const limit = Math.min(Math.max(params.limit, 1), 50);
     try {
-      res.json(await getLiveLeaderboard(params.week, limit));
+      res.json(await getCachedLiveLeaderboard(params.week, limit));
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

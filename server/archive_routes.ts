@@ -71,7 +71,20 @@ export function registerArchiveRoutes(app: Express) {
         animatics: await db.select().from(animatics).where(eq(animatics.projectId, projectId)),
         scenes: await db.select().from(scenes).where(eq(scenes.projectId, projectId)),
         comments: await db.select().from(comments).where(eq(comments.projectId, projectId)),
-        assets: await db.select().from(assets).where(eq(assets.projectId, projectId)),
+        assets: await db.select({
+          id: assets.id,
+          projectId: assets.projectId,
+          category: assets.category,
+          filename: assets.filename,
+          mimeType: assets.mimeType,
+          r2Key: assets.r2Key,
+          thumbnailData: assets.thumbnailData,
+          notes: assets.notes,
+          tags: assets.tags,
+          uploaderId: assets.uploaderId,
+          createdAt: assets.createdAt,
+          deletedAt: assets.deletedAt,
+        }).from(assets).where(eq(assets.projectId, projectId)),
         animaticProjects: await db.select().from(animaticProjects).where(eq(animaticProjects.projectId, projectId)),
         continuityFacts: await db.select().from(lor_continuity_facts).where(eq(lor_continuity_facts.projectId, projectId)),
         palettes: await db.select().from(lor_palettes).where(eq(lor_palettes.projectId, projectId)),
@@ -120,17 +133,21 @@ export function registerArchiveRoutes(app: Express) {
         data.captions = await db.select().from(audCaptions).where(inArray(audCaptions.animaticProjectId, apIds));
       }
 
-      // 3. Process Assets: Extract base64 to separate files for better portability
-      // This helps if the JSON becomes too large for some parsers.
+      // 3. Process Assets: load fileData per-asset (not in bulk select) for streaming
       const assetFiles: { path: string; data: string }[] = [];
-      
-      data.assets = data.assets.map((asset: any) => {
-        if (!asset.fileData) return asset;
+
+      data.assets = await Promise.all(data.assets.map(async (asset: any) => {
+        const [fileRow] = await db
+          .select({ fileData: assets.fileData })
+          .from(assets)
+          .where(eq(assets.id, asset.id));
+        const fileData = fileRow?.fileData;
+        if (!fileData) return asset;
         const safeFilename = asset.filename ? asset.filename.replace(/[^a-zA-Z0-9_\-\.]/g, '_') : 'unnamed_asset';
         const filePath = `assets/asset_${asset.id}_${safeFilename}`;
-        assetFiles.push({ path: filePath, data: asset.fileData });
+        assetFiles.push({ path: filePath, data: fileData });
         return { ...asset, fileData: `EXT:${filePath}` };
-      });
+      }));
 
       data.storyboardPanels = (data.storyboardPanels || []).map((panel: any) => {
         if (!panel.imageData) return panel;

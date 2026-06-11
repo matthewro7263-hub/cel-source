@@ -34,7 +34,7 @@ export function getAchievementDef(code: string): AchievementDef | undefined {
  * Check and unlock achievements based on context.
  * Returns array of newly unlocked achievement codes.
  */
-import { storage } from "./storage";
+import { storage, runWithProjectIdCache } from "./storage";
 
 interface AchievementContext {
   userId: number;
@@ -71,6 +71,7 @@ function checkConsecutiveDays(dates: string[], count = 7): boolean {
 }
 
 export async function checkAchievements(ctx: AchievementContext): Promise<string[]> {
+  return runWithProjectIdCache(async () => {
   const { userId, event } = ctx;
   const unlocked: string[] = [];
 
@@ -144,4 +145,5 @@ export async function checkAchievements(ctx: AchievementContext): Promise<string
   }
 
   return unlocked;
+  });
 }
