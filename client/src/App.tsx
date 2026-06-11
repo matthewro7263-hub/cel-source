@@ -58,6 +58,7 @@ import RenderBudget from "@/pages/studio/RenderBudget";
 import Snapshots from "@/pages/studio/Snapshots";
 import CreditRoll from "@/pages/studio/CreditRoll";
 import LightLab from "@/pages/studio/LightLab";
+import LiquidGlassDemo from "@/pages/LiquidGlassDemo";
 
 const BizPage = lazy(() => import("@/pages/biz/index"));
 
@@ -143,6 +144,7 @@ function AppRouter() {
     <>
       <Switch>
         <Route path="/" component={Landing} />
+        <Route path="/liquid-glass-demo" component={LiquidGlassDemo} />
         <Route path="/artists">{() => <MarketingSection sectionId="artists" />}</Route>
         <Route path="/animators">{() => <MarketingSection sectionId="animators" />}</Route>
         <Route path="/login" component={Login} />
