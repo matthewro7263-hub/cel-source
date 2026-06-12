@@ -265,7 +265,7 @@ LiquidGlassLayers.displayName = "LiquidGlassLayers";
 export const GlassSurface = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement> & { glassDepth?: LiquidGlassDepth }
->(({ className, children, glassDepth = "subtle", ...props }, ref) => (
+>(({ className, children, glassDepth = "normal", ...props }, ref) => (
   <div
     ref={ref}
     data-glass-depth={glassDepth}
