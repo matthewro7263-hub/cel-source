@@ -213,17 +213,64 @@ export const LiquidGlass = React.forwardRef<HTMLDivElement, LiquidGlassProps>(
 LiquidGlass.displayName = "LiquidGlass";
 
 /**
- * Simpler CSS-only glass surface for high-performance areas
- * where the full animated shimmer isn't needed.
+ * LiquidGlassLayers — the Liquid Glass Kit's decorative optic stack
+ * (iridescent shimmer, chromatic edge, bevel, specular highlight, lift, edge glow)
+ * as a single self-contained, absolutely-positioned, non-interactive layer.
+ *
+ * Drop it in as the FIRST child of any `position: relative` host whose interactive
+ * content sits at a higher stacking context (e.g. `z-[2]`). It clips itself to the
+ * host's border radius and never intercepts pointer events, so it can be applied to
+ * buttons, cards, and surfaces without affecting their behavior.
+ */
+export const LiquidGlassLayers = React.forwardRef<
+  HTMLSpanElement,
+  { depth?: LiquidGlassDepth; className?: string }
+>(({ depth = "normal", className }, ref) => {
+  const preset = DEPTH_PRESETS[depth];
+  const iridescenceOpacity = Math.min(1, preset.chromaAmount * 3);
+  return (
+    <span
+      ref={ref}
+      aria-hidden="true"
+      // Inline zIndex:0 deliberately overrides selectors like `.cel-soft-button > *`
+      // (which force direct children to z-index:2) so the optics stay behind content.
+      style={{
+        position: "absolute",
+        inset: 0,
+        zIndex: 0,
+        borderRadius: "inherit",
+        overflow: "hidden",
+        pointerEvents: "none",
+      }}
+      className={className}
+    >
+      <span
+        className="liquid-glass-shimmer"
+        style={{ opacity: iridescenceOpacity * preset.chromaOpacity }}
+      />
+      <span className="liquid-glass-chroma" style={{ opacity: preset.chromaOpacity }} />
+      <span className="liquid-glass-bevel" style={{ opacity: preset.bevelOpacity }} />
+      <span className="liquid-glass-specular" />
+      <span className="liquid-glass-lift" style={{ opacity: preset.liftOpacity }} />
+      <span className="liquid-glass-edge" />
+    </span>
+  );
+});
+LiquidGlassLayers.displayName = "LiquidGlassLayers";
+
+/**
+ * Simpler CSS-only glass surface, now upgraded with the Liquid Glass Kit optic stack
+ * so every surface that uses it (e.g. `Card`) carries the full liquid-glass effect.
  */
 export const GlassSurface = React.forwardRef<
   HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement>
->(({ className, children, ...props }, ref) => (
+  React.HTMLAttributes<HTMLDivElement> & { glassDepth?: LiquidGlassDepth }
+>(({ className, children, glassDepth = "subtle", ...props }, ref) => (
   <div
     ref={ref}
+    data-glass-depth={glassDepth}
     className={cn(
-      "relative overflow-hidden liquid-glass-host",
+      "relative overflow-hidden liquid-glass-host liquid-glass-surface liquid-glass-depth",
       "bg-[var(--surface-1)] dark:bg-white/10",
       "backdrop-blur-2xl backdrop-saturate-[170%]",
       "border border-[var(--card-border)] dark:border-white/14",
@@ -233,6 +280,7 @@ export const GlassSurface = React.forwardRef<
     )}
     {...props}
   >
+    <LiquidGlassLayers depth={glassDepth} />
     <div className="relative z-[1] h-full">{children}</div>
   </div>
 ));
