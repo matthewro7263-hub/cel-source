@@ -63,7 +63,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         ref={ref}
         {...props}
       >
-        <LiquidGlassLayers depth="normal" />
+        <LiquidGlassLayers depth="strong" />
         <span className="relative z-[2] inline-flex items-center justify-center gap-2">
           {children}
         </span>

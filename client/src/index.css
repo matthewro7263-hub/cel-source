@@ -278,7 +278,9 @@
     .landing-blob-sky,
     .landing-blob-lavender,
     .landing-blob-peach,
-    .liquid-glass-shimmer {
+    .liquid-glass-shimmer,
+    .glass::before,
+    .glass-strong::before {
       animation: none !important;
     }
 
@@ -424,6 +426,84 @@
       var(--glass-depth-shadow),
       var(--glass-bevel-highlight-subtle),
       var(--glass-bevel-shadow-subtle);
+  }
+
+  /* ── Liquid Glass Kit optics on every .glass / .glass-strong surface ──
+     Adds the kit's iridescent shimmer + specular highlight as decorative
+     pseudo-layers. `isolation: isolate` + `z-index: -1` keep them behind the
+     surface's content (above its background), so text stays fully readable. */
+  .glass,
+  .glass-strong {
+    position: relative;
+    isolation: isolate;
+  }
+
+  .glass::before,
+  .glass-strong::before {
+    content: "";
+    position: absolute;
+    inset: -45%;
+    z-index: -1;
+    pointer-events: none;
+    border-radius: inherit;
+    background: conic-gradient(
+      from var(--liquid-glass-angle, 215deg) at 50% 50%,
+      rgba(157, 208, 255, 0.55),
+      rgba(196, 181, 253, 0.45) 25%,
+      rgba(255, 200, 220, 0.42) 48%,
+      rgba(173, 216, 230, 0.5) 72%,
+      rgba(157, 208, 255, 0.55)
+    );
+    filter: blur(26px);
+    mix-blend-mode: overlay;
+    opacity: 0.7;
+    animation: liquid-glass-rotate 14s linear infinite;
+  }
+
+  .glass::after,
+  .glass-strong::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    border-radius: inherit;
+    background:
+      radial-gradient(
+        ellipse 78% 58% at 22% 14%,
+        rgba(255, 255, 255, 0.6),
+        rgba(255, 255, 255, 0.18) 38%,
+        transparent 68%
+      ),
+      linear-gradient(
+        145deg,
+        rgba(255, 255, 255, 0.45),
+        rgba(255, 255, 255, 0.04) 44%,
+        rgba(120, 140, 180, 0.1) 100%
+      );
+  }
+
+  .dark .glass::before,
+  .dark .glass-strong::before {
+    mix-blend-mode: screen;
+    opacity: 0.5;
+  }
+
+  .dark .glass::after,
+  .dark .glass-strong::after {
+    background:
+      radial-gradient(
+        ellipse 78% 58% at 22% 14%,
+        rgba(255, 255, 255, 0.22),
+        rgba(255, 255, 255, 0.08) 38%,
+        transparent 68%
+      ),
+      linear-gradient(
+        145deg,
+        rgba(255, 255, 255, 0.14),
+        rgba(255, 255, 255, 0.02) 44%,
+        rgba(0, 0, 0, 0.12) 100%
+      );
   }
 
   /* ── Liquid Glass Surface ── */
@@ -661,7 +741,9 @@
       background: var(--surface-opaque-fallback) !important;
     }
 
-    .liquid-glass-shimmer {
+    .liquid-glass-shimmer,
+    .glass::before,
+    .glass-strong::before {
       display: none;
     }
 

@@ -265,15 +265,16 @@ LiquidGlassLayers.displayName = "LiquidGlassLayers";
 export const GlassSurface = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement> & { glassDepth?: LiquidGlassDepth }
->(({ className, children, glassDepth = "normal", ...props }, ref) => (
+>(({ className, children, glassDepth = "strong", ...props }, ref) => (
   <div
     ref={ref}
     data-glass-depth={glassDepth}
     className={cn(
       "relative overflow-hidden liquid-glass-host liquid-glass-surface liquid-glass-depth",
-      "bg-[var(--surface-1)] dark:bg-white/10",
-      "backdrop-blur-2xl backdrop-saturate-[170%]",
-      "border border-[var(--card-border)] dark:border-white/14",
+      // Translucent surface so the backdrop blur reads as real frosted glass.
+      "bg-white/55 dark:bg-white/10",
+      "backdrop-blur-2xl backdrop-saturate-[180%]",
+      "border border-white/60 dark:border-white/14",
       "shadow-[var(--shadow-soft)]",
       "rounded-2xl",
       className
