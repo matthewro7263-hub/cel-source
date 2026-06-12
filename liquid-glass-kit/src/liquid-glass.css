@@ -1,0 +1,441 @@
+:root {
+  --lg-rim: rgba(255, 255, 255, 0.82);
+  --lg-rim-shadow: rgba(94, 82, 143, 0.14);
+  --lg-glow: rgba(255, 255, 255, 0.34);
+}
+
+.liquid-glass {
+  --lg-x: 50%;
+  --lg-y: 50%;
+  --lg-w: 180px;
+  --lg-h: 112px;
+  --lg-radius: 36px;
+  --lg-filter: none;
+  --lg-blur: 0px;
+  --lg-opacity: 1;
+  --lg-lift: 1;
+  --lg-stretch-x: 1;
+  --lg-stretch-y: 1;
+  --lg-edge: 0.34;
+  --lg-glow-opacity: 0.26;
+  position: relative;
+  display: inline-grid;
+  isolation: isolate;
+  border-radius: inherit;
+}
+
+.liquid-glass[data-lg-fit="block"] {
+  display: grid;
+  width: 100%;
+}
+
+.lg-slider .lg-slider__rail.liquid-glass[data-lg-fit="block"] {
+  width: min(100%, 240px);
+}
+
+/* Pointer Events drive the drag springs; stop touch scrolling from hijacking. */
+.lg-slider__rail,
+.lg-switch {
+  touch-action: none;
+}
+
+.liquid-glass[data-lg-dragging="true"] {
+  cursor: grabbing;
+}
+
+.liquid-glass__content {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  border-radius: inherit;
+  filter: var(--lg-filter);
+  will-change: filter;
+}
+
+.liquid-glass__lens {
+  position: absolute;
+  z-index: 3;
+  left: calc(var(--lg-x) - (var(--lg-w) / 2));
+  top: calc(var(--lg-y) - (var(--lg-h) / 2));
+  width: var(--lg-w);
+  height: var(--lg-h);
+  border-radius: var(--lg-radius);
+  pointer-events: none;
+  opacity: var(--lg-opacity);
+  background:
+    radial-gradient(ellipse at 30% 16%, rgba(255, 255, 255, calc(0.22 + (var(--lg-edge) * 0.22))), transparent 46%),
+    radial-gradient(ellipse at 78% 88%, rgba(63, 72, 132, calc(0.035 + (var(--lg-edge) * 0.09))), transparent 58%),
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, calc(0.10 + (var(--lg-glow-opacity) * 0.08))) 0%,
+      rgba(255, 255, 255, calc(0.03 + (var(--lg-glow-opacity) * 0.04))) 48%,
+      rgba(76, 73, 122, calc(0.035 + (var(--lg-edge) * 0.08))) 100%
+    );
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, calc(0.18 + (var(--lg-edge) * 0.92))),
+    inset 0 1px 2px rgba(255, 255, 255, 0.62),
+    inset 0 -10px 18px rgba(54, 52, 96, calc(0.035 + (var(--lg-edge) * 0.12))),
+    inset 10px 0 18px rgba(255, 255, 255, calc(var(--lg-edge) * 0.16)),
+    inset -10px 0 18px rgba(74, 70, 125, calc(var(--lg-edge) * 0.08)),
+    0 4px 7px rgba(94, 82, 143, calc(0.04 + (var(--lg-glow-opacity) * 0.08))),
+    0 18px 40px rgba(94, 82, 143, calc(0.06 + (var(--lg-glow-opacity) * 0.20))),
+    0 0 calc(var(--lg-glow-opacity) * 28px) rgba(255, 255, 255, calc(var(--lg-glow-opacity) * 0.24));
+  backdrop-filter: blur(var(--lg-blur)) saturate(1.25);
+  -webkit-backdrop-filter: blur(var(--lg-blur)) saturate(1.25);
+  overflow: hidden;
+  transform: translateZ(0) scale(var(--lg-lift)) scale(var(--lg-stretch-x), var(--lg-stretch-y));
+  /* Transform is driven per-frame by the JS springs; easing it in CSS too causes lag. */
+  transition: box-shadow 0.18s ease;
+}
+
+.liquid-glass__lens::before,
+.liquid-glass__lens::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.liquid-glass__lens::before {
+  background:
+    radial-gradient(ellipse at 42% 18%, rgba(255, 255, 255, calc(var(--lg-edge) * 0.24)), transparent 28%),
+    linear-gradient(
+      var(--lg-specular-angle),
+      transparent 18%,
+      rgba(255, 255, 255, calc(var(--lg-glow-opacity) * 0.11)) 48%,
+      transparent 78%
+    );
+}
+
+.liquid-glass__lens::after {
+  box-shadow:
+    inset 1px 1px 2px rgba(255, 255, 255, calc(0.28 + (var(--lg-edge) * 0.62))),
+    inset -1px -1px 2px rgba(82, 76, 114, calc(var(--lg-edge) * 0.26)),
+    inset 0 -1px 0 rgba(56, 52, 96, calc(var(--lg-edge) * 0.12));
+}
+
+/* Engines without backdrop-filter: densify the lens fill so it still reads as
+   frosted glass even though it cannot blur what is behind it. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .liquid-glass__lens {
+    background:
+      radial-gradient(ellipse at 30% 16%, rgba(255, 255, 255, calc(0.30 + (var(--lg-edge) * 0.22))), transparent 52%),
+      radial-gradient(ellipse at 78% 88%, rgba(63, 72, 132, calc(0.05 + (var(--lg-edge) * 0.09))), transparent 58%),
+      linear-gradient(
+        180deg,
+        rgba(255, 255, 255, calc(0.34 + (var(--lg-glow-opacity) * 0.08))) 0%,
+        rgba(255, 255, 255, calc(0.22 + (var(--lg-glow-opacity) * 0.04))) 48%,
+        rgba(76, 73, 122, calc(0.06 + (var(--lg-edge) * 0.08))) 100%
+      );
+  }
+}
+
+.liquid-glass__defs {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.lg-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px 28px;
+  border-radius: 999px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #3d394b;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  border: 1px solid rgba(218, 214, 235, 0.8);
+  background: rgba(255, 255, 255, 0.70);
+  box-shadow: 0 20px 70px rgba(94, 82, 143, 0.14);
+}
+
+.lg-card {
+  padding: 28px;
+  border-radius: 38px;
+  background: rgba(255, 255, 255, 0.66);
+  border: 1px solid rgba(218, 214, 235, 0.74);
+  overflow: hidden;
+}
+
+.lg-switch {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: min(100%, 158px);
+  height: 82px;
+  margin: 16px auto 0;
+  border-radius: 25px;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(235, 232, 248, 0.92);
+  cursor: pointer;
+  isolation: isolate;
+  overflow: hidden;
+  box-shadow: 0 18px 42px rgba(111, 96, 171, 0.08);
+}
+
+.lg-switch__rail {
+  --switch-progress: 0;
+  position: relative;
+  width: 74px;
+  height: 28px;
+  border-radius: 999px;
+  background:
+    radial-gradient(ellipse at 28% 22%, rgba(255, 255, 255, 0.78), transparent 54%),
+    linear-gradient(90deg, rgba(244, 242, 250, 0.96), rgba(236, 233, 247, 0.96));
+  box-shadow:
+    inset 0 0 0 1px rgba(214, 209, 235, 0.74),
+    inset 0 1px 2px rgba(255, 255, 255, 0.84),
+    inset 0 -5px 10px rgba(106, 96, 172, 0.08);
+  isolation: isolate;
+  overflow: visible;
+  transition: background 0.28s ease;
+}
+
+.lg-switch__fill {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background:
+    linear-gradient(90deg, #968cff 0%, #dad6ff 76%, #f6f4ff 100%);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.32s ease;
+}
+
+.lg-switch__thumb {
+  position: absolute;
+  z-index: 4;
+  top: 50%;
+  left: 0;
+  width: 44px;
+  height: 22px;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 34% 24%, rgba(255, 255, 255, 0.98), transparent 44%),
+    rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(218, 214, 235, 0.94);
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.95),
+    0 5px 12px rgba(94, 82, 143, 0.12);
+  pointer-events: none;
+  will-change: transform, opacity;
+  transform-origin: center;
+}
+
+.lg-slider__rail.liquid-glass .liquid-glass__lens,
+.lg-switch__rail.liquid-glass .liquid-glass__lens {
+  background:
+    radial-gradient(ellipse at 28% 18%, rgba(255, 255, 255, 0.72), transparent 48%),
+    radial-gradient(ellipse at 70% 86%, rgba(128, 120, 183, 0.08), transparent 62%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0.13) 48%, rgba(130, 122, 186, 0.12));
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.74),
+    inset 0 1px 2px rgba(255, 255, 255, 0.74),
+    inset 0 -5px 9px rgba(92, 83, 146, 0.12),
+    0 2px 4px rgba(93, 82, 145, 0.10),
+    0 8px 16px rgba(93, 82, 145, 0.14);
+}
+
+.lg-slider__rail.liquid-glass .liquid-glass__lens::before,
+.lg-switch__rail.liquid-glass .liquid-glass__lens::before {
+  background:
+    radial-gradient(ellipse at 34% 18%, rgba(255, 255, 255, 0.26), transparent 32%),
+    linear-gradient(130deg, transparent 20%, rgba(255, 255, 255, 0.08) 49%, transparent 76%);
+}
+
+.lg-slider__rail.liquid-glass .liquid-glass__lens::after,
+.lg-switch__rail.liquid-glass .liquid-glass__lens::after {
+  box-shadow:
+    inset 1px 1px 2px rgba(255, 255, 255, 0.58),
+    inset -1px -1px 2px rgba(93, 82, 145, 0.12),
+    inset 0 -1px 0 rgba(93, 82, 145, 0.10);
+}
+
+.lg-switch__rail.liquid-glass .liquid-glass__lens {
+  background:
+    radial-gradient(ellipse at 30% 16%, rgba(255, 255, 255, 0.86), transparent 48%),
+    radial-gradient(ellipse at 76% 84%, rgba(145, 135, 214, 0.06), transparent 62%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.62), rgba(255, 255, 255, 0.32) 54%, rgba(178, 170, 230, 0.10));
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.88),
+    inset 0 1px 2px rgba(255, 255, 255, 0.88),
+    inset 0 -4px 8px rgba(132, 121, 190, 0.06),
+    0 2px 4px rgba(93, 82, 145, 0.08),
+    0 8px 15px rgba(93, 82, 145, 0.10);
+}
+
+.lg-switch__rail.liquid-glass .liquid-glass__lens::before {
+  background:
+    radial-gradient(ellipse at 35% 18%, rgba(255, 255, 255, 0.30), transparent 34%),
+    linear-gradient(130deg, transparent 22%, rgba(255, 255, 255, 0.07) 48%, transparent 74%);
+}
+
+.lg-switch__rail.liquid-glass .liquid-glass__lens::after {
+  box-shadow:
+    inset 1px 1px 2px rgba(255, 255, 255, 0.70),
+    inset -1px -1px 2px rgba(118, 108, 170, 0.07),
+    inset 0 -1px 0 rgba(118, 108, 170, 0.06);
+}
+
+.lg-switch[data-switch-dragging="true"] .lg-switch__fill,
+.lg-switch[data-switch-dragging="true"] .lg-switch__rail {
+  transition: none;
+}
+
+.lg-switch__native {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.lg-toggle-group {
+  --toggle-highlight-x: 0px;
+  --toggle-highlight-w: 96px;
+  --toggle-white-opacity: 0.86;
+  --toggle-rim-opacity: 0;
+  --toggle-shadow-opacity: 0.10;
+  position: relative;
+  display: flex;
+  gap: 0;
+  padding: 7px;
+  border-radius: 999px;
+  background:
+    radial-gradient(ellipse at 28% 18%, rgba(255, 255, 255, 0.92), transparent 44%),
+    linear-gradient(180deg, rgba(250, 249, 253, 0.98), rgba(239, 236, 248, 0.94));
+  border: 1px solid rgba(218, 214, 235, 0.84);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.90),
+    inset 0 -12px 22px rgba(118, 104, 172, 0.08),
+    0 16px 34px rgba(94, 82, 143, 0.08);
+  isolation: isolate;
+  overflow: visible;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.lg-toggle-group [data-toggle-option] {
+  position: relative;
+  z-index: 4;
+  flex: 1;
+  padding: 14px 18px;
+  border-radius: 999px;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 700;
+  color: rgba(47, 42, 61, 0.52);
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  background: transparent;
+  border: none;
+  transition: color 0.25s ease;
+}
+
+.lg-toggle-group [data-toggle-option].active {
+  color: rgba(33, 29, 45, 0.94);
+}
+
+.lg-toggle-group__highlight {
+  position: absolute;
+  left: 0;
+  top: 7px;
+  width: var(--toggle-highlight-w);
+  height: calc(100% - 14px);
+  border-radius: 999px;
+  background:
+    radial-gradient(ellipse at 32% 18%, rgba(255, 255, 255, calc(var(--toggle-white-opacity) * 0.92)), transparent 50%),
+    rgba(255, 255, 255, var(--toggle-white-opacity));
+  box-shadow:
+    inset 0 0 0 1px rgba(40, 35, 60, var(--toggle-rim-opacity)),
+    inset 0 1px 1px rgba(255, 255, 255, calc(var(--toggle-white-opacity) * 0.82)),
+    0 5px 12px rgba(94, 82, 143, calc(var(--toggle-shadow-opacity) * 0.46)),
+    0 14px 24px rgba(47, 39, 60, var(--toggle-shadow-opacity));
+  opacity: 1;
+  pointer-events: none;
+  z-index: 1;
+  transform:
+    translate3d(var(--toggle-highlight-x), 0, 0)
+    scale(var(--toggle-scale, 1));
+  transform-origin: center;
+  will-change: transform, opacity, box-shadow;
+  /* No transitions: opacity/box-shadow custom properties are written per frame
+     by the spring loop, and CSS easing on top causes flicker. */
+}
+
+.lg-toggle-group__highlight::after {
+  content: "";
+  position: absolute;
+  left: 15%;
+  right: 15%;
+  bottom: -8px;
+  height: 13px;
+  border-radius: 999px;
+  background: rgba(45, 39, 58, 0.22);
+  filter: blur(11px);
+  opacity: var(--toggle-shadow-opacity);
+  pointer-events: none;
+}
+
+.lg-toggle-group[data-toggle-dragging="true"] .lg-toggle-group__highlight {
+  background:
+    radial-gradient(ellipse at 32% 18%, rgba(255, 255, 255, calc(var(--toggle-white-opacity) * 0.72)), transparent 50%),
+    rgba(255, 255, 255, var(--toggle-white-opacity));
+}
+
+.lg-toggle-group[data-toggle-dragging="true"] .lg-toggle-group__highlight::after {
+  opacity: 0.62;
+  transform: scaleX(1.08);
+}
+
+.lg-toggle-group.liquid-glass .liquid-glass__lens {
+  background: transparent;
+  box-shadow:
+    inset 0 0 0 1px rgba(40, 35, 60, var(--toggle-rim-opacity)),
+    inset 0 1px 1px rgba(255, 255, 255, 0.16),
+    0 12px 24px rgba(47, 39, 60, calc(var(--toggle-shadow-opacity) * 0.92));
+}
+
+.lg-toggle-group.liquid-glass .liquid-glass__lens::before {
+  background: radial-gradient(ellipse at 42% 16%, rgba(255, 255, 255, 0.10), transparent 32%);
+}
+
+.lg-toggle-group.liquid-glass .liquid-glass__lens::after {
+  box-shadow:
+    inset 0 0 0 1px rgba(40, 35, 60, var(--toggle-rim-opacity)),
+    inset 0 1px 1px rgba(255, 255, 255, 0.12);
+}
+
+.lg-toggle-group[data-toggle-dragging="true"].liquid-glass .liquid-glass__lens {
+  box-shadow:
+    inset 0 0 0 1px rgba(40, 35, 60, var(--toggle-rim-opacity)),
+    inset 0 1px 1px rgba(255, 255, 255, 0.16),
+    0 13px 24px rgba(47, 39, 60, var(--toggle-shadow-opacity));
+}
+
+.lg-toggle-group[data-toggle-dragging="true"].liquid-glass .liquid-glass__lens::after {
+  box-shadow:
+    inset 0 0 0 1px rgba(40, 35, 60, var(--toggle-rim-opacity)),
+    inset 0 1px 1px rgba(255, 255, 255, 0.12);
+}
+
+.lg-video-controls {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.66);
+  border: 1px solid rgba(218, 214, 235, 0.76);
+}
