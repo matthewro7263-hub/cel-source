@@ -1,7 +1,7 @@
-import { call, check, summary, base } from "./lib.mjs";
+import { call, check, summary, base, demoProjectId } from "./lib.mjs";
 let r = await call("POST", "/api/auth/login", { email: "matthew@cel.app", password: "celdemo" });
 const token = r.json.token;
-const pid = (await call("GET", "/api/projects", undefined, token)).json[0].id;
+const pid = await demoProjectId(token);
 await call("POST", `/api/projects/${pid}/ai/key`, { key: "sk-real-key", model: "mock/model" }, token);
 r = await call("POST", `/api/projects/${pid}/ai/agent/check`, { scriptContent: "Bingo walks." }, token);
 check("agent check", r.status === 200 && r.json.feedback === "mock feedback", r);

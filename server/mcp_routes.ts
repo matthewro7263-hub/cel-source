@@ -1,6 +1,6 @@
 import { Express, Request, Response, NextFunction } from "express";
 import { storage } from "./storage";
-import { authenticateToken, canAccessProject, extractToken } from "./auth";
+import { authenticateToken, canAccessProject, canEditProject, extractToken } from "./auth";
 import { z } from "zod";
 
 /**
@@ -59,7 +59,7 @@ export function registerMcpRoutes(app: Express) {
       });
       const { projectId, shotId, status } = schema.parse(req.body);
 
-      if (!await canAccessProject(projectId, req.user!.id)) {
+      if (!await canEditProject(projectId, req.user!.id)) {
         return mcpError(res, "Forbidden", "FORBIDDEN", 403);
       }
 
@@ -124,7 +124,7 @@ export function registerMcpRoutes(app: Express) {
       // clients send bare base64, so wrap it.
       const fileData = rawFileData.startsWith("data:") ? rawFileData : `data:application/octet-stream;base64,${rawFileData}`;
 
-      if (!await canAccessProject(projectId, req.user!.id)) {
+      if (!await canEditProject(projectId, req.user!.id)) {
         return mcpError(res, "Forbidden", "FORBIDDEN", 403);
       }
 

@@ -221,13 +221,13 @@ const coreStorage = {
         ;
       const ids = memberRows.map((r) => r.projectId);
       if (ids.length === 0) {
-        return await db.select().from(projects).where(eq(projects.ownerId, userId));
+        return await db.select().from(projects).where(eq(projects.ownerId, userId)).orderBy(asc(projects.id));
       }
       return db
         .select()
         .from(projects)
         .where(or(eq(projects.ownerId, userId), inArray(projects.id, ids)))
-        ;
+        .orderBy(asc(projects.id));
     },
   /** True when the row exists AND belongs to the project; use before mutating nested resources by id. */
   async existsInProject(
@@ -267,7 +267,7 @@ const coreStorage = {
 
   // ===== MEMBERS =====
   async listMembers(projectId: number) {
-      const rows = await db.select().from(projectMembers).where(eq(projectMembers.projectId, projectId));
+      const rows = await db.select().from(projectMembers).where(eq(projectMembers.projectId, projectId)).orderBy(asc(projectMembers.id));
       if (rows.length === 0) return [];
       const userIds = rows.map(r => r.userId);
       const allUsers = await db.select().from(users).where(inArray(users.id, userIds));
@@ -279,6 +279,11 @@ const coreStorage = {
     },
   async addMember(m: InsertProjectMember) { return await db.insert(projectMembers).values(m).returning().then(r => r[0] as any); },
   async removeMember(projectId: number, userId: number) { return await db.delete(projectMembers).where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId))); },
+  async updateMemberRole(projectId: number, userId: number, role: string) { return await db.update(projectMembers).set({ role }).where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId))); },
+  async getMemberRole(projectId: number, userId: number): Promise<string | undefined> {
+    const row = await db.select({ role: projectMembers.role }).from(projectMembers).where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId))).then(r => r[0]);
+    return row?.role;
+  },
   async isMember(projectId: number, userId: number) {
       const row = await db.select().from(projectMembers).where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId))).then(r => r[0]);
       return !!row;
@@ -308,10 +313,10 @@ const coreStorage = {
   async deleteScript(id: number) { return await db.update(scripts).set({ deletedAt: new Date() }).where(eq(scripts.id, id)); },
 
   // ===== STORYBOARDS =====
-  async listStoryboards(projectId: number) { return await db.select().from(storyboards).where(eq(storyboards.projectId, projectId)); },
+  async listStoryboards(projectId: number) { return await db.select().from(storyboards).where(eq(storyboards.projectId, projectId)).orderBy(asc(storyboards.id)); },
   async listStoryboardsForProjectIds(projectIds: number[]) {
     if (projectIds.length === 0) return [];
-    return await db.select().from(storyboards).where(inArray(storyboards.projectId, projectIds));
+    return await db.select().from(storyboards).where(inArray(storyboards.projectId, projectIds)).orderBy(asc(storyboards.id));
   },
   async getStoryboard(id: number) { return await db.select().from(storyboards).where(eq(storyboards.id, id)).then(r => r[0]); },
   async createStoryboard(s: InsertStoryboard) { return await db.insert(storyboards).values({ ...s, createdAt: new Date() }).returning().then(r => r[0] as any); },
@@ -418,7 +423,7 @@ const coreStorage = {
   },
 
   // ===== ANIMATICS =====
-  async listAnimatics(projectId: number) { return await db.select().from(animatics).where(eq(animatics.projectId, projectId)); },
+  async listAnimatics(projectId: number) { return await db.select().from(animatics).where(eq(animatics.projectId, projectId)).orderBy(asc(animatics.id)); },
   async listAnimaticsLite(projectId: number) {
     return await db
       .select({
@@ -435,10 +440,10 @@ const coreStorage = {
   async deleteAnimatic(id: number) { return await db.delete(animatics).where(eq(animatics.id, id)); },
 
   // ===== SCENES =====
-  async listScenes(projectId: number) { return await db.select().from(scenes).where(and(eq(scenes.projectId, projectId), isNull(scenes.deletedAt))); },
+  async listScenes(projectId: number) { return await db.select().from(scenes).where(and(eq(scenes.projectId, projectId), isNull(scenes.deletedAt))).orderBy(asc(scenes.id)); },
   async listScenesForProjectIds(projectIds: number[]) {
     if (projectIds.length === 0) return [];
-    return await db.select().from(scenes).where(and(inArray(scenes.projectId, projectIds), isNull(scenes.deletedAt)));
+    return await db.select().from(scenes).where(and(inArray(scenes.projectId, projectIds), isNull(scenes.deletedAt))).orderBy(asc(scenes.id));
   },
   async getScene(id: number) { return await db.select().from(scenes).where(eq(scenes.id, id)).then(r => r[0]); },
   async createScene(s: InsertScene) { return await db.insert(scenes).values(s).returning().then(r => r[0] as any); },
@@ -718,7 +723,7 @@ const extraStorage = {
   async createAiChatMessage(data: InsertAiChatMessage) { return await db.insert(aiChatMessages).values({ ...data, createdAt: new Date() }).returning().then(r => r[0] as any); },
 
   // v4 Achievements
-  async listAchievements(userId: number) { return await db.select().from(achievements).where(eq(achievements.userId, userId)); },
+  async listAchievements(userId: number) { return await db.select().from(achievements).where(eq(achievements.userId, userId)).orderBy(asc(achievements.id)); },
   async hasAchievement(userId: number, code: string) { return !!await db.select().from(achievements).where(and(eq(achievements.userId, userId), eq(achievements.code, code))).then(r => r[0]); },
   async unlockAchievement(userId: number, code: string) { return await db.insert(achievements).values({ userId, code, unlockedAt: new Date() }).returning().then(r => r[0] as any); },
   async logUserActivity(userId: number, date: string) {
@@ -733,7 +738,7 @@ const extraStorage = {
   },
 
   // v4 Panel Pins
-  async listPanelPins(panelId: number) { return await db.select().from(panelPins).where(eq(panelPins.panelId, panelId)); },
+  async listPanelPins(panelId: number) { return await db.select().from(panelPins).where(eq(panelPins.panelId, panelId)).orderBy(asc(panelPins.id)); },
   async listPanelPinsForStoryboard(storyboardId: number) {
     const panelRows = await db
       .select({ id: storyboardPanels.id })
@@ -741,14 +746,14 @@ const extraStorage = {
       .where(eq(storyboardPanels.storyboardId, storyboardId));
     const panelIds = panelRows.map((p) => p.id);
     if (panelIds.length === 0) return [];
-    return await db.select().from(panelPins).where(inArray(panelPins.panelId, panelIds));
+    return await db.select().from(panelPins).where(inArray(panelPins.panelId, panelIds)).orderBy(asc(panelPins.id));
   },
   async createPanelPin(p: InsertPanelPin) { return await db.insert(panelPins).values({ ...p, createdAt: new Date() }).returning().then(r => r[0] as any); },
   async deletePanelPin(id: number) { return await db.delete(panelPins).where(eq(panelPins.id, id)); },
   async getPanelPin(id: number) { return await db.select().from(panelPins).where(eq(panelPins.id, id)).then(r => r[0]); },
 
   // v4 Commission Line Items
-  async listCommissionLineItems(commissionId: number) { return await db.select().from(commissionLineItems).where(eq(commissionLineItems.commissionId, commissionId)); },
+  async listCommissionLineItems(commissionId: number) { return await db.select().from(commissionLineItems).where(eq(commissionLineItems.commissionId, commissionId)).orderBy(asc(commissionLineItems.id)); },
   async createCommissionLineItem(item: InsertCommissionLineItem) { return await db.insert(commissionLineItems).values({ ...item, createdAt: new Date() }).returning().then(r => r[0] as any); },
   async updateCommissionLineItem(id: number, patch: Partial<InsertCommissionLineItem>) { return await db.update(commissionLineItems).set(patch).where(eq(commissionLineItems.id, id)).returning().then(r => r[0] as any); },
   async getCommissionLineItem(id: number) { return await db.select().from(commissionLineItems).where(eq(commissionLineItems.id, id)).then(r => r[0]); },
@@ -769,7 +774,7 @@ const extraStorage = {
   async getInboxItem(id: number) { return await db.select().from(inboxItems).where(eq(inboxItems.id, id)).then(r => r[0]); },
 
   // v4 Tags
-  async listTags(userId: number) { return await db.select().from(tags).where(eq(tags.userId, userId)); },
+  async listTags(userId: number) { return await db.select().from(tags).where(eq(tags.userId, userId)).orderBy(asc(tags.id)); },
   async createTag(t: InsertTag) { return await db.insert(tags).values(t).returning().then(r => r[0] as any); },
   async updateTag(id: number, patch: Partial<InsertTag>) { return await db.update(tags).set(patch).where(eq(tags.id, id)).returning().then(r => r[0] as any); },
   async deleteTag(id: number) {
@@ -779,18 +784,19 @@ const extraStorage = {
   async getTag(id: number) { return await db.select().from(tags).where(eq(tags.id, id)).then(r => r[0]); },
 
   // v4 Tag Assignments
-  async listTagAssignments(entityKind: string, entityId: number) { return await db.select().from(tagAssignments).where(and(eq(tagAssignments.entityKind, entityKind), eq(tagAssignments.entityId, entityId))); },
+  async listTagAssignments(entityKind: string, entityId: number) { return await db.select().from(tagAssignments).where(and(eq(tagAssignments.entityKind, entityKind), eq(tagAssignments.entityId, entityId))).orderBy(asc(tagAssignments.id)); },
   async createTagAssignment(a: InsertTagAssignment) { return await db.insert(tagAssignments).values(a).returning().then(r => r[0] as any); },
   async deleteTagAssignment(id: number) { return await db.delete(tagAssignments).where(eq(tagAssignments.id, id)); },
   async getTagAssignment(id: number) { return await db.select().from(tagAssignments).where(eq(tagAssignments.id, id)).then(r => r[0]); },
 
   // v4 Scene Time Entries
-  async listSceneTimeEntries(sceneId: number) { return await db.select().from(sceneTimeEntries).where(eq(sceneTimeEntries.sceneId, sceneId)); },
+  async listSceneTimeEntries(sceneId: number) { return await db.select().from(sceneTimeEntries).where(eq(sceneTimeEntries.sceneId, sceneId)).orderBy(asc(sceneTimeEntries.id)); },
   async listSceneTimeEntriesForUser(sceneId: number, userId: number) {
     return await db
       .select()
       .from(sceneTimeEntries)
-      .where(and(eq(sceneTimeEntries.sceneId, sceneId), eq(sceneTimeEntries.userId, userId)));
+      .where(and(eq(sceneTimeEntries.sceneId, sceneId), eq(sceneTimeEntries.userId, userId)))
+      .orderBy(asc(sceneTimeEntries.id));
   },
   async getActiveSceneTimersForProject(projectId: number, userId: number) {
     const projectScenes = await db
@@ -824,7 +830,7 @@ const extraStorage = {
     },
 
   // v4 Commission Pricing Presets
-  async listCommissionPricingPresets(projectId: number) { return await db.select().from(commissionPricingPresets).where(eq(commissionPricingPresets.projectId, projectId)); },
+  async listCommissionPricingPresets(projectId: number) { return await db.select().from(commissionPricingPresets).where(eq(commissionPricingPresets.projectId, projectId)).orderBy(asc(commissionPricingPresets.id)); },
   async createCommissionPricingPreset(p: InsertCommissionPricingPreset) { return await db.insert(commissionPricingPresets).values({ ...p, createdAt: new Date() }).returning().then(r => r[0] as any); },
   async updateCommissionPricingPreset(id: number, patch: Partial<InsertCommissionPricingPreset>) { return await db.update(commissionPricingPresets).set(patch).where(eq(commissionPricingPresets.id, id)).returning().then(r => r[0] as any); },
   async getCommissionPricingPreset(id: number) { return await db.select().from(commissionPricingPresets).where(eq(commissionPricingPresets.id, id)).then(r => r[0]); },
@@ -988,7 +994,7 @@ const extraStorage = {
 
   async listChallengePrompts() { return await db.select().from(challenge_prompts).orderBy(desc(challenge_prompts.weekNumber)); },
   
-  async listChallengeSubmissions(userId: number) { return await db.select().from(challenge_submissions).where(eq(challenge_submissions.userId, userId)); },
+  async listChallengeSubmissions(userId: number) { return await db.select().from(challenge_submissions).where(eq(challenge_submissions.userId, userId)).orderBy(desc(challenge_submissions.id)); },
 
   async createChallengeSubmission(submission: InsertChallengeSubmission & { userId: number }) { return await db.insert(challenge_submissions).values({ ...submission, createdAt: new Date() }).returning().then(r => r[0] as any); },
 
@@ -1101,13 +1107,13 @@ const extraStorage = {
     },
 
   // === LORE ADDITIONS START ===
-  async listLorFacts(projectId: number) { return await db.select().from(lor_continuity_facts).where(eq(lor_continuity_facts.projectId, projectId)); },
+  async listLorFacts(projectId: number) { return await db.select().from(lor_continuity_facts).where(eq(lor_continuity_facts.projectId, projectId)).orderBy(asc(lor_continuity_facts.id)); },
   async createLorFact(f: InsertLorContinuityFact) { return await db.insert(lor_continuity_facts).values({ ...f, createdAt: new Date() }).returning().then(r => r[0] as any); },
   async updateLorFact(id: number, patch: Partial<InsertLorContinuityFact>) { return await db.update(lor_continuity_facts).set(patch).where(eq(lor_continuity_facts.id, id)).returning().then(r => r[0] as any); },
   async deleteLorFact(id: number) { return await db.delete(lor_continuity_facts).where(eq(lor_continuity_facts.id, id)); },
   async getLorFact(id: number) { return await db.select().from(lor_continuity_facts).where(eq(lor_continuity_facts.id, id)).then(r => r[0]); },
 
-  async listLorPalettes(projectId: number) { return await db.select().from(lor_palettes).where(eq(lor_palettes.projectId, projectId)); },
+  async listLorPalettes(projectId: number) { return await db.select().from(lor_palettes).where(eq(lor_palettes.projectId, projectId)).orderBy(asc(lor_palettes.id)); },
   async createLorPalette(p: InsertLorPalette) { return await db.insert(lor_palettes).values({ ...p, createdAt: new Date() }).returning().then(r => r[0] as any); },
   async deleteLorPalette(id: number) { return await db.delete(lor_palettes).where(eq(lor_palettes.id, id)); },
   async getLorPalette(id: number) { return await db.select().from(lor_palettes).where(eq(lor_palettes.id, id)).then(r => r[0]); },
@@ -1118,7 +1124,7 @@ const extraStorage = {
   async updateLorAssetVersion(id: number, patch: Partial<LorAssetVersion>) { return await db.update(lor_asset_versions).set(patch).where(eq(lor_asset_versions.id, id)).returning().then(r => r[0] as any); },
   async getLorAssetVersion(id: number) { return await db.select().from(lor_asset_versions).where(eq(lor_asset_versions.id, id)).then(r => r[0]); },
 
-  async listLorCasting(projectId: number) { return await db.select().from(lor_casting_matrix).where(eq(lor_casting_matrix.projectId, projectId)); },
+  async listLorCasting(projectId: number) { return await db.select().from(lor_casting_matrix).where(eq(lor_casting_matrix.projectId, projectId)).orderBy(asc(lor_casting_matrix.id)); },
   async upsertLorCasting(projectId: number, sceneId: number, entityId: number, present: boolean) {
       const existing = await db.select().from(lor_casting_matrix).where(
         and(

@@ -1,10 +1,10 @@
 import { createRequire } from "node:module";
-import { call, check, summary, png, base } from "./lib.mjs";
+import { call, check, summary, png, base, demoProjectId } from "./lib.mjs";
 // Node 20 has no global WebSocket; use the server's own `ws` dependency.
 const WS = createRequire(import.meta.url)("ws");
 let r = await call("POST", "/api/auth/login", { email: "matthew@cel.app", password: "celdemo" });
 const token = r.json.token;
-const pid = (await call("GET", "/api/projects", undefined, token)).json[0].id;
+const pid = await demoProjectId(token);
 const wsBase = base.replace(/^http/, "ws");
 const get = async (p) => { const res = await fetch(base + p, { headers: { authorization: "Bearer " + token } }); const b = Buffer.from(await res.arrayBuffer()); return { status: res.status, type: res.headers.get("content-type"), len: b.length, head: b.subarray(0, 8).toString("latin1"), text: b.length < 400 ? b.toString() : "" }; };
 for (const kind of ["scenes-csv", "comments-csv", "storyboards-zip-png", "scripts-pdf", "credit-roll-png"]) {

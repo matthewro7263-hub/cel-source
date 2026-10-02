@@ -57,36 +57,57 @@ export async function attachOptionalUser(req: Request, _res: Response, next: Nex
 }
 
 // ===== Project access (with a short-lived cache) =====
+// Roles: owner (ownerId) > editor > reviewer. Reviewers can read and take part in review (comments, pins,
+// sign-off, feedback) but not change production content, see canEditProject.
+export type ProjectRole = "owner" | "editor" | "reviewer";
 const ACCESS_CACHE_TTL_MS = 60_000;
-const accessCache = new Map<string, { allowed: boolean; expiresAt: number }>();
+const roleCache = new Map<string, { role: ProjectRole | null; expiresAt: number }>();
 
-function pruneAccessCache(now = Date.now()) {
-  for (const [key, entry] of accessCache) {
-    if (now >= entry.expiresAt) accessCache.delete(key);
+function pruneRoleCache(now = Date.now()) {
+  for (const [key, entry] of roleCache) {
+    if (now >= entry.expiresAt) roleCache.delete(key);
   }
 }
 
 export function invalidateProjectAccess(projectId: number, userId?: number) {
   if (userId !== undefined) {
-    accessCache.delete(`${projectId}:${userId}`);
+    roleCache.delete(`${projectId}:${userId}`);
     return;
   }
   const prefix = `${projectId}:`;
-  for (const key of accessCache.keys()) {
-    if (key.startsWith(prefix)) accessCache.delete(key);
+  for (const key of roleCache.keys()) {
+    if (key.startsWith(prefix)) roleCache.delete(key);
   }
 }
 
-export async function canAccessProject(projectId: number, userId: number): Promise<boolean> {
-  pruneAccessCache();
+export async function getProjectRole(projectId: number, userId: number): Promise<ProjectRole | null> {
+  pruneRoleCache();
   const key = `${projectId}:${userId}`;
-  const cached = accessCache.get(key);
-  if (cached && Date.now() < cached.expiresAt) return cached.allowed;
+  const cached = roleCache.get(key);
+  if (cached && Date.now() < cached.expiresAt) return cached.role;
 
-  const p = await storage.getProject(projectId);
-  const allowed = !!p && (p.ownerId === userId || (await storage.isMember(projectId, userId)));
-  accessCache.set(key, { allowed, expiresAt: Date.now() + ACCESS_CACHE_TTL_MS });
-  return allowed;
+  const project = await storage.getProject(projectId);
+  let role: ProjectRole | null = null;
+  if (project) {
+    if (project.ownerId === userId) role = "owner";
+    else {
+      const memberRole = await storage.getMemberRole(projectId, userId);
+      if (memberRole !== undefined) role = memberRole === "reviewer" ? "reviewer" : "editor";
+    }
+  }
+  roleCache.set(key, { role, expiresAt: Date.now() + ACCESS_CACHE_TTL_MS });
+  return role;
+}
+
+/** Any member (owner, editor or reviewer): may read the project. */
+export async function canAccessProject(projectId: number, userId: number): Promise<boolean> {
+  return (await getProjectRole(projectId, userId)) !== null;
+}
+
+/** Owner or editor: may change production content. Reviewers are read/comment only. */
+export async function canEditProject(projectId: number, userId: number): Promise<boolean> {
+  const role = await getProjectRole(projectId, userId);
+  return role === "owner" || role === "editor";
 }
 
 // ===== Admin gate =====

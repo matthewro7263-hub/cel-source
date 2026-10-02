@@ -1,13 +1,13 @@
 // Exercises every feature module's write paths as the real client uses them and fails on any 5xx
 // or unexpected 4xx. Authorization expectations (403/404) are asserted explicitly.
-import { call, check, summary, png } from "./lib.mjs";
+import { call, check, summary, png, demoProjectId } from "./lib.mjs";
 
 let r = await call("POST", "/api/auth/login", { email: "matthew@cel.app", password: "celdemo" });
 const token = r.json.token; const uid = r.json.user.id;
 const uniq = Date.now();
 r = await call("POST", "/api/auth/signup", { email: `o${uniq}@example.com`, name: "Other", password: "password123" });
 const otherToken = r.json.token;
-const pid = (await call("GET", "/api/projects", undefined, token)).json[0].id;
+const pid = await demoProjectId(token);
 const sceneId = (await call("GET", `/api/projects/${pid}/scenes`, undefined, token)).json[0]?.id;
 const storyboards = (await call("GET", `/api/projects/${pid}/storyboards`, undefined, token)).json;
 

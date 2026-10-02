@@ -1,4 +1,4 @@
-import { requireAuth, canAccessProject } from "../../auth.js";
+import { requireAuth, canAccessProject, canEditProject } from "../../auth.js";
 import { Router, Request, Response, NextFunction } from "express";
 import { db } from "../../storage.js";
 import { storage } from "../../storage.js";
@@ -71,7 +71,7 @@ bakRouter.post("/projects/:id/snapshots/:snapId/restore", requireAuth, async (re
   const projectId = parseInt(String(req.params.id), 10);
   const snapId = parseInt(String(req.params.snapId), 10);
   
-  if (!(await canAccessProject(projectId, req.user!.id))) {
+  if (!(await canEditProject(projectId, req.user!.id))) {
     return res.status(403).json({ message: "Forbidden" });
   }
 
@@ -139,7 +139,7 @@ bakRouter.post("/scenes/:id/gltf-stub", requireAuth, async (req, res) => {
   const sceneObj = await db.select().from(scenes).where(eq(scenes.id, sceneId)).then((r) => r[0]);
   
   if (!sceneObj) return res.status(404).json({ message: "Scene not found" });
-  if (!(await canAccessProject(sceneObj.projectId, req.user!.id))) {
+  if (!(await canEditProject(sceneObj.projectId, req.user!.id))) {
     return res.status(403).json({ message: "Forbidden" });
   }
 
@@ -309,7 +309,7 @@ bakRouter.post("/trash/restore/:kind/:id", requireAuth, async (req, res) => {
     return res.status(400).json({ message: "Invalid kind" });
   }
 
-  if (!(await canAccessProject(projectId, req.user!.id))) {
+  if (!(await canEditProject(projectId, req.user!.id))) {
     return res.status(403).json({ message: "No access" });
   }
 
@@ -353,7 +353,7 @@ bakRouter.delete("/trash/permanent/:kind/:id", requireAuth, async (req, res) => 
     return res.status(400).json({ message: "Invalid kind" });
   }
 
-  if (!(await canAccessProject(projectId, req.user!.id))) {
+  if (!(await canEditProject(projectId, req.user!.id))) {
     return res.status(403).json({ message: "No access" });
   }
 

@@ -1619,6 +1619,7 @@ function SettingsTab({ project, members }: { project: Project; members: ProjectD
   const [deadline, setDeadline] = useState(project.deadline || "");
   const [shareEnabled, setShareEnabled] = useState(project.shareEnabled);
   const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState<"editor" | "reviewer">("editor");
   const [deleteConfirmName, setDeleteConfirmName] = useState("");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const { toast } = useToast();
@@ -1650,7 +1651,7 @@ function SettingsTab({ project, members }: { project: Project; members: ProjectD
     },
   });
   const invite = useMutation({
-    mutationFn: async () => (await apiRequest("POST", `/api/projects/${project.id}/members`, { email: inviteEmail })).json(),
+    mutationFn: async () => (await apiRequest("POST", `/api/projects/${project.id}/members`, { email: inviteEmail, role: inviteRole })).json(),
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.project(project.id) });
       setInviteEmail("");
@@ -1661,6 +1662,12 @@ function SettingsTab({ project, members }: { project: Project; members: ProjectD
       }
     },
     onError: (err: any) => toast({ title: "Couldn't invite", description: String(err.message || err), variant: "destructive" }),
+  });
+  const changeRole = useMutation({
+    mutationFn: async ({ userId, role }: { userId: number; role: "editor" | "reviewer" }) =>
+      (await apiRequest("PATCH", `/api/projects/${project.id}/members/${userId}`, { role })).json(),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.project(project.id) }),
+    onError: (err: any) => toast({ title: "Couldn't change role", description: String(err.message || err), variant: "destructive" }),
   });
   const removeMember = useMutation({
     mutationFn: async (userId: number) =>
@@ -1706,9 +1713,21 @@ function SettingsTab({ project, members }: { project: Project; members: ProjectD
                 </Avatar>
                 <div className="min-w-0">
                   <div className="text-sm font-medium truncate">{m.user.name}</div>
-                  <div className="text-xs text-muted-foreground truncate">{m.user.email} · {m.role}</div>
+                  <div className="text-xs text-muted-foreground truncate">{m.user.email} · {m.role}{m.role === "reviewer" ? " (comment only)" : ""}</div>
                 </div>
               </div>
+              {m.role !== "owner" && isOwner && (
+                <select
+                  className="h-7 rounded-md border border-border bg-background px-1.5 text-xs"
+                  value={m.role === "reviewer" ? "reviewer" : "editor"}
+                  onChange={(e) => changeRole.mutate({ userId: m.user!.id, role: e.target.value as "editor" | "reviewer" })}
+                  aria-label={`Role for ${m.user.name}`}
+                  data-testid={`select-role-${m.user.id}`}
+                >
+                  <option value="editor">Editor</option>
+                  <option value="reviewer">Reviewer</option>
+                </select>
+              )}
               {m.role !== "owner" && (isOwner || m.user.id === currentUser?.id) && (
                 <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" title={m.user.id === currentUser?.id && !isOwner ? "Leave project" : "Remove member"} onClick={() => removeMember.mutate(m.user!.id)} data-testid={`button-remove-${m.user.id}`}>
                   <X size={14} />
@@ -1718,6 +1737,16 @@ function SettingsTab({ project, members }: { project: Project; members: ProjectD
           ))}
           {isOwner && <div className="flex gap-2 pt-2">
             <Input type="email" placeholder="someone@studio.com" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} data-testid="input-invite-email" />
+            <select
+              className="h-9 rounded-md border border-border bg-background px-2 text-sm"
+              value={inviteRole}
+              onChange={(e) => setInviteRole(e.target.value as "editor" | "reviewer")}
+              aria-label="Role for the invited member"
+              data-testid="select-invite-role"
+            >
+              <option value="editor">Editor</option>
+              <option value="reviewer">Reviewer</option>
+            </select>
             <Button onClick={() => invite.mutate()} disabled={!inviteEmail || invite.isPending} data-testid="button-invite">Invite</Button>
           </div>}
         </div>

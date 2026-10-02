@@ -13,3 +13,11 @@ export function check(name, cond, detail) {
 }
 export function summary() { console.log(`\n${passes} passed, ${fails} failed`); return fails; }
 export const png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+
+/** The seeded demo project ("Bluey Fan Animation"); never rely on its position in /api/projects. */
+export async function demoProjectId(token) {
+  const projects = (await call("GET", "/api/projects", undefined, token)).json;
+  const demo = projects.find((p) => /^Bluey Fan Animation/.test(p.title));
+  if (!demo) throw new Error("demo project not found; was the database seeded?");
+  return demo.id;
+}

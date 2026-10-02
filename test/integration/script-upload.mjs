@@ -1,4 +1,4 @@
-import { call, check, summary, base } from "./lib.mjs";
+import { call, check, summary, base, demoProjectId } from "./lib.mjs";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 
@@ -23,7 +23,7 @@ function makePdf(text) {
 
 const login = await call("POST", "/api/auth/login", { email: "matthew@cel.app", password: "celdemo" });
 const token = login.json.token;
-const pid = (await call("GET", "/api/projects", undefined, token)).json[0].id;
+const pid = await demoProjectId(token);
 
 const upload = async (name, mime, buf) => {
   const fd = new FormData(); fd.append("file", new Blob([buf], { type: mime }), name);
