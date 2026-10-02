@@ -45,10 +45,12 @@ function sendJson(socket: WebSocket, payload: unknown) {
   if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(payload));
 }
 
-function broadcast(projectId: number, payload: unknown) {
+function broadcast(projectId: number, payload: unknown, except?: WebSocket) {
   const clients = rooms.get(projectId);
   if (!clients) return;
-  clients.forEach((client) => sendJson(client, payload));
+  clients.forEach((client) => {
+    if (client !== except) sendJson(client, payload);
+  });
 }
 
 function roomPresence(projectId: number) {
@@ -60,7 +62,7 @@ function roomPresence(projectId: number) {
 }
 
 export function registerReviewRoom(httpServer: Server) {
-  const wss = new WebSocketServer({ noServer: true });
+  const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 }); // default is 100MB
 
   httpServer.on("upgrade", (req, socket, head) => {
     const host = req.headers.host || "localhost";
@@ -106,11 +108,13 @@ export function registerReviewRoom(httpServer: Server) {
         const parsed = JSON.parse(raw.toString());
         const allowed = new Set(["cursor", "stroke", "clear", "playhead", "panel", "note", "script-cursor"]);
         if (!allowed.has(parsed.type)) return;
-        broadcast(meta.projectId, {
-          ...parsed,
-          userId: meta.userId,
-          sentAt: new Date().toISOString(),
-        });
+        // Clients already apply their own cursor/stroke/playhead locally, so echoing those back
+        // double-draws strokes and shows you as "another user". Notes have no local apply.
+        broadcast(
+          meta.projectId,
+          { ...parsed, userId: meta.userId, sentAt: new Date().toISOString() },
+          parsed.type === "note" ? undefined : ws,
+        );
       } catch {
         sendJson(ws, { type: "error", message: "Invalid review room message" });
       }

@@ -5,6 +5,7 @@ import { apiRequest, queryClient, getAuthToken } from "@/lib/queryClient";
 import { queryKeys } from "@/lib/queryKeys";
 import { assertOk } from "@/lib/assertOk";
 import { PanelImage } from "@/components/PanelImage";
+import { uploadPanelImage, type UploadedImage } from "@/lib/panelUpload";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -304,7 +305,7 @@ function StoryboardView({
   );
 
   const upload = useMutation({
-    mutationFn: async (data: { r2Key: string; caption: string }) => {
+    mutationFn: async (data: UploadedImage & { caption: string }) => {
       const r = await apiRequest("POST", `/api/storyboards/${board.id}/panels`, data);
       await assertOk(r);
       return r.json();
@@ -383,39 +384,8 @@ function StoryboardView({
           continue;
         }
 
-        const isHeic = file.name.toLowerCase().endsWith(".heic") || file.name.toLowerCase().endsWith(".heif");
-        let r2Key = "";
-
-        if (isHeic) {
-          const formData = new FormData();
-          formData.append("file", file);
-          const token = getAuthToken() || "";
-          const response = await fetch("/api/uploads/convert-heic", {
-            method: "POST",
-            headers: { Authorization: `Bearer ${token}` },
-            body: formData,
-          });
-          if (!response.ok) throw new Error("HEIC conversion or upload failed");
-          const result = await response.json();
-          r2Key = result.key;
-        } else {
-          const presignRes = await apiRequest("POST", "/api/uploads/presign", {
-            filename: file.name,
-            contentType: file.type || "image/png",
-          });
-          if (!presignRes.ok) throw new Error("Failed to get presigned upload URL");
-          const { url, key, headers } = await presignRes.json();
-
-          const uploadResponse = await fetch(url, {
-            method: "PUT",
-            headers: headers || {},
-            body: file,
-          });
-          if (!uploadResponse.ok) throw new Error("Cloud storage upload failed");
-          r2Key = key;
-        }
-
-        await upload.mutateAsync({ r2Key, caption: file.name });
+        const uploaded = await uploadPanelImage(file);
+        await upload.mutateAsync({ ...uploaded, caption: file.name });
       }
     } catch (err: any) {
       toast({ title: "Upload failed", description: String(err.message || err), variant: "destructive" });

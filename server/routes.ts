@@ -9,7 +9,7 @@ import {
   storage, db, hashPassword, verifyPassword, createSession,
   getSessionPayload, destroySession, genToken, verifySignedMedia,
 } from "./storage";
-import { presignDownload, putObject } from "./r2";
+import { isOwnedKey, presignDownload, putObject } from "./r2";
 import { notifyDiscord } from "./discord";
 import { sendError } from "./errors";
 import { encrypt, decrypt } from "./crypto";
@@ -44,6 +44,9 @@ import { registerReviewRoom, registerReviewRoomTicketRoute } from "./review_room
 import { registerMcpRoutes } from "./mcp_routes";
 import { registerBizRoutes } from "./biz_routes";
 import { uploadsRouter } from "./uploads_routes";
+
+/** R2 keys a client registers (panels, assets) must be ones that user uploaded, or they could mint presigned URLs for any object. */
+const notOwnedKey = (userId: number, key?: string | null) => !!key && !isOwnedKey(String(userId), key);
 
 // Overridable for tests / OpenAI-compatible proxies.
 const OPENROUTER_CHAT_URL = `${process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1"}/chat/completions`;
@@ -545,7 +548,8 @@ const upload = multer({
   app.get("/api/projects/:id/scripts", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
-    res.json(await storage.listScriptsLite(id));
+    // Full rows: the editor reads script content from this list, so the lite variant left it blank.
+    res.json(await storage.listScripts(id));
   });
   app.post("/api/projects/:id/scripts", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
@@ -617,6 +621,7 @@ const upload = multer({
       dialogue: z.string().optional().default(""),
     }).refine((data) => data.imageData || data.r2Key, { message: "imageData or r2Key required" });
     const body = schema.parse(req.body);
+    if (notOwnedKey(req.user!.id, body.r2Key)) return res.status(403).json({ message: "Invalid storage key" });
     if (body.imageData && body.imageData.length > 14 * 1024 * 1024) {
       return res.status(413).json({ message: "Image too large (max 10MB)" });
     }
@@ -650,6 +655,7 @@ const upload = multer({
     });
 
     const body = schema.parse(req.body);
+    if (body.panels.some((p) => notOwnedKey(req.user!.id, p.r2Key))) return res.status(403).json({ message: "Invalid storage key" });
     const existingPanels = await storage.listPanels(sbId);
     const startIdx = existingPanels.length;
 
@@ -685,6 +691,7 @@ const upload = multer({
       r2Key: z.string().nullable().optional(),
     });
     const patch = schema.parse(req.body);
+    if (notOwnedKey(req.user!.id, patch.r2Key)) return res.status(403).json({ message: "Invalid storage key" });
     res.json(await storage.updatePanel(id, patch));
   });
   app.delete ("/api/panels/:id", requireAuth, async (req, res) => {
@@ -900,6 +907,7 @@ const upload = multer({
       tags: z.string().optional().default(""),
     }).refine((body) => Boolean(body.r2Key || body.fileData), { message: "r2Key or fileData required" });
     const body = schema.parse(req.body);
+    if (notOwnedKey(req.user!.id, body.r2Key)) return res.status(403).json({ message: "Invalid storage key" });
     if (body.fileData && body.fileData.length > 14 * 1024 * 1024) {
       return res.status(413).json({ message: "File too large (max 10MB)" });
     }
@@ -1354,7 +1362,8 @@ const upload = multer({
     const p = await storage.getProjectByToken(token);
     if (!p || !p.shareEnabled) return res.status(404).json({ message: "Share link not found or disabled" });
     const owner = await storage.getUser(p.ownerId);
-    const scripts = await storage.listScriptsLite(p.id);
+    // Shared viewers read the script body, so this must be the full (non-lite) list.
+    const scripts = await storage.listScripts(p.id);
     const sbs = await storage.listStoryboards(p.id);
     const sharePanels = await storage.listPanelsForStoryboardIds(sbs.map((sb: any) => sb.id));
     const sharePanelsByStoryboard = new Map<number, any[]>();

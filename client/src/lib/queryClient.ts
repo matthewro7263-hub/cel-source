@@ -59,13 +59,39 @@ export async function apiRequest(
     credentials: "include",
   });
   if (res.status === 401) notifyUnauthorized();
+  // Mutations must fail loudly: callers do `(await apiRequest(...)).json()` and would otherwise
+  // run onSuccess with an error body. GETs keep returning the Response so callers can branch on
+  // 403/404 themselves.
+  if (!res.ok && method.toUpperCase() !== "GET") {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
   return res;
 }
 
-function formatApiError(status: number, text: string): string {
+/** Thrown by apiRequest for non-2xx mutation responses; message is safe to show in a toast. */
+export class ApiError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+async function readErrorMessage(res: Response): Promise<string> {
+  const text = await res.clone().text().catch(() => "");
+  let message = text;
+  try {
+    const body = JSON.parse(text);
+    message = body?.message ?? (typeof body?.error === "string" ? body.error : text);
+  } catch {
+    // not JSON: use the raw text
+  }
+  return formatApiError(res.status, message || res.statusText, true);
+}
+
+function formatApiError(status: number, text: string, messageOnly = false): string {
   if (status === 401) return "Session expired — please log in again.";
   if (status === 413) return "File too large — try a smaller upload.";
-  return `${status}: ${text}`;
+  return messageOnly && text ? text : `${status}: ${text}`;
 }
 
 /** Build an API URL from a React Query key (e.g. ["/api/projects", 5, "storyboards"]). */

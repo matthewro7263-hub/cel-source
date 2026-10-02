@@ -285,7 +285,7 @@ const coreStorage = {
     },
 
   // ===== SCRIPTS =====
-  async listScripts(projectId: number) { return await db.select().from(scripts).where(eq(scripts.projectId, projectId)); },
+  async listScripts(projectId: number) { return await db.select().from(scripts).where(and(eq(scripts.projectId, projectId), isNull(scripts.deletedAt))).orderBy(asc(scripts.id)); },
   async listScriptsLite(projectId: number) {
     return await db
       .select({

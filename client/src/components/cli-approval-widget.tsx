@@ -8,7 +8,12 @@ import { useToast } from "@/hooks/use-toast";
 import { PenTool, CheckCircle2, Eraser } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 
-export function CliApprovalWidget({ projectId, phase, brandColor = "#9DD0FF" }: { projectId: number, phase: string, brandColor?: string }) {
+/** Share-link visitors authenticate with the share token; members use their session. */
+function withShareToken(url: string, shareToken?: string) {
+  return shareToken ? `${url}?token=${encodeURIComponent(shareToken)}` : url;
+}
+
+export function CliApprovalWidget({ projectId, phase, brandColor = "#9DD0FF", shareToken }: { projectId: number, phase: string, brandColor?: string, shareToken?: string }) {
   const [open, setOpen] = useState(false);
   const [signedName, setSignedName] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -97,9 +102,9 @@ export function CliApprovalWidget({ projectId, phase, brandColor = "#9DD0FF" }: 
   };
 
   const { data: approvals = [] } = useQuery({
-    queryKey: ["/api/projects", projectId, "cli_approvals"],
+    queryKey: ["/api/projects", projectId, "cli_approvals", shareToken ?? "member"],
     queryFn: async () => {
-      const res = await fetch(`/api/projects/${projectId}/cli_approvals`);
+      const res = await apiRequest("GET", withShareToken(`/api/projects/${projectId}/cli_approvals`, shareToken));
       if (!res.ok) return [];
       return res.json();
     }
@@ -119,12 +124,12 @@ export function CliApprovalWidget({ projectId, phase, brandColor = "#9DD0FF" }: 
 
     setIsSubmitting(true);
     try {
-      await apiRequest("POST", `/api/projects/${projectId}/cli_approvals`, {
+      const res = await apiRequest("POST", withShareToken(`/api/projects/${projectId}/cli_approvals`, shareToken), {
         phase,
         signedName: signedName.trim(),
         signatureData,
-        signedAt: new Date().toISOString()
       });
+      if (!res.ok) throw new Error((await res.json().catch(() => null))?.message ?? `Request failed (${res.status})`);
 
       queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId, "cli_approvals"] });
       toast({ title: "Approved successfully" });

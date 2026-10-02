@@ -111,9 +111,19 @@ uploadsRouter.post("/convert-heic", requireUser, localUpload.single("file"), asy
     }
 
     // Convert HEIC buffer to WebP buffer using sharp
-    const webpBuffer = await sharp(req.file.buffer)
-      .webp({ quality: 80 })
-      .toBuffer();
+    let webpBuffer: Buffer;
+    try {
+      webpBuffer = await sharp(req.file.buffer).webp({ quality: 80 }).toBuffer();
+    } catch (convertErr) {
+      // sharp's prebuilt libvips cannot decode HEVC-based HEIC; say so instead of a bare 500.
+      console.warn("[uploads] image conversion failed:", (convertErr as Error).message);
+      return res.status(415).json({ error: "This image format can't be converted on the server. Please export it as JPEG or PNG and try again." });
+    }
+
+    // Without cloud storage configured, hand the converted image back inline instead.
+    if (!process.env.R2_BUCKET || !process.env.R2_ENDPOINT) {
+      return res.json({ imageData: `data:image/webp;base64,${webpBuffer.toString("base64")}` });
+    }
 
     // Save under user's directory in R2
     const key = `uploads/${req.user!.id}/storyboards/${randomUUID()}-${Date.now()}.webp`;

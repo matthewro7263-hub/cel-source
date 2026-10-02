@@ -8,7 +8,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { MessageSquarePlus } from "lucide-react";
 
-export function CliFeedbackModal({ projectId, sceneId, onComplete }: { projectId: number, sceneId?: number, onComplete?: () => void }) {
+export function CliFeedbackModal({ projectId, sceneId, onComplete, shareToken }: { projectId: number, sceneId?: number, onComplete?: () => void, shareToken?: string }) {
   const [open, setOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
@@ -23,7 +23,7 @@ export function CliFeedbackModal({ projectId, sceneId, onComplete }: { projectId
   const handleSubmit = async () => {
     setIsSubmitting(true);
     try {
-      await apiRequest("POST", `/api/projects/${projectId}/cli_feedback`, {
+      await apiRequest("POST", `/api/projects/${projectId}/cli_feedback${shareToken ? `?token=${encodeURIComponent(shareToken)}` : ""}`, {
         sceneId,
         fields: JSON.stringify(feedback)
       });
