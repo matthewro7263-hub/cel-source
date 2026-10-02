@@ -10,6 +10,7 @@ r = await call("POST", "/api/auth/signup", { email: `TEST${uniq}@example.com`, n
 check("dup signup (case) rejected", r.status === 400, r);
 r = await call("POST", "/api/auth/signup", { email: "bad", name: "", password: "x" });
 check("invalid signup -> 400", r.status === 400, r);
+check("validation errors are readable, not a JSON dump", typeof r.json.message === "string" && !r.json.message.trim().startsWith("[") && /email|password/.test(r.json.message), r.json);
 r = await call("POST", "/api/auth/login", { email: `TEST${uniq}@EXAMPLE.com`, password: "password123" });
 check("login case-insensitive", r.status === 200, r);
 r = await call("POST", "/api/auth/login", { email: `test${uniq}@example.com`, password: "wrong" });

@@ -16,6 +16,9 @@ import type { IncomingMessage } from "node:http";
 import { pool, migrateDatabase } from "./db";
 import { checkR2Health } from "./r2";
 import { ZodError } from "zod";
+import { installFriendlyZodMessages } from "./errors";
+
+installFriendlyZodMessages();
 
 const app = express();
 app.set("trust proxy", 1);
@@ -228,7 +231,7 @@ async function runMigrations() {
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     if (err instanceof ZodError) {
-      return res.status(400).json({ message: "Invalid request", issues: err.issues });
+      return res.status(400).json({ message: err.message, issues: err.issues });
     }
     const status = err.status || err.statusCode || 500;
     const message = status >= 500 && process.env.NODE_ENV === "production"
