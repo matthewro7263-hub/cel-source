@@ -16,6 +16,7 @@ import type { IncomingMessage } from "node:http";
 import { pool, migrateDatabase } from "./db";
 import { checkR2Health } from "./r2";
 import { ZodError } from "zod";
+import compression from "compression";
 import { installFriendlyZodMessages } from "./errors";
 
 installFriendlyZodMessages();
@@ -23,6 +24,18 @@ installFriendlyZodMessages();
 const app = express();
 app.set("trust proxy", 1);
 app.disable("x-powered-by");
+
+// gzip/deflate text compression: the JS bundle drops from ~1MB to ~330KB. Skip what is already
+// compressed or streamed: SSE (compression buffers it, breaking the AI chat), images, zips, media.
+app.use(
+  compression({
+    filter: (req, res) => {
+      const type = String(res.getHeader("Content-Type") ?? "");
+      if (/event-stream|^image\/|^video\/|^audio\/|zip|pdf|octet-stream/i.test(type)) return false;
+      return compression.filter(req, res);
+    },
+  }),
+);
 const startedAt = Date.now();
 
 const DEFAULT_ALLOWED_ORIGINS = [
@@ -277,6 +290,11 @@ async function runMigrations() {
   const host = process.env.HOST || "0.0.0.0";
   const listenOptions: { port: number; host: string; reusePort?: boolean } = { port, host };
   if (process.env.REUSE_PORT !== "false") listenOptions.reusePort = true;
+  // Render's load balancer reuses upstream connections for up to 60s; Node's default 5s keep-alive
+  // closes them first and surfaces as sporadic 502s. Stay above the balancer's idle timeout.
+  httpServer.keepAliveTimeout = 120_000;
+  httpServer.headersTimeout = 125_000;
+
   httpServer.listen(listenOptions, () => {
     log(`serving on ${host}:${port}`);
   });

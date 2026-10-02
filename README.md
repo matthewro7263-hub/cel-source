@@ -160,7 +160,7 @@ Cel is built in public. PRs welcome.
 1. Fork, then create a feature branch (`feat/<thing>` or `fix/<thing>`)
 2. `pnpm install && pnpm check && bun test` should all pass
 3. Open a PR against `main`
-4. Render will spin up a preview deploy for review
+4. CI runs typecheck, lint and tests; merging to `main` deploys to Render (see [docs/RENDER.md](docs/RENDER.md))
 
 For larger features, open an issue first so we can align on scope.
 

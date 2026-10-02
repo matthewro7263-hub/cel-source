@@ -134,6 +134,12 @@ check("delete project", r.status < 300, r);
     res = await fetch(base + "/" + asset.replace(/^\//, ""));
     check("fingerprinted assets are immutable", /immutable/.test(res.headers.get("cache-control") || ""), res.headers.get("cache-control"));
   }
+  res = await fetch(base + "/", { headers: { "accept-encoding": "gzip" } });
+  check("HTML is gzip-compressed", res.headers.get("content-encoding") === "gzip", res.headers.get("content-encoding"));
+  if (asset) {
+    res = await fetch(base + "/" + asset.replace(/^\//, ""), { headers: { "accept-encoding": "gzip" } });
+    check("JS bundle is gzip-compressed", res.headers.get("content-encoding") === "gzip", res.headers.get("content-encoding"));
+  }
   res = await fetch(base + "/health");
   check("security headers present", res.headers.get("x-content-type-options") === "nosniff" && !res.headers.get("x-powered-by"), [...res.headers.keys()]);
 }
