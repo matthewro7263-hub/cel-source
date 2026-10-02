@@ -1,7 +1,7 @@
 import { requireAuth, canAccessProject } from "./auth";
 import type { Express, Request, Response, NextFunction } from "express";
 import { db, storage } from "./storage";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import archiver from "archiver";
 import { getCanvasModule } from "./canvas_lazy";
 import { 
@@ -42,10 +42,10 @@ export function registerArchiveRoutes(app: Express) {
         exportedAt: new Date().toISOString(),
         project,
         members: await storage.listMembers(projectId),
-        scripts: await db.select().from(scripts).where(eq(scripts.projectId, projectId)),
+        scripts: await db.select().from(scripts).where(and(eq(scripts.projectId, projectId), isNull(scripts.deletedAt))),
         storyboards: await db.select().from(storyboards).where(eq(storyboards.projectId, projectId)),
         animatics: await db.select().from(animatics).where(eq(animatics.projectId, projectId)),
-        scenes: await db.select().from(scenes).where(eq(scenes.projectId, projectId)),
+        scenes: await db.select().from(scenes).where(and(eq(scenes.projectId, projectId), isNull(scenes.deletedAt))),
         comments: await db.select().from(comments).where(eq(comments.projectId, projectId)),
         assets: await db.select({
           id: assets.id,
@@ -60,7 +60,7 @@ export function registerArchiveRoutes(app: Express) {
           uploaderId: assets.uploaderId,
           createdAt: assets.createdAt,
           deletedAt: assets.deletedAt,
-        }).from(assets).where(eq(assets.projectId, projectId)),
+        }).from(assets).where(and(eq(assets.projectId, projectId), isNull(assets.deletedAt))),
         animaticProjects: await db.select().from(animaticProjects).where(eq(animaticProjects.projectId, projectId)),
         continuityFacts: await db.select().from(lor_continuity_facts).where(eq(lor_continuity_facts.projectId, projectId)),
         palettes: await db.select().from(lor_palettes).where(eq(lor_palettes.projectId, projectId)),
@@ -80,7 +80,7 @@ export function registerArchiveRoutes(app: Express) {
       // 2. Fetch related sub-data
       const sbIds = data.storyboards.map((s: any) => s.id);
       if (sbIds.length > 0) {
-        data.storyboardPanels = await db.select().from(storyboardPanels).where(inArray(storyboardPanels.storyboardId, sbIds));
+        data.storyboardPanels = await db.select().from(storyboardPanels).where(and(inArray(storyboardPanels.storyboardId, sbIds), isNull(storyboardPanels.deletedAt)));
         const panelIds = data.storyboardPanels.map((p: any) => p.id);
         if (panelIds.length > 0) {
           data.panelPins = await db.select().from(panelPins).where(inArray(panelPins.panelId, panelIds));
@@ -172,7 +172,7 @@ export function registerArchiveRoutes(app: Express) {
 
     try {
       if (kind === "scenes-csv") {
-        const rows = await db.select().from(scenes).where(eq(scenes.projectId, projectId));
+        const rows = await db.select().from(scenes).where(and(eq(scenes.projectId, projectId), isNull(scenes.deletedAt)));
         const csv = [
           "ID,Number,Title,Status,Deadline",
           ...rows.map(r => [r.id, csvField(r.number), csvField(r.title), csvField(r.status), csvField(r.deadline || "")].join(","))
@@ -202,7 +202,7 @@ export function registerArchiveRoutes(app: Express) {
 
         const storyboardIds = sbs.map(sb => sb.id);
         const allPanels = storyboardIds.length > 0
-          ? await db.select().from(storyboardPanels).where(inArray(storyboardPanels.storyboardId, storyboardIds))
+          ? await db.select().from(storyboardPanels).where(and(inArray(storyboardPanels.storyboardId, storyboardIds), isNull(storyboardPanels.deletedAt)))
           : [];
 
         const panelsByStoryboardId = allPanels.reduce((acc, panel) => {
@@ -235,7 +235,7 @@ export function registerArchiveRoutes(app: Express) {
       }
 
       if (kind === "scripts-pdf") {
-        const rows = await db.select().from(scripts).where(eq(scripts.projectId, projectId));
+        const rows = await db.select().from(scripts).where(and(eq(scripts.projectId, projectId), isNull(scripts.deletedAt)));
         if (rows.length === 0) {
           return res.status(404).json({ message: "No scripts to export" });
         }

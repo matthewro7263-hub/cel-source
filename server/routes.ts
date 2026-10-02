@@ -627,7 +627,7 @@ const upload = multer({
       return res.status(413).json({ message: "Image too large (max 10MB)" });
     }
     const panels = await storage.listPanels(sbId);
-    const orderIdx = panels.length;
+    const orderIdx = panels.reduce((max, p) => Math.max(max, p.orderIdx), -1) + 1;
     const panel = await storage.createPanel({
       storyboardId: sbId,
       orderIdx,
@@ -658,7 +658,7 @@ const upload = multer({
     const body = schema.parse(req.body);
     if (body.panels.some((p) => notOwnedKey(req.user!.id, p.r2Key))) return res.status(403).json({ message: "Invalid storage key" });
     const existingPanels = await storage.listPanels(sbId);
-    const startIdx = existingPanels.length;
+    const startIdx = existingPanels.reduce((max, p) => Math.max(max, p.orderIdx), -1) + 1;
 
     const panelsToCreate = body.panels.map((p, index) => ({
       storyboardId: sbId,

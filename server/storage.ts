@@ -304,7 +304,8 @@ const coreStorage = {
   async getScript(id: number) { return await db.select().from(scripts).where(eq(scripts.id, id)).then(r => r[0]); },
   async createScript(s: InsertScript) { return await db.insert(scripts).values({ ...s, updatedAt: new Date() }).returning().then(r => r[0] as any); },
   async updateScript(id: number, patch: Partial<InsertScript>) { return await db.update(scripts).set({ ...patch, updatedAt: new Date() }).where(eq(scripts.id, id)).returning().then(r => r[0] as any); },
-  async deleteScript(id: number) { return await db.delete(scripts).where(eq(scripts.id, id)); },
+  // Soft delete: rows go to Trash (restorable / permanently deletable via the bak router).
+  async deleteScript(id: number) { return await db.update(scripts).set({ deletedAt: new Date() }).where(eq(scripts.id, id)); },
 
   // ===== STORYBOARDS =====
   async listStoryboards(projectId: number) { return await db.select().from(storyboards).where(eq(storyboards.projectId, projectId)); },
@@ -320,7 +321,7 @@ const coreStorage = {
     },
 
   // ===== PANELS =====
-  async listPanels(storyboardId: number) { return await db.select().from(storyboardPanels).where(eq(storyboardPanels.storyboardId, storyboardId)).orderBy(asc(storyboardPanels.orderIdx)); },
+  async listPanels(storyboardId: number) { return await db.select().from(storyboardPanels).where(and(eq(storyboardPanels.storyboardId, storyboardId), isNull(storyboardPanels.deletedAt))).orderBy(asc(storyboardPanels.orderIdx)); },
   async listPanelsLite(storyboardId: number) {
     return await db
       .select({
@@ -371,7 +372,7 @@ const coreStorage = {
     return await db
       .select()
       .from(storyboardPanels)
-      .where(inArray(storyboardPanels.storyboardId, ids))
+      .where(and(inArray(storyboardPanels.storyboardId, ids), isNull(storyboardPanels.deletedAt)))
       .orderBy(asc(storyboardPanels.storyboardId), asc(storyboardPanels.orderIdx));
   },
   async createPanel(p: InsertPanel) { return await db.insert(storyboardPanels).values(p).returning().then(r => r[0] as any); },
@@ -391,7 +392,7 @@ const coreStorage = {
       }
     });
   },
-  async deletePanel(id: number) { return await db.delete(storyboardPanels).where(eq(storyboardPanels.id, id)); },
+  async deletePanel(id: number) { return await db.update(storyboardPanels).set({ deletedAt: new Date() }).where(eq(storyboardPanels.id, id)); },
   async getPanel(id: number) { return await db.select().from(storyboardPanels).where(eq(storyboardPanels.id, id)).then(r => r[0]); },
   async isR2KeyInProject(projectId: number, r2Key: string): Promise<boolean> {
     if (!r2Key) return false;
@@ -434,15 +435,15 @@ const coreStorage = {
   async deleteAnimatic(id: number) { return await db.delete(animatics).where(eq(animatics.id, id)); },
 
   // ===== SCENES =====
-  async listScenes(projectId: number) { return await db.select().from(scenes).where(eq(scenes.projectId, projectId)); },
+  async listScenes(projectId: number) { return await db.select().from(scenes).where(and(eq(scenes.projectId, projectId), isNull(scenes.deletedAt))); },
   async listScenesForProjectIds(projectIds: number[]) {
     if (projectIds.length === 0) return [];
-    return await db.select().from(scenes).where(inArray(scenes.projectId, projectIds));
+    return await db.select().from(scenes).where(and(inArray(scenes.projectId, projectIds), isNull(scenes.deletedAt)));
   },
   async getScene(id: number) { return await db.select().from(scenes).where(eq(scenes.id, id)).then(r => r[0]); },
   async createScene(s: InsertScene) { return await db.insert(scenes).values(s).returning().then(r => r[0] as any); },
   async updateScene(id: number, patch: Partial<InsertScene>) { return await db.update(scenes).set(patch).where(eq(scenes.id, id)).returning().then(r => r[0] as any); },
-  async deleteScene(id: number) { return await db.delete(scenes).where(eq(scenes.id, id)); },
+  async deleteScene(id: number) { return await db.update(scenes).set({ deletedAt: new Date() }).where(eq(scenes.id, id)); },
 
   // ===== COMMENTS =====
   async listComments(projectId: number, opts?: { limit?: number; cursor?: number }) {
@@ -488,9 +489,8 @@ const coreStorage = {
         createdAt: assets.createdAt,
         deletedAt: assets.deletedAt,
       };
-      const baseConditions = category
-        ? and(eq(assets.projectId, projectId), eq(assets.category, category))
-        : eq(assets.projectId, projectId);
+      const live = and(eq(assets.projectId, projectId), isNull(assets.deletedAt));
+      const baseConditions = category ? and(live, eq(assets.category, category)) : live;
       const conditions = opts?.cursor
         ? and(baseConditions, lt(assets.id, opts.cursor))
         : baseConditions;
@@ -523,13 +523,13 @@ const coreStorage = {
     return await db
       .select(cols)
       .from(assets)
-      .where(inArray(assets.projectId, projectIds))
+      .where(and(inArray(assets.projectId, projectIds), isNull(assets.deletedAt)))
       .orderBy(desc(assets.createdAt));
   },
   async getAsset(id: number) { return await db.select().from(assets).where(eq(assets.id, id)).then(r => r[0]); },
   async createAsset(a: InsertAsset) { return await db.insert(assets).values({ ...a, createdAt: new Date() }).returning().then(r => r[0] as any); },
   async updateAsset(id: number, patch: Partial<Pick<InsertAsset, 'notes' | 'tags' | 'category'>>) { return await db.update(assets).set(patch).where(eq(assets.id, id)).returning().then(r => r[0] as any); },
-  async deleteAsset(id: number) { return await db.delete(assets).where(eq(assets.id, id)); },
+  async deleteAsset(id: number) { return await db.update(assets).set({ deletedAt: new Date() }).where(eq(assets.id, id)); },
 
   // ===== COMMISSIONS =====
   async listCommissions(ownerUserId: number) { return await db.select().from(commissions).where(eq(commissions.ownerUserId, ownerUserId)).orderBy(asc(commissions.status), desc(commissions.createdAt)); },

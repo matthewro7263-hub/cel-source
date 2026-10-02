@@ -106,7 +106,7 @@ export function registerSpriteSheetRoutes(app: Express) {
       const panels = (await db.select()
         .from(storyboardPanels)
         .where(inArray(storyboardPanels.id, body.panelIds))
-      ).filter(p => sbIds.includes(p.storyboardId)); // Only panels belonging to this project
+      ).filter(p => sbIds.includes(p.storyboardId) && !p.deletedAt); // Only live panels belonging to this project
 
       const images = [];
       for (const p of panels) {

@@ -6,7 +6,7 @@ import {
   scripts, storyboardPanels, scenes, assets, bakSnapshots, bakGltfExports,
   projects, comments, projectMembers, storyboards
 } from "@shared/schema";
-import { eq, isNull, lt, inArray, isNotNull, and } from "drizzle-orm";
+import { eq, isNull, lt, inArray, isNotNull, and, getTableColumns } from "drizzle-orm";
 import { createHash } from "node:crypto";
 
 export const bakRouter = Router();
@@ -22,14 +22,7 @@ function checksumBuffer(buffer: Buffer): string {
 }
 
 // 3. Branching Snapshots
-bakRouter.post("/projects/:id/snapshot", requireAuth, async (req, res) => {
-  const projectId = parseInt(String(req.params.id), 10);
-  if (!(await canAccessProject(projectId, req.user!.id))) {
-    return res.status(403).json({ message: "Forbidden" });
-  }
-
-  const { label } = req.body;
-
+async function captureProjectSnapshot(projectId: number, label: string) {
   const snapshotStoryboards = await db.select().from(storyboards).where(eq(storyboards.projectId, projectId));
   const storyboardIds = snapshotStoryboards.map(sb => sb.id);
   const snapshotPanels = storyboardIds.length > 0 ? await db.select().from(storyboardPanels).where(inArray(storyboardPanels.storyboardId, storyboardIds)) : [];
@@ -45,9 +38,31 @@ bakRouter.post("/projects/:id/snapshot", requireAuth, async (req, res) => {
 
   await db.insert(bakSnapshots).values({
     projectId,
-    label: label || "Manual Snapshot",
+    label,
     jsonBlob: JSON.stringify(snapshotData)
   });
+}
+
+/** Snapshots are JSON, so timestamps come back as ISO strings; drizzle needs Date objects to insert them. */
+function reviveDates(table: Parameters<typeof getTableColumns>[0], rows: any[]): any[] {
+  const columns = getTableColumns(table);
+  return rows.map((row) => {
+    const out = { ...row };
+    for (const [key, column] of Object.entries(columns)) {
+      if (column.dataType === "date" && typeof out[key] === "string") out[key] = new Date(out[key]);
+    }
+    return out;
+  });
+}
+
+bakRouter.post("/projects/:id/snapshot", requireAuth, async (req, res) => {
+  const projectId = parseInt(String(req.params.id), 10);
+  if (!(await canAccessProject(projectId, req.user!.id))) {
+    return res.status(403).json({ message: "Forbidden" });
+  }
+
+  const { label } = req.body ?? {};
+  await captureProjectSnapshot(projectId, typeof label === "string" && label.trim() ? label.trim().slice(0, 120) : "Manual Snapshot");
 
   res.json({ message: "Snapshot created" });
 });
@@ -67,55 +82,37 @@ bakRouter.post("/projects/:id/snapshots/:snapId/restore", requireAuth, async (re
 
   const data = JSON.parse(snap.jsonBlob);
 
+  // Restoring replaces everything created since, so keep the pre-restore state as its own snapshot.
+  await captureProjectSnapshot(projectId, `Auto-backup before restoring "${snap.label}"`.slice(0, 120));
+
   const CHUNK_SIZE = 500;
+  const insertChunks = async (tx: any, table: any, rows: any[]) => {
+    const revived = reviveDates(table, rows ?? []);
+    for (let i = 0; i < revived.length; i += CHUNK_SIZE) {
+      await tx.insert(table).values(revived.slice(i, i + CHUNK_SIZE));
+    }
+  };
+
   await db.transaction(async (tx) => {
+    // Panels first: they belong to *current* storyboards, including ones created after the snapshot.
+    const currentStoryboards = await tx.select({ id: storyboards.id }).from(storyboards).where(eq(storyboards.projectId, projectId));
+    const currentIds = currentStoryboards.map((sb) => sb.id);
+    for (let i = 0; i < currentIds.length; i += CHUNK_SIZE) {
+      await tx.delete(storyboardPanels).where(inArray(storyboardPanels.storyboardId, currentIds.slice(i, i + CHUNK_SIZE)));
+    }
 
-    // Restore scripts
     await tx.delete(scripts).where(eq(scripts.projectId, projectId));
-    if (data.scripts && data.scripts.length > 0) {
-      for (let i = 0; i < data.scripts.length; i += CHUNK_SIZE) {
-        await tx.insert(scripts).values(data.scripts.slice(i, i + CHUNK_SIZE));
-      }
-    }
+    await insertChunks(tx, scripts, data.scripts);
 
-    // Restore storyboards and panels
     await tx.delete(storyboards).where(eq(storyboards.projectId, projectId));
-    if (data.storyboards && data.storyboards.length > 0) {
-      for (let i = 0; i < data.storyboards.length; i += CHUNK_SIZE) {
-        await tx.insert(storyboards).values(data.storyboards.slice(i, i + CHUNK_SIZE));
-      }
-    }
-    
-    // Clean up all panels for these storyboards, then insert
-    // Since we deleted storyboards, any associated panels conceptually are orphaned, but let's just delete the ones we know
-    if (data.storyboards && data.storyboards.length > 0) {
-      const sbIds = data.storyboards.map((sb: any) => sb.id);
-      // Delete in chunks too, inArray might have limits on number of parameters
-      for (let i = 0; i < sbIds.length; i += CHUNK_SIZE) {
-        await tx.delete(storyboardPanels).where(inArray(storyboardPanels.storyboardId, sbIds.slice(i, i + CHUNK_SIZE)));
-      }
-    }
-    if (data.panels && data.panels.length > 0) {
-      for (let i = 0; i < data.panels.length; i += CHUNK_SIZE) {
-        await tx.insert(storyboardPanels).values(data.panels.slice(i, i + CHUNK_SIZE));
-      }
-    }
+    await insertChunks(tx, storyboards, data.storyboards);
+    await insertChunks(tx, storyboardPanels, data.panels);
 
-    // Restore scenes
     await tx.delete(scenes).where(eq(scenes.projectId, projectId));
-    if (data.scenes && data.scenes.length > 0) {
-      for (let i = 0; i < data.scenes.length; i += CHUNK_SIZE) {
-        await tx.insert(scenes).values(data.scenes.slice(i, i + CHUNK_SIZE));
-      }
-    }
+    await insertChunks(tx, scenes, data.scenes);
 
-    // Restore comments
     await tx.delete(comments).where(eq(comments.projectId, projectId));
-    if (data.comments && data.comments.length > 0) {
-      for (let i = 0; i < data.comments.length; i += CHUNK_SIZE) {
-        await tx.insert(comments).values(data.comments.slice(i, i + CHUNK_SIZE));
-      }
-    }
+    await insertChunks(tx, comments, data.comments);
   });
 
   res.json({ message: "Snapshot restored successfully" });
