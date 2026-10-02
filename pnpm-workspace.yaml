@@ -1,6 +1,5 @@
 # Dependencies whose install scripts may run (pnpm 10 blocks all others).
-# canvas downloads/builds its native binding; esbuild links its platform binary.
+# esbuild links its platform binary.
 allowBuilds:
-  canvas: true
   esbuild: true
   core-js: false

@@ -45,6 +45,9 @@ import { registerMcpRoutes } from "./mcp_routes";
 import { registerBizRoutes } from "./biz_routes";
 import { uploadsRouter } from "./uploads_routes";
 
+// Overridable for tests / OpenAI-compatible proxies.
+const OPENROUTER_CHAT_URL = `${process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1"}/chat/completions`;
+
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
 
 const upload = multer({
@@ -535,6 +538,7 @@ const upload = multer({
     const id = parseInt(String(req.params.id), 10);
     const sid = parseInt(String(req.params.scriptId), 10);
     if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
+    if (!(await storage.existsInProject("script", sid, id))) return res.status(404).json({ message: "Not found" });
     const schema = z.object({ title: z.string().optional(), content: z.string().optional() });
     const patch = schema.parse(req.body);
     res.json(await storage.updateScript(sid, patch));
@@ -543,6 +547,7 @@ const upload = multer({
     const id = parseInt(String(req.params.id), 10);
     const sid = parseInt(String(req.params.scriptId), 10);
     if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
+    if (!(await storage.existsInProject("script", sid, id))) return res.status(404).json({ message: "Not found" });
     await storage.deleteScript(sid);
     res.json({ ok: true });
   });
@@ -574,6 +579,7 @@ const upload = multer({
     const id = parseInt(String(req.params.id), 10);
     const sb = parseInt(String(req.params.sbId), 10);
     if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
+    if (!(await storage.existsInProject("storyboard", sb, id))) return res.status(404).json({ message: "Not found" });
     await storage.deleteStoryboard(sb);
     res.json({ ok: true });
   });
@@ -734,6 +740,7 @@ const upload = multer({
     const id = parseInt(String(req.params.id), 10);
     const aId = parseInt(String(req.params.aId), 10);
     if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
+    if (!(await storage.existsInProject("animatic", aId, id))) return res.status(404).json({ message: "Not found" });
     await storage.deleteAnimatic(aId);
     res.json({ ok: true });
   });
@@ -780,6 +787,7 @@ const upload = multer({
       deadline: z.string().nullable().optional(),
       assigneeId: z.number().nullable().optional(),
     });
+    if (!(await storage.existsInProject("scene", sceneId, id))) return res.status(404).json({ message: "Not found" });
     const patch = schema.parse(req.body);
     const updated = await storage.updateScene(sceneId, patch as any);
     
@@ -793,6 +801,7 @@ const upload = multer({
     const id = parseInt(String(req.params.id), 10);
     const sceneId = parseInt(String(req.params.sceneId), 10);
     if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
+    if (!(await storage.existsInProject("scene", sceneId, id))) return res.status(404).json({ message: "Not found" });
     await storage.deleteScene(sceneId);
     res.json({ ok: true });
   });
@@ -841,6 +850,7 @@ const upload = multer({
     const id = parseInt(String(req.params.id), 10);
     const cid = parseInt(String(req.params.commentId), 10);
     if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
+    if (!(await storage.existsInProject("comment", cid, id))) return res.status(404).json({ message: "Not found" });
     await storage.deleteComment(cid);
     res.json({ ok: true });
   });
@@ -1417,7 +1427,7 @@ const upload = multer({
     let lastErr = "";
     for (const model of models) {
       try {
-        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        const response = await fetch(OPENROUTER_CHAT_URL, {
           method: "POST",
           headers: {
             "Authorization": `Bearer ${apiKey}`,
@@ -1433,8 +1443,8 @@ const upload = multer({
             ],
           }),
         });
-        const data = await response.json() as any;
-        if (!response.ok) { lastErr = data?.error?.message || JSON.stringify(data); continue; }
+        const data = await response.json().catch(() => null) as any;
+        if (!response.ok) { lastErr = data?.error?.message || response.statusText || String(response.status); continue; }
         const content = data.choices?.[0]?.message?.content || "";
         // Extract JSON array from content
         const match = content.match(/\[[\s\S]*\]/);
@@ -1445,7 +1455,7 @@ const upload = multer({
         lastErr = e.message;
       }
     }
-    return res.status(500).json({ message: `OpenRouter error: ${lastErr}` });
+    return res.status(502).json({ message: `OpenRouter error: ${lastErr}` });
   });
 
   // ===== v4 AI Agent Chat =====
@@ -1578,7 +1588,7 @@ ${body.scriptContent}
     };
 
     try {
-      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      const response = await fetch(OPENROUTER_CHAT_URL, {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${apiKey}`,
@@ -1591,7 +1601,7 @@ ${body.scriptContent}
 
       if (!response.ok) {
         const err = await response.text();
-        return res.status(500).json({ message: `OpenRouter Error: ${err}` });
+        return res.status(502).json({ message: `OpenRouter Error: ${err}` });
       }
 
       res.setHeader('Content-Type', 'text/event-stream');
@@ -1600,59 +1610,79 @@ ${body.scriptContent}
 
       const reader = response.body?.getReader();
       if (!reader) throw new Error("No reader");
+      // Stop pulling from OpenRouter if the browser goes away.
+      res.on("close", () => { reader.cancel().catch(() => {}); });
 
       let fullContent = "";
-      let toolCalls: any[] = [];
+      const toolCalls: any[] = [];
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let finished = false;
 
-      while (true) {
+      const finish = async () => {
+        if (finished) return;
+        finished = true;
+        const saved = await storage.createAiChatMessage({
+          sessionId: body.sessionId,
+          role: "assistant",
+          content: fullContent,
+          toolCalls: toolCalls.length > 0 ? JSON.stringify(toolCalls.filter(Boolean)) : null,
+        });
+        res.write(`data: ${JSON.stringify({ done: true, message: saved })}\n\n`);
+        res.end();
+      };
+
+      const handleLine = async (rawLine: string) => {
+        const line = rawLine.trim();
+        if (!line.startsWith("data:")) return;
+        const dataText = line.slice(5).trim();
+        if (dataText === "[DONE]") return finish();
+        try {
+          const delta = JSON.parse(dataText).choices?.[0]?.delta;
+          if (!delta) return;
+          if (delta.content) {
+            fullContent += delta.content;
+            res.write(`data: ${JSON.stringify({ content: delta.content })}\n\n`);
+          }
+          for (const tc of delta.tool_calls ?? []) {
+            const i = tc.index ?? 0;
+            if (!toolCalls[i]) toolCalls[i] = { id: tc.id, type: "function", function: { name: "", arguments: "" } };
+            if (tc.id) toolCalls[i].id = tc.id;
+            if (tc.function?.name) toolCalls[i].function.name += tc.function.name;
+            if (tc.function?.arguments) toolCalls[i].function.arguments += tc.function.arguments;
+          }
+        } catch {
+          // Keep-alive comments / partial JSON from the provider are ignorable.
+        }
+      };
+
+      while (!finished) {
         const { done, value } = await reader.read();
         if (done) break;
-
-        const chunk = new TextDecoder().decode(value);
-        const lines = chunk.split("\n").filter(l => l.trim().startsWith("data: "));
-
-        for (const line of lines) {
-          const dataText = line.substring(6);
-          if (dataText === "[DONE]") {
-            const saved = await storage.createAiChatMessage({
-              sessionId: body.sessionId,
-              role: "assistant",
-              content: fullContent,
-              toolCalls: toolCalls.length > 0 ? JSON.stringify(toolCalls) : null
-            });
-            res.write(`data: ${JSON.stringify({ done: true, message: saved })}\n\n`);
-            res.end();
-            return;
-          }
-
-          try {
-            const data = JSON.parse(dataText);
-            const delta = data.choices[0].delta;
-            if (delta.content) {
-              fullContent += delta.content;
-              res.write(`data: ${JSON.stringify({ content: delta.content })}\n\n`);
-            }
-            if (delta.tool_calls) {
-              for (const tc of delta.tool_calls) {
-                const i = tc.index;
-                if (!toolCalls[i]) toolCalls[i] = { id: tc.id, type: "function", function: { name: "", arguments: "" } };
-                if (tc.id) toolCalls[i].id = tc.id;
-                if (tc.function?.name) toolCalls[i].function.name += tc.function.name;
-                if (tc.function?.arguments) toolCalls[i].function.arguments += tc.function.arguments;
-              }
-            }
-          } catch (e) {}
-        }
+        // SSE events can be split across network chunks; only process complete lines.
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) await handleLine(line);
       }
+      if (buffer) await handleLine(buffer);
+      await finish(); // provider closed the stream without [DONE]
     } catch (e: any) {
-      return res.status(500).json({ message: `Agent error: ${e.message}` });
+      // Once streaming has started the status line is gone; report in-band instead.
+      if (res.headersSent) {
+        res.write(`data: ${JSON.stringify({ error: `Agent error: ${e.message}` })}\n\n`);
+        return res.end();
+      }
+      return res.status(502).json({ message: `Agent error: ${e.message}` });
     }
   });
 
   app.post("/api/projects/:projectId/ai/agent/check", requireAuth, async (req, res) => {
     const projectId = parseInt(String(req.params.projectId), 10);
     if (!(await canAccessProject(projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
-    const { scriptContent, lastVersion } = req.body;
+    const parsedBody = z.object({ scriptContent: z.string().default(""), lastVersion: z.string().nullish() }).safeParse(req.body ?? {});
+    if (!parsedBody.success) return res.status(400).json({ message: "Invalid request" });
+    const { scriptContent, lastVersion } = parsedBody.data;
 
     const apiKey = await storage.getProjectAiKey(projectId);
     if (!apiKey) return res.status(404).json({ message: "No API key configured" });
@@ -1669,10 +1699,10 @@ ${body.scriptContent}
     ${lastVersion || "N/A"}`;
 
     try {
-      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      const response = await fetch(OPENROUTER_CHAT_URL, {
         method: "POST",
         headers: {
-          "Authorization": `Bearer ${apiKey.encryptedKey}`,
+          "Authorization": `Bearer ${decrypt(apiKey.encryptedKey)}`,
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
@@ -1681,12 +1711,15 @@ ${body.scriptContent}
         })
       });
 
-      const data = await response.json() as any;
-      const content = data.choices?.[0]?.message?.content || "No feedback at this time.";
-      
+      const data = await response.json().catch(() => null) as any;
+      if (!response.ok) {
+        return res.status(502).json({ message: `OpenRouter error: ${data?.error?.message ?? response.statusText}` });
+      }
+      const content = data?.choices?.[0]?.message?.content || "No feedback at this time.";
+
       res.json({ feedback: content });
     } catch (e: any) {
-      res.status(500).json({ message: e.message });
+      res.status(502).json({ message: `OpenRouter request failed: ${e.message}` });
     }
   });
 
@@ -2293,8 +2326,13 @@ ${body.scriptContent}
       const projectId = parseInt(String(req.params.id), 10);
       const denied = await checkShareOrMemberAccess(req, projectId);
       if (denied) return res.status(denied.status).json({ message: denied.message });
-      const { phase, signedName, signatureData, signedAt } = req.body;
-      const approval = await storage.createCliApproval({ projectId, phase, signedName, signatureData, signedAt });
+      // signedAt is always the server's clock; a client-supplied timestamp would be forgeable.
+      const { phase, signedName, signatureData } = z.object({
+        phase: z.string().min(1).max(40),
+        signedName: z.string().min(1).max(200),
+        signatureData: z.string().min(1),
+      }).parse(req.body);
+      const approval = await storage.createCliApproval({ projectId, phase, signedName, signatureData });
       res.json(approval);
     } catch (e: any) {
       res.status(400).json({ error: e.message });

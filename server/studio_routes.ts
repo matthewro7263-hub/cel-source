@@ -40,6 +40,7 @@ export function registerStudioRoutes(app: Express) {
     const id = parseInt(String(req.params.id), 10);
     const eventId = parseInt(String(req.params.eventId), 10);
     if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
+    if (!(await storage.existsInProject("renderEvent", eventId, id))) return res.status(404).json({ message: "Not found" });
     await storage.deleteStudioRenderEvent(eventId);
     res.json({ ok: true });
   });
@@ -86,6 +87,7 @@ export function registerStudioRoutes(app: Express) {
     const id = parseInt(String(req.params.id), 10);
     const snapId = parseInt(String(req.params.snapId), 10);
     if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
+    if (!(await storage.existsInProject("snapshot", snapId, id))) return res.status(404).json({ message: "Not found" });
     await storage.deleteStudioSnapshot(snapId);
     res.json({ ok: true });
   });
@@ -133,6 +135,7 @@ export function registerStudioRoutes(app: Express) {
     const id = parseInt(String(req.params.id), 10);
     const entryId = parseInt(String(req.params.entryId), 10);
     if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
+    if (!(await storage.existsInProject("credit", entryId, id))) return res.status(404).json({ message: "Not found" });
     await storage.deleteStudioCreditEntry(entryId);
     res.json({ ok: true });
   });

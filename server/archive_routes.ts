@@ -8,7 +8,7 @@ import {
   scripts, storyboards, storyboardPanels, animatics, scenes, comments, 
   assets, animaticProjects, animaticTracks, animaticClips,
   audVoiceTakes, audCaptions, cli_approvals, cli_feedback,
-  renders, projectAiKeys, panelPins, sceneTimeEntries,
+  renders, panelPins, sceneTimeEntries,
   commissionPricingPresets
 } from "@shared/schema";
 import { 
@@ -73,7 +73,6 @@ export function registerArchiveRoutes(app: Express) {
         creditEntries: await db.select().from(studio_credit_entries).where(eq(studio_credit_entries.projectId, projectId)),
         festivals: await db.select().from(biz_festivals).where(eq(biz_festivals.projectId, projectId)),
         expenses: await db.select().from(biz_expenses).where(eq(biz_expenses.projectId, projectId)),
-        aiKey: await db.select().from(projectAiKeys).where(eq(projectAiKeys.projectId, projectId)).then((r) => r[0]),
         castingMatrix: await db.select().from(lor_casting_matrix).where(eq(lor_casting_matrix.projectId, projectId)),
         pricingPresets: await db.select().from(commissionPricingPresets).where(eq(commissionPricingPresets.projectId, projectId)),
       };
@@ -247,12 +246,12 @@ export function registerArchiveRoutes(app: Express) {
       }
 
       if (kind === "credit-roll-png") {
-        let canvasModule: typeof import("canvas");
+        let canvasModule: typeof import("@napi-rs/canvas");
         try {
           canvasModule = await getCanvasModule();
         } catch {
           return res.status(503).json({
-            message: "Credit roll PNG export needs the optional canvas native dependency to be built on the server.",
+            message: "Credit roll PNG export is unavailable: the @napi-rs/canvas native module failed to load.",
           });
         }
         const { createCanvas } = canvasModule;

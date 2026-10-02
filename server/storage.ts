@@ -1,6 +1,4 @@
-import { Pool, neonConfig } from "@neondatabase/serverless";
-import { drizzle } from "drizzle-orm/neon-serverless";
-import ws from "ws";
+import { db, pool } from "./db";
 import { eq, and, or, inArray, asc, desc, ilike, sql, isNull, lt } from "drizzle-orm";
 import { randomBytes, scrypt, timingSafeEqual, createHmac } from "node:crypto";
 import { promisify } from "node:util";
@@ -16,18 +14,8 @@ const scryptAsync = promisify(scrypt) as (
 import * as mainSchema from "@shared/schema";
 import * as a11ySchema from "@shared/a11y_schema";
 import * as challengeSchema from "@shared/challenge_schema";
-import * as challengeLeaderboardSchema from "@shared/challenge_leaderboard_schema";
 import * as lorSchema from "@shared/lor_schema";
 import * as studioSchema from "@shared/studio_schema";
-
-const schema = {
-  ...mainSchema,
-  ...a11ySchema,
-  ...challengeSchema,
-  ...challengeLeaderboardSchema,
-  ...lorSchema,
-  ...studioSchema,
-};
 
 // Re-export individual tables for convenience in methods
 const {
@@ -84,12 +72,7 @@ import type {
   StudioCreditEntry, InsertStudioCreditEntry,
 } from "@shared/studio_schema";
 
-neonConfig.webSocketConstructor = ws;
-
-if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required");
-export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-
-export const db = drizzle(pool, { schema });
+export { db, pool };
 
 const projectIdCache = new AsyncLocalStorage<Map<number, number[]>>();
 
@@ -217,6 +200,21 @@ const coreStorage = {
         .where(or(eq(projects.ownerId, userId), inArray(projects.id, ids)))
         ;
     },
+  /** True when the row exists AND belongs to the project; use before mutating nested resources by id. */
+  async existsInProject(
+    kind: "script" | "scene" | "storyboard" | "animatic" | "comment" | "renderEvent" | "snapshot" | "credit",
+    id: number,
+    projectId: number,
+  ): Promise<boolean> {
+    const tableByKind = {
+      script: scripts, scene: scenes, storyboard: storyboards, animatic: animatics, comment: comments,
+      renderEvent: studio_render_events, snapshot: studio_snapshots, credit: studio_credit_entries,
+    } as const;
+    const table = tableByKind[kind];
+    const rows = await db.select({ id: table.id }).from(table).where(and(eq(table.id, id), eq(table.projectId, projectId))).limit(1);
+    return rows.length > 0;
+  },
+
   async getProject(id: number) { return await db.select().from(projects).where(eq(projects.id, id)).then(r => r[0]); },
   async getProjectByToken(token: string) { return await db.select().from(projects).where(eq(projects.shareToken, token)).then(r => r[0]); },
   async createProject(p: InsertProject) {
@@ -725,7 +723,8 @@ const extraStorage = {
   async updateCommissionQuote(id: number, quoteCents: number | null, invoicedAt?: string | null) {
       const patch: any = {};
       if (quoteCents !== undefined) patch.quoteCents = quoteCents;
-      if (invoicedAt !== undefined) patch.invoicedAt = invoicedAt;
+      if (invoicedAt !== undefined) patch.invoicedAt = invoicedAt ? new Date(invoicedAt) : null;
+      if (Object.keys(patch).length === 0) return await db.select().from(commissions).where(eq(commissions.id, id)).then(r => r[0] as any);
       return await db.update(commissions).set(patch).where(eq(commissions.id, id)).returning().then(r => r[0] as any);
     },
 

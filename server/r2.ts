@@ -6,9 +6,17 @@ import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, Head
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { randomUUID } from "node:crypto";
 
+/** Thrown when R2 env vars are missing, so routes can answer 503 instead of a generic 500. */
+export class R2ConfigError extends Error {
+  constructor(name: string) {
+    super(`Cloud storage is not configured (missing ${name}).`);
+    this.name = "R2ConfigError";
+  }
+}
+
 function required(name: string): string {
   const v = process.env[name];
-  if (!v) throw new Error(`Missing required env var: ${name}`);
+  if (!v) throw new R2ConfigError(name);
   return v;
 }
 

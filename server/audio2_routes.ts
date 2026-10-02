@@ -23,7 +23,7 @@ export function registerAudio2Routes(app: Express) {
     const userId = (req as any).user.id;
     if (!(await canAccessProject(projectId, userId))) return res.status(403).json({ message: "Forbidden" });
 
-    const parsed = insertAudio2LipsyncSchema.safeParse(req.body);
+    const parsed = insertAudio2LipsyncSchema.omit({ projectId: true }).safeParse(req.body);
     if (!parsed.success) return res.status(400).json(parsed.error);
 
     const inserted = await db.insert(audio2_lipsync).values({
@@ -81,7 +81,7 @@ export function registerAudio2Routes(app: Express) {
     const userId = (req as any).user.id;
     if (!(await canAccessProject(projectId, userId))) return res.status(403).json({ message: "Forbidden" });
 
-    const parsed = insertAudio2CueSchema.safeParse(req.body);
+    const parsed = insertAudio2CueSchema.omit({ projectId: true }).safeParse(req.body);
     if (!parsed.success) return res.status(400).json(parsed.error);
 
     const inserted = await db.insert(audio2_cues).values({

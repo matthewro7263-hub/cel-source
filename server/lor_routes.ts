@@ -54,12 +54,19 @@ export function registerLorRoutes(app: Express) {
   app.post("/api/projects/:id/lor_facts", requireAuth, async (req, res) => {
     const projectId = parseInt(String(req.params.id), 10);
     if (!(await canAccessProject(projectId, (req as any).user.id))) return res.status(403).json({ message: "No access" });
+    const parsed = z.object({
+      category: z.string().min(1).max(60).default('character'),
+      title: z.string().trim().min(1, "title is required").max(200),
+      body: z.string().default(''),
+      imageData: z.string().nullish(),
+    }).safeParse(req.body ?? {});
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message ?? "Invalid fact", issues: parsed.error.issues });
     const fact = await lorStorage.createLorFact({
       projectId,
-      category: req.body.category || 'character',
-      title: req.body.title,
-      body: req.body.body || '',
-      imageData: req.body.imageData || null,
+      category: parsed.data.category,
+      title: parsed.data.title,
+      body: parsed.data.body,
+      imageData: parsed.data.imageData || null,
     });
     res.json(fact);
   });

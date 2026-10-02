@@ -1,4 +1,5 @@
 import { storage, hashPassword, genToken } from "./storage";
+import { challenge_prompts } from "@shared/challenge_schema";
 import { users, scenes as scenesTable, storyboardPanels as panelsTable } from "@shared/schema";
 
 // Generate pastel SVG panels as data URLs
@@ -153,10 +154,9 @@ Right. New game. *Detectives.*
 
   // Seed weekly challenge prompts (idempotent)
   try {
-    const { challenge_prompts } = require("../shared/challenge_schema");
     const existing = await storage._db.select().from(challenge_prompts);
     if (!existing || existing.length === 0) {
-      const now = new Date().toISOString();
+      const now = new Date();
       await storage._db.insert(challenge_prompts).values([
         { weekNumber: 1, title: "Draw a character from behind", body: "Draw a character entirely from behind, conveying their mood or intent purely through posture and silhouette.", createdAt: now },
         { weekNumber: 2, title: "12-frame walk cycle in stepped 2s", body: "Animate a basic walk cycle using only 6 unique drawings, held for 2 frames each.", createdAt: now },

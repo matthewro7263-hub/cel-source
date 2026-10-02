@@ -13,11 +13,7 @@ import { registerSpriteSheetRoutes } from "./spritesheet_routes";
 import { startLeaderboardCron } from "./leaderboard_cron";
 import { createServer } from "node:http";
 import type { IncomingMessage } from "node:http";
-import { neonConfig } from "@neondatabase/serverless";
-import ws from "ws";
-import { drizzle } from "drizzle-orm/neon-serverless";
-import { migrate } from "drizzle-orm/neon-serverless/migrator";
-import { pool } from "./storage";
+import { pool, migrateDatabase } from "./db";
 import { checkR2Health } from "./r2";
 import { ZodError } from "zod";
 
@@ -192,9 +188,7 @@ async function runMigrations() {
   }
 
   try {
-    neonConfig.webSocketConstructor = ws;
-    const migrationDb = drizzle(pool);
-    await migrate(migrationDb, { migrationsFolder: path.join(__dirname, "../migrations") });
+    await migrateDatabase(process.env.CEL_MIGRATIONS_DIR ?? path.resolve(process.cwd(), "migrations"));
     log("database migrations completed", "migrations");
   } catch (err) {
     console.error("Database migration failed:", err);

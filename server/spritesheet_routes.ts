@@ -85,12 +85,12 @@ export function registerSpriteSheetRoutes(app: Express) {
       return res.status(400).json({ message: e.message });
     }
 
-    let canvasModule: typeof import("canvas");
+    let canvasModule: typeof import("@napi-rs/canvas");
     try {
       canvasModule = await getCanvasModule();
     } catch {
       return res.status(503).json({
-        message: "Sprite-sheet export needs the optional canvas native dependency to be built on the server.",
+        message: "Sprite-sheet export is unavailable: the @napi-rs/canvas native module failed to load.",
       });
     }
     const { createCanvas, loadImage } = canvasModule;

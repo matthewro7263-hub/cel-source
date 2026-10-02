@@ -4,7 +4,7 @@
 // Requires the request to be authenticated (req.user with .id).
 
 import { Router, type Request, type Response, type NextFunction } from "express";
-import { presignUpload, presignDownload, deleteObject, listUserObjects, isOwnedKey, putObject } from "./r2";
+import { R2ConfigError, presignUpload, presignDownload, deleteObject, listUserObjects, isOwnedKey, putObject } from "./r2";
 import type { User as AppUser } from "@shared/schema";
 import multer from "multer";
 import { randomUUID } from "node:crypto";
@@ -33,6 +33,8 @@ function requireUser(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
+const statusFor = (err: unknown) => (err instanceof R2ConfigError ? 503 : 500);
+
 const MAX_BYTES = 50 * 1024 * 1024; // 50 MB soft cap (enforce client-side)
 const ALLOWED_PREFIX = /^[a-zA-Z0-9_\-]{1,32}$/;
 
@@ -49,7 +51,7 @@ uploadsRouter.post("/presign", requireUser, async (req, res) => {
     const data = await presignUpload({ userId, filename, contentType, prefix, maxBytes: MAX_BYTES });
     res.json(data);
   } catch (err: any) {
-    res.status(500).json({ error: err?.message ?? "presign_failed" });
+    res.status(statusFor(err)).json({ error: err?.message ?? "presign_failed" });
   }
 });
 
@@ -61,7 +63,7 @@ uploadsRouter.get("/download", requireUser, async (req, res) => {
     const url = await presignDownload(key, 300);
     res.json({ url, expiresIn: 300 });
   } catch (err: any) {
-    res.status(500).json({ error: err?.message ?? "download_failed" });
+    res.status(statusFor(err)).json({ error: err?.message ?? "download_failed" });
   }
 });
 
@@ -73,7 +75,7 @@ uploadsRouter.get("/file", requireUser, async (req, res) => {
     const url = await presignDownload(key, 300);
     res.redirect(url);
   } catch (err: any) {
-    res.status(500).send(err?.message ?? "Failed to redirect to R2 file");
+    res.status(statusFor(err)).send(err?.message ?? "Failed to redirect to R2 file");
   }
 });
 
@@ -85,7 +87,7 @@ uploadsRouter.delete("/object", requireUser, async (req, res) => {
     await deleteObject(key);
     res.json({ ok: true });
   } catch (err: any) {
-    res.status(500).json({ error: err?.message ?? "delete_failed" });
+    res.status(statusFor(err)).json({ error: err?.message ?? "delete_failed" });
   }
 });
 
@@ -98,7 +100,7 @@ uploadsRouter.get("/list", requireUser, async (req, res) => {
     const items = (out.Contents ?? []).map((o) => ({ key: o.Key!, size: o.Size, modified: o.LastModified }));
     res.json({ items });
   } catch (err: any) {
-    res.status(500).json({ error: err?.message ?? "list_failed" });
+    res.status(statusFor(err)).json({ error: err?.message ?? "list_failed" });
   }
 });
 
@@ -120,7 +122,7 @@ uploadsRouter.post("/convert-heic", requireUser, localUpload.single("file"), asy
     res.json({ key });
   } catch (err: any) {
     console.error("HEIC conversion failed:", err);
-    res.status(500).json({ error: err?.message ?? "conversion_failed" });
+    res.status(statusFor(err)).json({ error: err?.message ?? "conversion_failed" });
   }
 });
 
