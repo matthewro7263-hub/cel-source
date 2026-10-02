@@ -142,6 +142,12 @@ See [.env.example](./.env.example). The critical ones:
 | `CEL_ADMIN_EMAILS` | *(optional)* comma-separated emails allowed to create challenge prompts / snapshots |
 | `CEL_SEED_DEMO` | *(optional)* set to `true` to seed demo accounts in production (they use a public password) |
 | `FREESOUND_API_KEY` | *(optional)* enables sound-effect search |
+| `CEL_DB_DRIVER` | *(optional)* `neon` or `pg`. Defaults to Neon's driver for `*.neon.tech` hosts and node-postgres elsewhere |
+| `OPENROUTER_BASE_URL` | *(optional)* override the OpenRouter API base (tests / OpenAI-compatible proxies) |
+| `CEL_MIGRATIONS_DIR` | *(optional)* migrations folder (default `./migrations` relative to the working directory) |
+
+R2 is optional: without `R2_*` set, panel images and script originals fall back to inline storage
+(`/ready` reports `r2: not_configured`).
 
 Never commit `.env.local`. `.env.example` is the safe template.
 

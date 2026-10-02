@@ -273,6 +273,20 @@ async function runMigrations() {
   httpServer.listen(listenOptions, () => {
     log(`serving on ${host}:${port}`);
   });
+
+  // Deploys send SIGTERM: stop accepting connections, let in-flight requests finish, close the DB pool.
+  let shuttingDown = false;
+  const shutdown = (signal: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    log(`${signal} received, shutting down`);
+    httpServer.close(() => {
+      pool.end().catch(() => {}).finally(() => process.exit(0));
+    });
+    setTimeout(() => process.exit(1), 10_000).unref(); // don't hang forever on stuck connections
+  };
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
 })().catch((err) => {
   console.error("Fatal startup error:", err);
   process.exit(1);

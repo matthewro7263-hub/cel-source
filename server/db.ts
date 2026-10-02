@@ -72,5 +72,9 @@ if (dbDriver === "neon") {
   runMigrationsFolder = (folder) => migratePg(drizzlePg(pgPool), { migrationsFolder: folder });
 }
 
+// An idle client dropping (DB restart, network blip) emits 'error' on the pool; without a listener
+// Node treats it as an uncaught exception and kills the whole server.
+pool.on("error", (err) => console.error("[db] idle client error:", err.message));
+
 export { pool, db };
 export const migrateDatabase = (folder: string) => runMigrationsFolder(folder);

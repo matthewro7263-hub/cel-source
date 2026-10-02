@@ -139,13 +139,18 @@ function msUntilNextSundayMidnight(): number {
   return next.getTime() - now.getTime();
 }
 
-/** Compute the current ISO week number (1–53). */
-function currentISOWeek(): number {
-  const now = new Date();
-  const startOfYear = new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
-  const dayOfYear =
-    Math.floor((now.getTime() - startOfYear.getTime()) / 86_400_000) + 1;
-  return Math.ceil(dayOfYear / 7);
+/**
+ * The "current" challenge week is whichever prompt has the highest weekNumber (that's how the
+ * client picks it too). Calendar week numbers don't line up with admin-authored prompt weeks, so
+ * deriving the week from the date snapshotted weeks that have no prompt at all.
+ */
+async function currentPromptWeek(): Promise<number | null> {
+  const [row] = await db
+    .select({ weekNumber: challenge_prompts.weekNumber })
+    .from(challenge_prompts)
+    .orderBy(desc(challenge_prompts.weekNumber))
+    .limit(1);
+  return row?.weekNumber ?? null;
 }
 
 /**
@@ -160,9 +165,9 @@ export function startLeaderboardCron(): void {
   );
 
   const fire = async () => {
-    const week = currentISOWeek();
     try {
-      await snapshotWeekLeaderboard(week);
+      const week = await currentPromptWeek();
+      if (week !== null) await snapshotWeekLeaderboard(week);
     } catch (err) {
       console.error("[leaderboard_cron] snapshot error:", err);
     }
