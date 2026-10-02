@@ -30,7 +30,19 @@ function probeWebGL(): boolean {
     canvas.getContext("webgl2") ||
     canvas.getContext("webgl") ||
     canvas.getContext("experimental-webgl");
-  return !!ctx;
+  if (!ctx) return false;
+  // Software rasterizers (SwiftShader/llvmpipe, e.g. headless Chrome or GPU-less VMs) technically
+  // expose WebGL but are far too slow for the liquid-glass shader, and the host element stays
+  // hidden until the first WebGL frame lands. Prefer the CSS glass tier there.
+  try {
+    const gl = ctx as WebGLRenderingContext;
+    const info = gl.getExtension("WEBGL_debug_renderer_info");
+    const renderer = info ? String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL)) : "";
+    if (/swiftshader|llvmpipe|software/i.test(renderer)) return false;
+  } catch {
+    // Extension unavailable: assume a real GPU.
+  }
+  return true;
 }
 
 function probeBackdropFilter(): boolean {

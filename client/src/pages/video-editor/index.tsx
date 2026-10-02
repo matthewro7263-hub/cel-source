@@ -439,7 +439,6 @@ export default function VideoEditor() {
 
   const resolvePanelSrc = useCallback(
     async (panel: Panel) => {
-      if (panel.imageData) return panel.imageData;
       return resolvePanelImageUrl(panel, { projectId: pid });
     },
     [pid],

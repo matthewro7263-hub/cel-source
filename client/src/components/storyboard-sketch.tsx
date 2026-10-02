@@ -26,7 +26,7 @@ interface SketchModalProps {
 }
 
 export function SketchModal({ storyboardId, projectId, onClose }: SketchModalProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null); // for live shape preview
   const [tool, setTool] = useState<Tool>("pen");
   const [color, setColor] = useState("#000000");
@@ -38,15 +38,6 @@ export function SketchModal({ storyboardId, projectId, onClose }: SketchModalPro
   const startPos = useRef({ x: 0, y: 0 });
   const { toast } = useToast();
 
-  // Initialize canvas
-  useEffect(() => {
-    const canvas = canvasRef.current!;
-    const ctx = canvas.getContext("2d")!;
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, 1280, 720);
-    saveSnapshot();
-  }, []);
-
   const saveSnapshot = useCallback(() => {
     const canvas = canvasRef.current!;
     const ctx = canvas.getContext("2d")!;
@@ -57,6 +48,21 @@ export function SketchModal({ storyboardId, projectId, onClose }: SketchModalPro
     });
     setHistoryIdx((prev) => Math.min(prev + 1, 49));
   }, [historyIdx]);
+
+  // The canvas lives inside a Radix dialog portal, so it isn't mounted when an effect on this component
+  // first runs (canvasRef.current was null -> the page crashed). Initialise from a callback ref instead.
+  const saveSnapshotRef = useRef(saveSnapshot);
+  saveSnapshotRef.current = saveSnapshot;
+  const canvasReady = useRef(false);
+  const setCanvas = useCallback((node: HTMLCanvasElement | null) => {
+    canvasRef.current = node;
+    if (!node || canvasReady.current) return;
+    canvasReady.current = true;
+    const ctx = node.getContext("2d")!;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, 1280, 720);
+    saveSnapshotRef.current();
+  }, []);
 
   const undo = useCallback(() => {
     if (historyIdx <= 0) return;
@@ -365,7 +371,7 @@ export function SketchModal({ storyboardId, projectId, onClose }: SketchModalPro
           <div className="flex-1 flex items-center justify-center bg-muted/30 overflow-hidden p-2">
             <div className="relative" style={{ maxWidth: "100%", maxHeight: "100%", aspectRatio: "16/9" }}>
               <canvas
-                ref={canvasRef}
+                ref={setCanvas}
                 width={1280}
                 height={720}
                 style={{

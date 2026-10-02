@@ -1,15 +1,16 @@
 import { CelWordmark } from "@/components/CelLogo";
 import type { Project } from "@shared/schema";
 import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 import { CheckCircle2, Circle } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 
-export function CliShareHeader({ project }: { project: Project }) {
+export function CliShareHeader({ project, shareToken }: { project: Project; shareToken?: string }) {
   // Use a query to get approvals to compute milestone progress
   const { data: approvals = [] } = useQuery({
-    queryKey: ["/api/projects", project.id, "cli_approvals"],
+    queryKey: ["/api/projects", project.id, "cli_approvals", shareToken ?? "member"],
     queryFn: async () => {
-      const res = await fetch(`/api/projects/${project.id}/cli_approvals`);
+      const res = await apiRequest("GET", `/api/projects/${project.id}/cli_approvals${shareToken ? `?token=${encodeURIComponent(shareToken)}` : ""}`);
       if (!res.ok) return [];
       return res.json();
     }

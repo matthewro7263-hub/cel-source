@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import type { Panel } from "@shared/schema";
 import { PanelImage } from "@/components/PanelImage";
@@ -43,7 +44,9 @@ export function StoryboardReviewer({ panels, projectId, onClose }: StoryboardRev
   const panel = panels[current];
   if (!panel) return null;
 
-  return (
+  // Portal to <body>: rendered in place, the overlay's z-50 is trapped inside the page's stacking
+  // context and the app sidebar (z-30, its own context) painted on top of the "full-screen" view.
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex flex-col items-center justify-center"
       style={{
@@ -153,6 +156,7 @@ export function StoryboardReviewer({ panels, projectId, onClose }: StoryboardRev
         </div>
         <p className="text-white/25 text-xs mt-3">← → Space to navigate · Esc to exit</p>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

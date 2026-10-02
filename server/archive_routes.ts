@@ -1,13 +1,14 @@
+import { requireAuth, canAccessProject } from "./auth";
 import type { Express, Request, Response, NextFunction } from "express";
-import { db, getSessionUser, storage } from "./storage";
-import { eq, inArray } from "drizzle-orm";
+import { db, storage } from "./storage";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import archiver from "archiver";
 import { getCanvasModule } from "./canvas_lazy";
 import { 
   scripts, storyboards, storyboardPanels, animatics, scenes, comments, 
   assets, animaticProjects, animaticTracks, animaticClips,
   audVoiceTakes, audCaptions, cli_approvals, cli_feedback,
-  renders, projectAiKeys, panelPins, sceneTimeEntries,
+  renders, panelPins, sceneTimeEntries,
   commissionPricingPresets
 } from "@shared/schema";
 import { 
@@ -17,31 +18,6 @@ import {
   studio_render_events, studio_render_budget, studio_snapshots, studio_credit_entries 
 } from "@shared/studio_schema";
 import { biz_festivals, biz_expenses } from "@shared/biz_schema";
-
-async function canAccessProject(projectId: number, userId: number): Promise<boolean> {
-  const p = await storage.getProject(projectId);
-  if (!p) return false;
-  if (p.ownerId === userId) return true;
-  return await storage.isMember(projectId, userId);
-}
-
-function extractToken(req: Request): string | undefined {
-  const auth = req.headers.authorization;
-  if (!auth) return undefined;
-  const parts = auth.split(" ");
-  if (parts.length === 2 && parts[0].toLowerCase() === "bearer") return parts[1];
-  return undefined;
-}
-
-async function requireAuth(req: Request, res: Response, next: NextFunction) {
-  const token = extractToken(req);
-  const userId = getSessionUser(token);
-  if (!userId) return res.status(401).json({ message: "Not authenticated" });
-  const user = await storage.getUser(userId);
-  if (!user) return res.status(401).json({ message: "User not found" });
-  (req as any).user = user;
-  next();
-}
 
 export function registerArchiveRoutes(app: Express) {
   app.get("/api/projects/:id/archive", requireAuth, async (req, res) => {
@@ -66,10 +42,10 @@ export function registerArchiveRoutes(app: Express) {
         exportedAt: new Date().toISOString(),
         project,
         members: await storage.listMembers(projectId),
-        scripts: await db.select().from(scripts).where(eq(scripts.projectId, projectId)),
+        scripts: await db.select().from(scripts).where(and(eq(scripts.projectId, projectId), isNull(scripts.deletedAt))),
         storyboards: await db.select().from(storyboards).where(eq(storyboards.projectId, projectId)),
         animatics: await db.select().from(animatics).where(eq(animatics.projectId, projectId)),
-        scenes: await db.select().from(scenes).where(eq(scenes.projectId, projectId)),
+        scenes: await db.select().from(scenes).where(and(eq(scenes.projectId, projectId), isNull(scenes.deletedAt))),
         comments: await db.select().from(comments).where(eq(comments.projectId, projectId)),
         assets: await db.select({
           id: assets.id,
@@ -84,7 +60,7 @@ export function registerArchiveRoutes(app: Express) {
           uploaderId: assets.uploaderId,
           createdAt: assets.createdAt,
           deletedAt: assets.deletedAt,
-        }).from(assets).where(eq(assets.projectId, projectId)),
+        }).from(assets).where(and(eq(assets.projectId, projectId), isNull(assets.deletedAt))),
         animaticProjects: await db.select().from(animaticProjects).where(eq(animaticProjects.projectId, projectId)),
         continuityFacts: await db.select().from(lor_continuity_facts).where(eq(lor_continuity_facts.projectId, projectId)),
         palettes: await db.select().from(lor_palettes).where(eq(lor_palettes.projectId, projectId)),
@@ -97,7 +73,6 @@ export function registerArchiveRoutes(app: Express) {
         creditEntries: await db.select().from(studio_credit_entries).where(eq(studio_credit_entries.projectId, projectId)),
         festivals: await db.select().from(biz_festivals).where(eq(biz_festivals.projectId, projectId)),
         expenses: await db.select().from(biz_expenses).where(eq(biz_expenses.projectId, projectId)),
-        aiKey: await db.select().from(projectAiKeys).where(eq(projectAiKeys.projectId, projectId)).then((r) => r[0]),
         castingMatrix: await db.select().from(lor_casting_matrix).where(eq(lor_casting_matrix.projectId, projectId)),
         pricingPresets: await db.select().from(commissionPricingPresets).where(eq(commissionPricingPresets.projectId, projectId)),
       };
@@ -105,7 +80,7 @@ export function registerArchiveRoutes(app: Express) {
       // 2. Fetch related sub-data
       const sbIds = data.storyboards.map((s: any) => s.id);
       if (sbIds.length > 0) {
-        data.storyboardPanels = await db.select().from(storyboardPanels).where(inArray(storyboardPanels.storyboardId, sbIds));
+        data.storyboardPanels = await db.select().from(storyboardPanels).where(and(inArray(storyboardPanels.storyboardId, sbIds), isNull(storyboardPanels.deletedAt)));
         const panelIds = data.storyboardPanels.map((p: any) => p.id);
         if (panelIds.length > 0) {
           data.panelPins = await db.select().from(panelPins).where(inArray(panelPins.panelId, panelIds));
@@ -197,7 +172,7 @@ export function registerArchiveRoutes(app: Express) {
 
     try {
       if (kind === "scenes-csv") {
-        const rows = await db.select().from(scenes).where(eq(scenes.projectId, projectId));
+        const rows = await db.select().from(scenes).where(and(eq(scenes.projectId, projectId), isNull(scenes.deletedAt)));
         const csv = [
           "ID,Number,Title,Status,Deadline",
           ...rows.map(r => [r.id, csvField(r.number), csvField(r.title), csvField(r.status), csvField(r.deadline || "")].join(","))
@@ -227,7 +202,7 @@ export function registerArchiveRoutes(app: Express) {
 
         const storyboardIds = sbs.map(sb => sb.id);
         const allPanels = storyboardIds.length > 0
-          ? await db.select().from(storyboardPanels).where(inArray(storyboardPanels.storyboardId, storyboardIds))
+          ? await db.select().from(storyboardPanels).where(and(inArray(storyboardPanels.storyboardId, storyboardIds), isNull(storyboardPanels.deletedAt)))
           : [];
 
         const panelsByStoryboardId = allPanels.reduce((acc, panel) => {
@@ -260,7 +235,7 @@ export function registerArchiveRoutes(app: Express) {
       }
 
       if (kind === "scripts-pdf") {
-        const rows = await db.select().from(scripts).where(eq(scripts.projectId, projectId));
+        const rows = await db.select().from(scripts).where(and(eq(scripts.projectId, projectId), isNull(scripts.deletedAt)));
         if (rows.length === 0) {
           return res.status(404).json({ message: "No scripts to export" });
         }
@@ -271,12 +246,12 @@ export function registerArchiveRoutes(app: Express) {
       }
 
       if (kind === "credit-roll-png") {
-        let canvasModule: typeof import("canvas");
+        let canvasModule: typeof import("@napi-rs/canvas");
         try {
           canvasModule = await getCanvasModule();
         } catch {
           return res.status(503).json({
-            message: "Credit roll PNG export needs the optional canvas native dependency to be built on the server.",
+            message: "Credit roll PNG export is unavailable: the @napi-rs/canvas native module failed to load.",
           });
         }
         const { createCanvas } = canvasModule;

@@ -1,55 +1,15 @@
+import { requireAuth, canAccessProject, canEditProject } from "../../auth.js";
 import { Router, Request, Response, NextFunction } from "express";
 import { db } from "../../storage.js";
-import { storage, getSessionUser } from "../../storage.js";
+import { storage } from "../../storage.js";
 import {
   scripts, storyboardPanels, scenes, assets, bakSnapshots, bakGltfExports,
   projects, comments, projectMembers, storyboards
 } from "@shared/schema";
-import { eq, isNull, lt, inArray, isNotNull, and } from "drizzle-orm";
-import archiver from "archiver";
-import jsPDF from "jspdf";
+import { eq, isNull, lt, inArray, isNotNull, and, getTableColumns } from "drizzle-orm";
 import { createHash } from "node:crypto";
 
 export const bakRouter = Router();
-
-let canvasModulePromise: Promise<typeof import("canvas")> | null = null;
-function getCanvasModule() {
-  canvasModulePromise ??= import("canvas");
-  return canvasModulePromise;
-}
-
-function extractToken(req: Request): string | undefined {
-  const auth = req.headers.authorization;
-  if (!auth) return undefined;
-  const parts = auth.split(" ");
-  if (parts.length === 2 && parts[0].toLowerCase() === "bearer") return parts[1];
-  return undefined;
-}
-
-async function requireAuth(req: Request, res: Response, next: NextFunction) {
-  const token = extractToken(req);
-  const userId = getSessionUser(token);
-  if (!userId) return res.status(401).json({ message: "Not authenticated" });
-  const user = await storage.getUser(userId);
-  if (!user) return res.status(401).json({ message: "User not found" });
-  req.user = user;
-  next();
-}
-
-async function canAccessProject(projectId: number, userId: number): Promise<boolean> {
-  const p = await storage.getProject(projectId);
-  if (!p) return false;
-  if (p.ownerId === userId) return true;
-  return await storage.isMember(projectId, userId);
-}
-
-function safeArchiveName(value: string): string {
-  return value
-    .trim()
-    .replace(/[^a-z0-9._-]+/gi, "_")
-    .replace(/^_+|_+$/g, "")
-    .slice(0, 80) || "cel_project";
-}
 
 function dataUrlToBuffer(dataUrl: string): Buffer | null {
   const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
@@ -61,141 +21,8 @@ function checksumBuffer(buffer: Buffer): string {
   return createHash("sha256").update(buffer).digest("hex");
 }
 
-// 1. .cel-archive Portable Export
-bakRouter.get("/projects/:id/archive", requireAuth, async (req, res) => {
-  const projectId = parseInt(String(req.params.id), 10);
-  if (!(await canAccessProject(projectId, req.user!.id))) {
-    return res.status(403).json({ message: "Forbidden" });
-  }
-
-  const project = await storage.getProject(projectId);
-  if (!project) return res.status(404).json({ message: "Project not found" });
-  const projScripts = await db.select().from(scripts).where(eq(scripts.projectId, projectId));
-  const projStoryboards = await db.select().from(storyboards).where(eq(storyboards.projectId, projectId));
-  const projScenes = await db.select().from(scenes).where(eq(scenes.projectId, projectId));
-  const projAssets = await db.select().from(assets).where(eq(assets.projectId, projectId));
-  const projComments = await db.select().from(comments).where(eq(comments.projectId, projectId));
-  const projMembers = await db.select().from(projectMembers).where(eq(projectMembers.projectId, projectId));
-
-  const archiveName = `${safeArchiveName(project.title)}.cel-archive`;
-  res.attachment(archiveName);
-  res.type("application/zip");
-  const archive = archiver('zip', { zlib: { level: 9 } });
-  archive.pipe(res);
-
-  const storyboardIds = projStoryboards.map(sb => sb.id);
-  const allPanels = storyboardIds.length > 0
-    ? await db.select().from(storyboardPanels).where(inArray(storyboardPanels.storyboardId, storyboardIds))
-    : [];
-
-  const panelsByStoryboardId = allPanels.reduce((acc, panel) => {
-    if (!acc[panel.storyboardId]) {
-      acc[panel.storyboardId] = [];
-    }
-    acc[panel.storyboardId].push(panel);
-    return acc;
-  }, {} as Record<number, typeof allPanels[0][]>);
-
-  const storyboardPayload = projStoryboards.map(storyboard => ({
-    ...storyboard,
-    panels: panelsByStoryboardId[storyboard.id] || [],
-  }));
-  const assetManifest = projAssets.map((asset) => ({
-    ...asset,
-    fileData: asset.fileData ? `assets/${asset.id}_${safeArchiveName(asset.filename)}` : null,
-  }));
-  const projectJson = {
-    schema: "cel.archive.project.v1",
-    exportedAt: new Date().toISOString(),
-    project,
-    scripts: projScripts,
-    storyboards: storyboardPayload,
-    scenes: projScenes,
-    assets: assetManifest,
-    comments: projComments,
-    members: projMembers,
-  };
-  const manifest = {
-    schema: "cel.archive.manifest.v1",
-    app: "Cel",
-    archiveVersion: 1,
-    exportedAt: projectJson.exportedAt,
-    projectId,
-    projectTitle: project.title,
-    counts: {
-      scripts: projScripts.length,
-      storyboards: projStoryboards.length,
-      panels: storyboardPayload.reduce((sum, storyboard) => sum + storyboard.panels.length, 0),
-      scenes: projScenes.length,
-      assets: projAssets.length,
-      comments: projComments.length,
-      members: projMembers.length,
-    },
-    primaryData: "project.json",
-  };
-
-  archive.append(JSON.stringify(manifest, null, 2), { name: "manifest.json" });
-  archive.append(JSON.stringify(projectJson, null, 2), { name: "project.json" });
-  archive.append(
-    [
-      `# ${project.title}`,
-      "",
-      "This `.cel-archive` is a portable Cel project bundle.",
-      "",
-      "- `manifest.json` describes the archive schema and content counts.",
-      "- `project.json` contains import-ready project records and metadata.",
-      "- `scripts/`, `storyboards/`, `scenes/`, and `assets/` contain human-readable exports and media.",
-      "",
-      `Exported: ${projectJson.exportedAt}`,
-    ].join("\n"),
-    { name: "README.md" },
-  );
-  
-  projScripts.forEach(script => {
-    if (script.content) {
-      archive.append(script.content, { name: `scripts/${script.id}_${safeArchiveName(script.title)}.md` });
-    }
-  });
-
-  for (const sb of storyboardPayload) {
-    sb.panels.forEach((panel, i) => {
-      if (panel.imageData) {
-        const buffer = dataUrlToBuffer(panel.imageData);
-        if (buffer) {
-          archive.append(buffer, { name: `storyboards/${safeArchiveName(sb.title)}/panel_${i}_${panel.id}.png` });
-        }
-      }
-    });
-  }
-
-  projScenes.forEach(scene => {
-    archive.append(JSON.stringify(scene, null, 2), { name: `scenes/scene_${safeArchiveName(scene.number)}_${scene.id}.json` });
-  });
-
-  projAssets.forEach(asset => {
-    if (asset.fileData) {
-      const buffer = dataUrlToBuffer(asset.fileData);
-      if (buffer) {
-        archive.append(buffer, { name: `assets/${asset.id}_${safeArchiveName(asset.filename)}` });
-      }
-    }
-  });
-
-  archive.append(JSON.stringify(projComments, null, 2), { name: 'comments.json' });
-  archive.append(JSON.stringify(projMembers, null, 2), { name: 'members.json' });
-
-  await archive.finalize();
-});
-
 // 3. Branching Snapshots
-bakRouter.post("/projects/:id/snapshot", requireAuth, async (req, res) => {
-  const projectId = parseInt(String(req.params.id), 10);
-  if (!(await canAccessProject(projectId, req.user!.id))) {
-    return res.status(403).json({ message: "Forbidden" });
-  }
-
-  const { label } = req.body;
-
+async function captureProjectSnapshot(projectId: number, label: string) {
   const snapshotStoryboards = await db.select().from(storyboards).where(eq(storyboards.projectId, projectId));
   const storyboardIds = snapshotStoryboards.map(sb => sb.id);
   const snapshotPanels = storyboardIds.length > 0 ? await db.select().from(storyboardPanels).where(inArray(storyboardPanels.storyboardId, storyboardIds)) : [];
@@ -211,9 +38,31 @@ bakRouter.post("/projects/:id/snapshot", requireAuth, async (req, res) => {
 
   await db.insert(bakSnapshots).values({
     projectId,
-    label: label || "Manual Snapshot",
+    label,
     jsonBlob: JSON.stringify(snapshotData)
   });
+}
+
+/** Snapshots are JSON, so timestamps come back as ISO strings; drizzle needs Date objects to insert them. */
+function reviveDates(table: Parameters<typeof getTableColumns>[0], rows: any[]): any[] {
+  const columns = getTableColumns(table);
+  return rows.map((row) => {
+    const out = { ...row };
+    for (const [key, column] of Object.entries(columns)) {
+      if (column.dataType === "date" && typeof out[key] === "string") out[key] = new Date(out[key]);
+    }
+    return out;
+  });
+}
+
+bakRouter.post("/projects/:id/snapshot", requireAuth, async (req, res) => {
+  const projectId = parseInt(String(req.params.id), 10);
+  if (!(await canAccessProject(projectId, req.user!.id))) {
+    return res.status(403).json({ message: "Forbidden" });
+  }
+
+  const { label } = req.body ?? {};
+  await captureProjectSnapshot(projectId, typeof label === "string" && label.trim() ? label.trim().slice(0, 120) : "Manual Snapshot");
 
   res.json({ message: "Snapshot created" });
 });
@@ -222,7 +71,7 @@ bakRouter.post("/projects/:id/snapshots/:snapId/restore", requireAuth, async (re
   const projectId = parseInt(String(req.params.id), 10);
   const snapId = parseInt(String(req.params.snapId), 10);
   
-  if (!(await canAccessProject(projectId, req.user!.id))) {
+  if (!(await canEditProject(projectId, req.user!.id))) {
     return res.status(403).json({ message: "Forbidden" });
   }
 
@@ -233,55 +82,37 @@ bakRouter.post("/projects/:id/snapshots/:snapId/restore", requireAuth, async (re
 
   const data = JSON.parse(snap.jsonBlob);
 
+  // Restoring replaces everything created since, so keep the pre-restore state as its own snapshot.
+  await captureProjectSnapshot(projectId, `Auto-backup before restoring "${snap.label}"`.slice(0, 120));
+
   const CHUNK_SIZE = 500;
+  const insertChunks = async (tx: any, table: any, rows: any[]) => {
+    const revived = reviveDates(table, rows ?? []);
+    for (let i = 0; i < revived.length; i += CHUNK_SIZE) {
+      await tx.insert(table).values(revived.slice(i, i + CHUNK_SIZE));
+    }
+  };
+
   await db.transaction(async (tx) => {
+    // Panels first: they belong to *current* storyboards, including ones created after the snapshot.
+    const currentStoryboards = await tx.select({ id: storyboards.id }).from(storyboards).where(eq(storyboards.projectId, projectId));
+    const currentIds = currentStoryboards.map((sb) => sb.id);
+    for (let i = 0; i < currentIds.length; i += CHUNK_SIZE) {
+      await tx.delete(storyboardPanels).where(inArray(storyboardPanels.storyboardId, currentIds.slice(i, i + CHUNK_SIZE)));
+    }
 
-    // Restore scripts
     await tx.delete(scripts).where(eq(scripts.projectId, projectId));
-    if (data.scripts && data.scripts.length > 0) {
-      for (let i = 0; i < data.scripts.length; i += CHUNK_SIZE) {
-        await tx.insert(scripts).values(data.scripts.slice(i, i + CHUNK_SIZE));
-      }
-    }
+    await insertChunks(tx, scripts, data.scripts);
 
-    // Restore storyboards and panels
     await tx.delete(storyboards).where(eq(storyboards.projectId, projectId));
-    if (data.storyboards && data.storyboards.length > 0) {
-      for (let i = 0; i < data.storyboards.length; i += CHUNK_SIZE) {
-        await tx.insert(storyboards).values(data.storyboards.slice(i, i + CHUNK_SIZE));
-      }
-    }
-    
-    // Clean up all panels for these storyboards, then insert
-    // Since we deleted storyboards, any associated panels conceptually are orphaned, but let's just delete the ones we know
-    if (data.storyboards && data.storyboards.length > 0) {
-      const sbIds = data.storyboards.map((sb: any) => sb.id);
-      // Delete in chunks too, inArray might have limits on number of parameters
-      for (let i = 0; i < sbIds.length; i += CHUNK_SIZE) {
-        await tx.delete(storyboardPanels).where(inArray(storyboardPanels.storyboardId, sbIds.slice(i, i + CHUNK_SIZE)));
-      }
-    }
-    if (data.panels && data.panels.length > 0) {
-      for (let i = 0; i < data.panels.length; i += CHUNK_SIZE) {
-        await tx.insert(storyboardPanels).values(data.panels.slice(i, i + CHUNK_SIZE));
-      }
-    }
+    await insertChunks(tx, storyboards, data.storyboards);
+    await insertChunks(tx, storyboardPanels, data.panels);
 
-    // Restore scenes
     await tx.delete(scenes).where(eq(scenes.projectId, projectId));
-    if (data.scenes && data.scenes.length > 0) {
-      for (let i = 0; i < data.scenes.length; i += CHUNK_SIZE) {
-        await tx.insert(scenes).values(data.scenes.slice(i, i + CHUNK_SIZE));
-      }
-    }
+    await insertChunks(tx, scenes, data.scenes);
 
-    // Restore comments
     await tx.delete(comments).where(eq(comments.projectId, projectId));
-    if (data.comments && data.comments.length > 0) {
-      for (let i = 0; i < data.comments.length; i += CHUNK_SIZE) {
-        await tx.insert(comments).values(data.comments.slice(i, i + CHUNK_SIZE));
-      }
-    }
+    await insertChunks(tx, comments, data.comments);
   });
 
   res.json({ message: "Snapshot restored successfully" });
@@ -302,171 +133,13 @@ bakRouter.get("/projects/:id/snapshots", requireAuth, async (req, res) => {
   res.json(snaps);
 });
 
-// 4. Format-Agnostic Export Layer
-bakRouter.get("/projects/:id/export/:kind", requireAuth, async (req, res) => {
-  const projectId = parseInt(String(req.params.id), 10);
-  const { kind } = req.params;
-  
-  if (!(await canAccessProject(projectId, req.user!.id))) {
-    return res.status(403).json({ message: "Forbidden" });
-  }
-
-  if (kind === "scripts-pdf") {
-    const projScripts = await db.select().from(scripts).where(eq(scripts.projectId, projectId));
-    const doc = new jsPDF();
-    let y = 10;
-    projScripts.forEach((s, idx) => {
-      if (idx > 0) {
-        doc.addPage();
-        y = 10;
-      }
-      doc.setFontSize(16);
-      doc.text(s.title, 10, y);
-      y += 10;
-      doc.setFontSize(12);
-      const lines = doc.splitTextToSize(s.content, 180);
-      doc.text(lines, 10, y);
-    });
-    
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', 'attachment; filename="scripts.pdf"');
-    const arrayBuffer = doc.output('arraybuffer');
-    res.send(Buffer.from(arrayBuffer));
-  } else if (kind === "scenes-csv") {
-    const projScenes = await db.select().from(scenes).where(eq(scenes.projectId, projectId));
-    let csv = "ID,Number,Title,Status,Description\n";
-    projScenes.forEach(s => {
-      csv += `"${s.id}","${s.number}","${s.title.replace(/"/g, '""')}","${s.status}","${s.description.replace(/"/g, '""')}"\n`;
-    });
-    res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', 'attachment; filename="scenes.csv"');
-    res.send(csv);
-  } else if (kind === "comments-csv") {
-    const projComments = await db.select().from(comments).where(eq(comments.projectId, projectId));
-    let csv = "ID,AuthorID,SceneID,Body,CreatedAt\n";
-    projComments.forEach(c => {
-      csv += `"${c.id}","${c.authorId}","${c.sceneId}","${c.body.replace(/"/g, '""')}","${c.createdAt}"\n`;
-    });
-    res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', 'attachment; filename="comments.csv"');
-    res.send(csv);
-  } else if (kind === "storyboards-zip-png") {
-    const projStoryboards = await db.select().from(storyboards).where(eq(storyboards.projectId, projectId));
-    res.attachment('storyboards.zip');
-    const archive = archiver('zip', { zlib: { level: 9 } });
-    archive.pipe(res);
-
-    const storyboardIds = projStoryboards.map(sb => sb.id);
-    const allPanels = storyboardIds.length > 0
-      ? await db.select().from(storyboardPanels).where(inArray(storyboardPanels.storyboardId, storyboardIds))
-      : [];
-
-    const panelsByStoryboardId = allPanels.reduce((acc, panel) => {
-      const id = panel.storyboardId;
-      if (id !== null) {
-        if (!acc[id]) acc[id] = [];
-        acc[id].push(panel);
-      }
-      return acc;
-    }, {} as Record<number, typeof allPanels>);
-
-    for (const sb of projStoryboards) {
-      const panels = panelsByStoryboardId[sb.id] || [];
-      panels.forEach((panel, i) => {
-        if (!panel.imageData) return;
-        const base64Data = panel.imageData.replace(/^data:image\/\w+;base64,/, "");
-        const buffer = Buffer.from(base64Data, 'base64');
-        archive.append(buffer, { name: `${sb.title}/panel_${i}_${panel.id}.png` });
-      });
-    }
-    await archive.finalize();
-  } else {
-    res.status(400).json({ message: "Invalid export kind" });
-  }
-});
-
-// 5. Sprite-Sheet Auto-Packer
-bakRouter.post("/projects/:id/spritesheet", requireAuth, async (req, res) => {
-  const projectId = parseInt(String(req.params.id), 10);
-  if (!(await canAccessProject(projectId, req.user!.id))) {
-    return res.status(403).json({ message: "Forbidden" });
-  }
-
-  let canvasModule: typeof import("canvas");
-  try {
-    canvasModule = await getCanvasModule();
-  } catch {
-    return res.status(503).json({
-      message: "Sprite-sheet export needs the optional canvas native dependency to be built.",
-    });
-  }
-  const { createCanvas, loadImage } = canvasModule;
-
-  const { panelIds, potPadding } = req.body;
-  if (!Array.isArray(panelIds) || panelIds.length === 0) {
-    return res.status(400).json({ message: "No panels selected" });
-  }
-
-  const panels = (await db.select().from(storyboardPanels).where(
-    inArray(storyboardPanels.id, panelIds)
-  )).filter(p => panelIds.includes(p.id));
-
-  if (panels.length === 0) return res.status(404).json({ message: "Panels not found" });
-
-  const imgs = (await Promise.all(panels.map(async p => {
-    if (!p.imageData) return null;
-    return await loadImage(p.imageData);
-  }))).filter((img): img is any => img !== null);
-
-  const cellW = imgs[0].width;
-  const cellH = imgs[0].height;
-  const cols = Math.ceil(Math.sqrt(panels.length));
-  const rows = Math.ceil(panels.length / cols);
-  
-  let outW = cols * cellW;
-  let outH = rows * cellH;
-
-  if (potPadding) {
-    outW = Math.pow(2, Math.ceil(Math.log2(outW)));
-    outH = Math.pow(2, Math.ceil(Math.log2(outH)));
-  }
-
-  const canvas = createCanvas(outW, outH);
-  const ctx = canvas.getContext('2d');
-  
-  const manifest: any = { frames: {} };
-
-  imgs.forEach((img: any, i: number) => {
-    const col = i % cols;
-    const row = Math.floor(i / cols);
-    const x = col * cellW;
-    const y = row * cellH;
-    
-    ctx.drawImage(img, x, y);
-    manifest.frames[`panel_${panels[i].id}`] = {
-      frame: { x, y, w: cellW, h: cellH },
-      duration_ms: 1000 // default or from animatic data if linked
-    };
-  });
-
-  res.attachment('spritesheet.zip');
-  const archive = archiver('zip', { zlib: { level: 9 } });
-  archive.pipe(res);
-  
-  const imgBuffer = canvas.toBuffer('image/png');
-  archive.append(imgBuffer, { name: 'spritesheet.png' });
-  archive.append(JSON.stringify(manifest, null, 2), { name: 'spritesheet.json' });
-  
-  await archive.finalize();
-});
-
 // 6. GLTF Export Stub
 bakRouter.post("/scenes/:id/gltf-stub", requireAuth, async (req, res) => {
   const sceneId = parseInt(String(req.params.id), 10);
   const sceneObj = await db.select().from(scenes).where(eq(scenes.id, sceneId)).then((r) => r[0]);
   
   if (!sceneObj) return res.status(404).json({ message: "Scene not found" });
-  if (!(await canAccessProject(sceneObj.projectId, req.user!.id))) {
+  if (!(await canEditProject(sceneObj.projectId, req.user!.id))) {
     return res.status(403).json({ message: "Forbidden" });
   }
 
@@ -636,7 +309,7 @@ bakRouter.post("/trash/restore/:kind/:id", requireAuth, async (req, res) => {
     return res.status(400).json({ message: "Invalid kind" });
   }
 
-  if (!(await canAccessProject(projectId, req.user!.id))) {
+  if (!(await canEditProject(projectId, req.user!.id))) {
     return res.status(403).json({ message: "No access" });
   }
 
@@ -680,7 +353,7 @@ bakRouter.delete("/trash/permanent/:kind/:id", requireAuth, async (req, res) => 
     return res.status(400).json({ message: "Invalid kind" });
   }
 
-  if (!(await canAccessProject(projectId, req.user!.id))) {
+  if (!(await canEditProject(projectId, req.user!.id))) {
     return res.status(403).json({ message: "No access" });
   }
 

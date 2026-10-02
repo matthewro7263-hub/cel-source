@@ -285,11 +285,12 @@ function CommissionDetailDialog({
     }
   }, [commission?.id]);
 
-  if (!commission) return null;
-
+  // Hooks must run on every render, so this lives above the early return below.
   const saveNotes = useCallback(() => {
     onUpdate({ notes });
   }, [notes, onUpdate]);
+
+  if (!commission) return null;
 
   const handleStatusChange = (v: string) => {
     setStatus(v);

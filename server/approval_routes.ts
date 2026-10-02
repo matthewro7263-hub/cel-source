@@ -1,35 +1,11 @@
+import { requireAuth, canAccessProject } from "./auth";
 import type { Express, Request, Response, NextFunction } from "express";
-import { db, getSessionUser, storage } from "./storage";
+import { db, storage } from "./storage";
 import { eq } from "drizzle-orm";
 import { approval_signoffs } from "../shared/approval_schema";
 import { z } from "zod";
 import { createHash } from "node:crypto";
 import { notifyDiscord } from "./discord";
-
-async function canAccessProject(projectId: number, userId: number): Promise<boolean> {
-  const p = await storage.getProject(projectId);
-  if (!p) return false;
-  if (p.ownerId === userId) return true;
-  return await storage.isMember(projectId, userId);
-}
-
-function extractToken(req: Request): string | undefined {
-  const auth = req.headers.authorization;
-  if (!auth) return undefined;
-  const parts = auth.split(" ");
-  if (parts.length === 2 && parts[0].toLowerCase() === "bearer") return parts[1];
-  return undefined;
-}
-
-async function requireAuth(req: Request, res: Response, next: NextFunction) {
-  const token = extractToken(req);
-  const userId = getSessionUser(token);
-  if (!userId) return res.status(401).json({ message: "Not authenticated" });
-  const user = await storage.getUser(userId);
-  if (!user) return res.status(401).json({ message: "User not found" });
-  (req as any).user = user;
-  next();
-}
 
 const MILESTONES = ["storyboard", "animatic", "final"] as const;
 
@@ -126,21 +102,22 @@ export function registerApprovalRoutes(app: Express) {
     if (patch.approverName !== undefined) normalized.approverName = normalizeOptional(patch.approverName);
     if (patch.signature !== undefined) normalized.signature = normalizeOptional(patch.signature);
     if (patch.notes !== undefined) normalized.notes = normalizeOptional(patch.notes);
-    if (patch.approvedAt !== undefined) normalized.approvedAt = patch.approvedAt;
+    // approvedAt is always server-controlled: set below on approval, cleared on any other status. A
+    // client-supplied timestamp would be forgeable (and was an ISO string headed for a timestamp column).
 
     if (patch.status === "approved") {
       const signature = normalizeOptional(patch.signature);
       if (!signature) {
         return res.status(400).json({ message: "Typed signature is required for approval" });
       }
-      const approvedAt = new Date().toISOString();
+      const approvedAt = new Date();
       normalized.signature = signature;
       normalized.approvedAt = approvedAt;
       normalized.signatureHash = buildSignatureHash({
         projectId: row.projectId,
         milestone: row.milestone,
         signature,
-        approvedAt,
+        approvedAt: approvedAt.toISOString(),
       });
     } else if (patch.status) {
       normalized.approvedAt = null;

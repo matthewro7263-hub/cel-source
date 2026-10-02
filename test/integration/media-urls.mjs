@@ -1,0 +1,18 @@
+import { call, check, summary, base } from "./lib.mjs";
+const r = await call("POST", "/api/auth/login", { email: "matthew@cel.app", password: "celdemo" });
+const t = r.json.token;
+const sbs = (await call("GET", "/api/projects/1/storyboards", undefined, t)).json;
+const p = sbs[0].panels[0];
+check("lite panel has imageUrl", typeof p.imageUrl === "string" && p.imageUrl.startsWith("/api/media/panels/"), p);
+check("lite panel hides imageData", p.imageData === undefined);
+let res = await fetch(base + p.imageUrl);
+check("signed url serves image w/o auth", res.status === 200 && /^image\//.test(res.headers.get("content-type")), res.status);
+check("csp sandbox header", /sandbox/.test(res.headers.get("content-security-policy") || ""));
+const tampered = p.imageUrl.replace(/sig=(.)/, (m, c) => "sig=" + (c === "0" ? "1" : "0"));
+res = await fetch(base + tampered);
+check("tampered sig 403", res.status === 403, res.status);
+res = await fetch(base + p.imageUrl.replace(/panels\/\d+/, "panels/" + (p.id + 1)));
+check("sig bound to panel id", res.status === 403, res.status);
+res = await fetch(base + p.imageUrl.replace(/exp=\d+/, "exp=1"));
+check("expired 403", res.status === 403, res.status);
+process.exit(summary() ? 1 : 0);

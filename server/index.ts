@@ -12,15 +12,30 @@ import { registerArchiveRoutes } from "./archive_routes";
 import { registerSpriteSheetRoutes } from "./spritesheet_routes";
 import { startLeaderboardCron } from "./leaderboard_cron";
 import { createServer } from "node:http";
-import { neonConfig } from "@neondatabase/serverless";
-import ws from "ws";
-import { drizzle } from "drizzle-orm/neon-serverless";
-import { migrate } from "drizzle-orm/neon-serverless/migrator";
-import { pool } from "./storage";
+import type { IncomingMessage } from "node:http";
+import { pool, migrateDatabase } from "./db";
 import { checkR2Health } from "./r2";
+import { ZodError } from "zod";
+import compression from "compression";
+import { installFriendlyZodMessages } from "./errors";
+
+installFriendlyZodMessages();
 
 const app = express();
 app.set("trust proxy", 1);
+app.disable("x-powered-by");
+
+// gzip/deflate text compression: the JS bundle drops from ~1MB to ~330KB. Skip what is already
+// compressed or streamed: SSE (compression buffers it, breaking the AI chat), images, zips, media.
+app.use(
+  compression({
+    filter: (req, res) => {
+      const type = String(res.getHeader("Content-Type") ?? "");
+      if (/event-stream|^image\/|^video\/|^audio\/|zip|pdf|octet-stream/i.test(type)) return false;
+      return compression.filter(req, res);
+    },
+  }),
+);
 const startedAt = Date.now();
 
 const DEFAULT_ALLOWED_ORIGINS = [
@@ -42,6 +57,16 @@ function parseAllowedOrigins(value: string | undefined): Set<string> {
 // Set CEL_ALLOWED_ORIGINS as a comma-separated list to override the defaults.
 const ALLOWED_ORIGINS = parseAllowedOrigins(process.env.CEL_ALLOWED_ORIGINS);
 
+// Baseline security headers (no CSP: the client relies on inline styles/scripts).
+app.use((_req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  if (process.env.NODE_ENV === "production") {
+    res.setHeader("Strict-Transport-Security", "max-age=15552000; includeSubDomains");
+  }
+  next();
+});
+
 app.use((req, res, next) => {
   const origin = req.headers.origin as string | undefined;
 
@@ -54,7 +79,16 @@ app.use((req, res, next) => {
 
   res.header("Vary", "Origin");
 
-  if (!ALLOWED_ORIGINS.has(origin)) {
+  // Browsers attach Origin to module scripts and POSTs even when same-origin, so a
+  // request from the host that is serving the app is always fine.
+  let sameOrigin = false;
+  try {
+    sameOrigin = new URL(origin).host === req.get("host");
+  } catch {
+    // malformed Origin header: fall through to the allowlist check
+  }
+
+  if (!sameOrigin && !ALLOWED_ORIGINS.has(origin)) {
     return res.status(403).json({ message: "CORS origin forbidden" });
   }
 
@@ -78,14 +112,42 @@ declare module "http" {
   }
 }
 
-app.use(
-  express.json({
-    limit: "1mb", // default limit for most routes
-    verify: (req, _res, buf) => {
-      req.rawBody = buf;
-    },
-  }),
-);
+// A single global 1mb parser would reject every JSON route that carries base64
+// media (panels, animatics, assets, commissions, clips, spritesheets) before its
+// own size check could run, so the limit is chosen per route.
+const jsonVerify = (req: IncomingMessage, _res: unknown, buf: Buffer) => {
+  req.rawBody = buf;
+};
+const defaultJson = express.json({ limit: "1mb", verify: jsonVerify });
+const mediaJson = express.json({ limit: "16mb", verify: jsonVerify });
+const bulkMediaJson = express.json({ limit: "50mb", verify: jsonVerify });
+
+const MEDIA_JSON_ROUTES = [
+  /^\/api\/storyboards\/\d+\/panels$/,
+  /^\/api\/panels\/\d+$/,
+  /^\/api\/projects\/\d+\/animatics$/,
+  /^\/api\/projects\/\d+\/assets(\/\d+)?$/,
+  /^\/api\/commissions$/,
+  /^\/api\/tracks\/\d+\/clips$/,
+  /^\/api\/clips\/\d+$/,
+  /^\/api\/mcp\/upload_asset$/,
+  /^\/api\/projects\/\d+$/, // PATCH carries the brand logo as a data URL
+  /^\/api\/projects\/\d+\/lor_facts$/,
+  /^\/api\/lor_facts\/\d+$/,
+  /^\/api\/assets\/\d+\/lor_versions$/,
+  /^\/api\/aud\/voice_takes$/,
+  /^\/api\/inbox(\/\d+)?$/, // scratchpad sketches are saved here as PNG data URLs
+];
+const BULK_MEDIA_JSON_ROUTES = [
+  /^\/api\/storyboards\/\d+\/panels\/bulk$/,
+  /^\/api\/projects\/\d+\/spritesheet$/,
+];
+
+app.use((req, res, next) => {
+  if (BULK_MEDIA_JSON_ROUTES.some((re) => re.test(req.path))) return bulkMediaJson(req, res, next);
+  if (MEDIA_JSON_ROUTES.some((re) => re.test(req.path))) return mediaJson(req, res, next);
+  return defaultJson(req, res, next);
+});
 
 app.use(express.urlencoded({ extended: false, limit: "1mb" }));
 
@@ -138,24 +200,12 @@ export function log(message: string, source = "express") {
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
-  let capturedJsonResponse: Record<string, any> | undefined = undefined;
-
-  const originalResJson = res.json;
-  res.json = function (bodyJson, ...args) {
-    capturedJsonResponse = bodyJson;
-    return originalResJson.apply(res, [bodyJson, ...args]);
-  };
-
   res.on("finish", () => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
       const contentLength = res.getHeader("content-length");
-      if (contentLength) {
-        logLine += ` size=${contentLength}b`;
-      } else if (capturedJsonResponse) {
-        logLine += ` size=${JSON.stringify(capturedJsonResponse).length}b`;
-      }
+      if (contentLength) logLine += ` size=${contentLength}b`;
       log(logLine);
     }
   });
@@ -170,21 +220,26 @@ async function runMigrations() {
   }
 
   try {
-    neonConfig.webSocketConstructor = ws;
-    const migrationDb = drizzle(pool);
-    await migrate(migrationDb, { migrationsFolder: path.join(__dirname, "../migrations") });
+    await migrateDatabase(process.env.CEL_MIGRATIONS_DIR ?? path.resolve(process.cwd(), "migrations"));
     log("database migrations completed", "migrations");
   } catch (err) {
-    console.error("Database migration failed; continuing startup:", err);
+    console.error("Database migration failed:", err);
+    // A half-migrated production DB would serve errors for missing tables; fail fast instead.
+    if (process.env.NODE_ENV === "production") throw err;
+    console.error("Continuing startup in development.");
   }
 }
 
 (async () => {
   await runMigrations();
-  try {
-    await seedIfEmpty();
-  } catch (err) {
-    console.error("Seed failed; continuing startup:", err);
+  // Demo accounts use a well-known password, so never seed them in production
+  // unless explicitly requested (e.g. for a public demo instance).
+  if (process.env.NODE_ENV !== "production" || process.env.CEL_SEED_DEMO === "true") {
+    try {
+      await seedIfEmpty();
+    } catch (err) {
+      console.error("Seed failed; continuing startup:", err);
+    }
   }
   startLeaderboardCron();
   await registerRoutes(httpServer, app);
@@ -195,8 +250,13 @@ async function runMigrations() {
   registerSpriteSheetRoutes(app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
+    if (err instanceof ZodError) {
+      return res.status(400).json({ message: err.message, issues: err.issues });
+    }
     const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
+    const message = status >= 500 && process.env.NODE_ENV === "production"
+      ? "Internal Server Error"
+      : err.message || "Internal Server Error";
 
     console.error("Internal Server Error:", err);
 
@@ -205,6 +265,11 @@ async function runMigrations() {
     }
 
     return res.status(status).json({ message });
+  });
+
+  // Unknown API routes must be JSON 404s, not the SPA's index.html (which the client then fails to parse).
+  app.use("/api", (_req, res) => {
+    res.status(404).json({ message: "Not found" });
   });
 
   // importantly only setup vite in development and after
@@ -225,7 +290,29 @@ async function runMigrations() {
   const host = process.env.HOST || "0.0.0.0";
   const listenOptions: { port: number; host: string; reusePort?: boolean } = { port, host };
   if (process.env.REUSE_PORT !== "false") listenOptions.reusePort = true;
+  // Render's load balancer reuses upstream connections for up to 60s; Node's default 5s keep-alive
+  // closes them first and surfaces as sporadic 502s. Stay above the balancer's idle timeout.
+  httpServer.keepAliveTimeout = 120_000;
+  httpServer.headersTimeout = 125_000;
+
   httpServer.listen(listenOptions, () => {
     log(`serving on ${host}:${port}`);
   });
-})();
+
+  // Deploys send SIGTERM: stop accepting connections, let in-flight requests finish, close the DB pool.
+  let shuttingDown = false;
+  const shutdown = (signal: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    log(`${signal} received, shutting down`);
+    httpServer.close(() => {
+      pool.end().catch(() => {}).finally(() => process.exit(0));
+    });
+    setTimeout(() => process.exit(1), 10_000).unref(); // don't hang forever on stuck connections
+  };
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
+})().catch((err) => {
+  console.error("Fatal startup error:", err);
+  process.exit(1);
+});

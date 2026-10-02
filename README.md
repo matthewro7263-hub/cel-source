@@ -109,6 +109,24 @@ cel-source/
 
 ---
 
+## Testing
+
+```bash
+pnpm check              # TypeScript
+pnpm lint               # React hook-order rules (ESLint)
+pnpm test               # unit tests (bun)
+# Black-box API/WebSocket suite against the production bundle and a real Postgres:
+createdb cel_it && DATABASE_URL=postgres://localhost:5432/cel_it pnpm test:integration
+```
+
+`pnpm test:integration` boots `dist/index.cjs`, so it also proves a fresh database migrates and
+that the "no R2 configured" fallbacks work. CI runs all of the above.
+
+For local development any Postgres works (`DATABASE_URL=postgres://...`); the Neon serverless driver is
+only used for `*.neon.tech` hosts (override with `CEL_DB_DRIVER=neon|pg`).
+
+---
+
 ## Environment variables
 
 See [.env.example](./.env.example). The critical ones:
@@ -119,7 +137,17 @@ See [.env.example](./.env.example). The critical ones:
 | `ENCRYPTION_KEY` | 64-char hex (32 bytes) for AES-256 at-rest encryption. Generate with `openssl rand -hex 32` |
 | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` | Cloudflare R2 credentials |
 | `DISCORD_WEBHOOK_URL` | *(optional)* default Discord channel for notifications |
-| `SESSION_SECRET` | Cookie signing key |
+| `SESSION_SECRET` | **Required in production.** Signs session tokens. Generate with `openssl rand -hex 32` |
+| `ENCRYPTION_KEY` | **Required in production** (see above) |
+| `CEL_ADMIN_EMAILS` | *(optional)* comma-separated emails allowed to create challenge prompts / snapshots |
+| `CEL_SEED_DEMO` | *(optional)* set to `true` to seed demo accounts in production (they use a public password) |
+| `FREESOUND_API_KEY` | *(optional)* enables sound-effect search |
+| `CEL_DB_DRIVER` | *(optional)* `neon` or `pg`. Defaults to Neon's driver for `*.neon.tech` hosts and node-postgres elsewhere |
+| `OPENROUTER_BASE_URL` | *(optional)* override the OpenRouter API base (tests / OpenAI-compatible proxies) |
+| `CEL_MIGRATIONS_DIR` | *(optional)* migrations folder (default `./migrations` relative to the working directory) |
+
+R2 is optional: without `R2_*` set, panel images and script originals fall back to inline storage
+(`/ready` reports `r2: not_configured`).
 
 Never commit `.env.local`. `.env.example` is the safe template.
 
@@ -132,7 +160,7 @@ Cel is built in public. PRs welcome.
 1. Fork, then create a feature branch (`feat/<thing>` or `fix/<thing>`)
 2. `pnpm install && pnpm check && bun test` should all pass
 3. Open a PR against `main`
-4. Render will spin up a preview deploy for review
+4. CI runs typecheck, lint and tests; merging to `main` deploys to Render (see [docs/RENDER.md](docs/RENDER.md))
 
 For larger features, open an issue first so we can align on scope.
 

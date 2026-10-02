@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, integer, serial, boolean, index} from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, integer, bigint, doublePrecision, serial, boolean, index} from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -205,9 +205,11 @@ export const commissions = pgTable("commissions", {
   status: text("status").notNull().default("new"), // new | quoted | accepted | in-progress | delivered | declined
   notes: text("notes").notNull().default(""), // artist's private notes
   linkedProjectId: integer("linked_project_id"), // set when converted to project
+  quoteCents: integer("quote_cents"), // artist's quote, nullable
+  invoicedAt: timestamp("invoiced_at", { withTimezone: true }), // set when an invoice was issued
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
-export const insertCommissionSchema = createInsertSchema(commissions).omit({ id: true, createdAt: true, linkedProjectId: true });
+export const insertCommissionSchema = createInsertSchema(commissions).omit({ id: true, createdAt: true, linkedProjectId: true, quoteCents: true, invoicedAt: true });
 export type InsertCommission = z.infer<typeof insertCommissionSchema>;
 export type Commission = typeof commissions.$inferSelect;
 
@@ -417,8 +419,8 @@ export const sceneTimeEntries = pgTable("scene_time_entries", {
   id: serial("id").primaryKey(),
   sceneId: integer("scene_id").notNull(),
   userId: integer("user_id").notNull(),
-  startedAt: integer("started_at").notNull(), // timestamp ms
-  endedAt: integer("ended_at"), // nullable
+  startedAt: bigint("started_at", { mode: "number" }).notNull(), // epoch ms (exceeds int4)
+  endedAt: bigint("ended_at", { mode: "number" }), // nullable
   durationMs: integer("duration_ms"), // computed when stopped
 });
 export const insertSceneTimeEntrySchema = createInsertSchema(sceneTimeEntries).omit({ id: true });
@@ -452,7 +454,7 @@ export const bakGltfExports = pgTable("bak_gltf_exports", {
 export const dltCommissionHours = pgTable("dlt_commission_hours", {
   id: serial("id").primaryKey(),
   commissionId: integer("commission_id").notNull(),
-  hours: integer("hours").notNull().default(0), 
+  hours: doublePrecision("hours").notNull().default(0),
   loggedAt: timestamp("logged_at", { withTimezone: true }).defaultNow().notNull(),
 });
 export const insertDltCommissionHoursSchema = createInsertSchema(dltCommissionHours).omit({ id: true, loggedAt: true });

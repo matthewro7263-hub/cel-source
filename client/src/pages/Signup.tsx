@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation, Link } from "wouter";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -16,7 +16,12 @@ export default function Signup() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const { toast } = useToast();
-  const { applyToken } = useAuth();
+  const { user, applyToken } = useAuth();
+
+  // See Login.tsx: navigate after auth state commits, not from the mutation callback.
+  useEffect(() => {
+    if (user) setLocation("/dashboard");
+  }, [user, setLocation]);
 
   const m = useMutation({
     mutationFn: async () => {
@@ -25,9 +30,6 @@ export default function Signup() {
     },
     onSuccess: async (data: { user: any; token: string }) => {
       applyToken(data.token, data.user);
-      // Defer navigation one tick so applyToken's state update commits before
-      // ProtectedShell evaluates `user` — same race that affected login.
-      setTimeout(() => setLocation("/dashboard"), 0);
     },
     onError: (err: any) => {
       toast({ title: "Couldn't create account", description: String(err.message || err), variant: "destructive" });

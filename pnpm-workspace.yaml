@@ -1,6 +1,5 @@
+# Dependencies whose install scripts may run (pnpm 10 blocks all others).
+# esbuild links its platform binary.
 allowBuilds:
-  better-sqlite3: set this to true or false
-  bufferutil: set this to true or false
-  canvas: set this to true or false
-  core-js: set this to true or false
-  esbuild: set this to true or false
+  esbuild: true
+  core-js: false

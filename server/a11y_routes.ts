@@ -1,30 +1,7 @@
+import { requireAuth, attachOptionalUser } from "./auth";
 import type { Express, NextFunction, Request, Response } from "express";
-import { getSessionUser, storage } from "./storage";
+import { storage } from "./storage";
 import { insertA11yPrefsSchema } from "../shared/a11y_schema";
-
-function extractToken(req: Request): string | undefined {
-  const auth = req.headers.authorization;
-  if (!auth) return undefined;
-  const parts = auth.split(" ");
-  if (parts.length === 2 && parts[0].toLowerCase() === "bearer") return parts[1];
-  return undefined;
-}
-
-async function attachOptionalUser(req: Request, _res: Response, next: NextFunction) {
-  const userId = getSessionUser(extractToken(req));
-  if (userId) {
-    const user = await storage.getUser(userId);
-    if (user) (req as any).user = user;
-  }
-  next();
-}
-
-async function requireAuth(req: Request, res: Response, next: NextFunction) {
-  attachOptionalUser(req, res, () => {
-    if (!(req as any).user) return res.status(401).json({ error: "unauthorized" });
-    next();
-  });
-}
 
 export function registerA11yRoutes(app: Express) {
   app.get("/api/a11y/prefs", attachOptionalUser, async (req, res) => {
@@ -38,9 +15,9 @@ export function registerA11yRoutes(app: Express) {
     if (!authedUserId) {
       return res.json({ userId: 0, focusMode: 0, dyslexia: 0, colorblind: 0, reducedMotion: 0, largeTouch: 0, audioCues: 0 });
     }
-    let prefs = await (storage as any).getA11yPrefs(authedUserId);
+    let prefs = await storage.getA11yPrefs(authedUserId);
     if (!prefs) {
-      prefs = await (storage as any).createA11yPrefs({ userId: authedUserId, focusMode: 0, dyslexia: 0, colorblind: 0, reducedMotion: 0, largeTouch: 0, audioCues: 0 });
+      prefs = await storage.createA11yPrefs({ userId: authedUserId, focusMode: 0, dyslexia: 0, colorblind: 0, reducedMotion: 0, largeTouch: 0, audioCues: 0 });
     }
     res.json(prefs);
   });
@@ -51,7 +28,7 @@ export function registerA11yRoutes(app: Express) {
     const userId = (req as any).user?.id;
     if (!userId) return res.status(401).json({ error: "unauthorized" });
     const body = insertA11yPrefsSchema.parse({ ...req.body, userId });
-    const prefs = await (storage as any).updateA11yPrefs(userId, body);
+    const prefs = await storage.updateA11yPrefs(userId, body);
     res.json(prefs);
   });
 }

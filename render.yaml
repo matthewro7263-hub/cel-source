@@ -1,0 +1,78 @@
+# Render Blueprint for Cel. Connect it once (Dashboard > New > Blueprint, or "Blueprints" for the
+# existing service) and Render keeps the service settings below in sync with this file.
+# See docs/RENDER.md for the one-time migration steps and the env vars you must set.
+services:
+  - type: web
+    name: cel
+    runtime: node
+    region: oregon
+    branch: main
+    # Free sleeps after 15 min idle (~50s cold start) and can't run the weekly leaderboard timer while
+    # asleep. Move to `starter` for an always-on instance.
+    plan: free
+
+    # Pinned, reproducible install from pnpm-lock.yaml (packageManager in package.json selects pnpm 10 via
+    # corepack). --prod=false because Render sets NODE_ENV=production at build time and the build needs
+    # vite/esbuild/typescript. Migrations are NOT run here: the server applies migrations/ on boot and
+    # refuses to start if one fails, so a bad deploy never goes live (see healthCheckPath).
+    buildCommand: corepack enable && pnpm install --frozen-lockfile --prod=false && pnpm build
+    startCommand: node dist/index.cjs
+
+    # A new deploy only takes traffic once /health answers; if boot fails (missing secret, failed
+    # migration) Render keeps serving the previous version.
+    healthCheckPath: /health
+
+    # Deploy only after CI (typecheck, lint, unit + integration tests) is green.
+    autoDeployTrigger: checksPass
+
+    # Don't rebuild for docs/test-only changes.
+    buildFilter:
+      paths:
+        - client/**
+        - server/**
+        - shared/**
+        - migrations/**
+        - script/**
+        - package.json
+        - pnpm-lock.yaml
+        - pnpm-workspace.yaml
+        - vite.config.ts
+        - tsconfig.json
+        - tailwind.config.ts
+        - postcss.config.js
+        - render.yaml
+
+    # PR preview services inherit this service's env vars, including DATABASE_URL, i.e. every preview would
+    # boot against the production database. Keep them off, or give previews their own database.
+    previews:
+      generation: "off"
+
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # --- required ---
+      - key: DATABASE_URL # Neon (or any Postgres) connection string
+        sync: false
+      - key: SESSION_SECRET # signs login tokens; generated once, then stable
+        generateValue: true
+      - key: ENCRYPTION_KEY # encrypts stored AI keys; never rotate without re-saving them
+        generateValue: true
+      # --- optional ---
+      - key: CEL_ALLOWED_ORIGINS # only needed for a custom domain / separate frontend origin
+        sync: false
+      - key: CEL_ADMIN_EMAILS # comma-separated; may create challenge prompts and snapshots
+        sync: false
+      - key: CEL_SEED_DEMO # "true" seeds the public demo accounts into an EMPTY database
+        value: "false"
+      - key: R2_ACCOUNT_ID
+        sync: false
+      - key: R2_ENDPOINT
+        sync: false
+      - key: R2_BUCKET
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: FREESOUND_API_KEY
+        sync: false

@@ -5,43 +5,57 @@
     {
       "idx": 0,
       "version": "7",
+      "when": 1700000000000,
+      "tag": "0000_baseline",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
       "when": 1710000000000,
       "tag": "0010_speedrun_challenges",
       "breakpoints": false
     },
     {
-      "idx": 1,
+      "idx": 2,
       "version": "7",
       "when": 1710000001000,
       "tag": "0011_indexes_and_token_version",
       "breakpoints": false
     },
     {
-      "idx": 2,
+      "idx": 3,
       "version": "7",
       "when": 1710000002000,
       "tag": "0012_storyboard_panels_r2_scene",
       "breakpoints": false
     },
     {
-      "idx": 3,
+      "idx": 4,
       "version": "7",
       "when": 1710000003000,
       "tag": "0013_storyboard_panels_notes_change_request",
       "breakpoints": false
     },
     {
-      "idx": 4,
+      "idx": 5,
       "version": "7",
       "when": 1710000004000,
       "tag": "0014_challenge_leaderboard_snapshots",
       "breakpoints": false
     },
     {
-      "idx": 5,
+      "idx": 6,
       "version": "7",
       "when": 1710000005000,
       "tag": "0015_performance_indexes",
+      "breakpoints": false
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1710000006000,
+      "tag": "0016_schema_drift_fixes",
       "breakpoints": false
     }
   ]

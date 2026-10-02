@@ -79,7 +79,7 @@ export default function Share() {
           color: ${brandColor} !important;
         }
       `}</style>
-      <CliShareHeader project={project} />
+      <CliShareHeader project={project} shareToken={params.token} />
       {/* <header className="border-b border-border bg-sidebar">
         <div className="max-w-5xl mx-auto px-5 sm:px-8 py-4 flex items-center justify-between gap-4">
           <CelWordmark />
@@ -115,9 +115,9 @@ export default function Share() {
               </div>
             </div>
             <div className="flex flex-col gap-2 min-w-[200px]">
-              <CliApprovalWidget projectId={project.id} phase="storyboard" brandColor={(project as any).cli_brandColor} />
-              <CliApprovalWidget projectId={project.id} phase="animatic" brandColor={(project as any).cli_brandColor} />
-              <CliFeedbackModal projectId={project.id} />
+              <CliApprovalWidget projectId={project.id} phase="storyboard" brandColor={(project as any).cli_brandColor} shareToken={params.token} />
+              <CliApprovalWidget projectId={project.id} phase="animatic" brandColor={(project as any).cli_brandColor} shareToken={params.token} />
+              <CliFeedbackModal projectId={project.id} shareToken={params.token} />
             </div>
           </div>
         </div>

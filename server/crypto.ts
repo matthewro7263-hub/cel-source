@@ -1,28 +1,38 @@
 // server/crypto.ts
-// AES-256-GCM encrypt/decrypt helpers.
-// Requires ENCRYPTION_KEY env var: a 64-char hex string (32 bytes).
-// Generate one with: openssl rand -hex 32
+// Single AES-256-GCM implementation used to protect secrets (e.g. project AI keys) at rest.
+//
+// ENCRYPTION_KEY: a 64-char hex string (32 bytes), generate with `openssl rand -hex 32`.
+// Any other non-empty value is accepted for backwards compatibility and is hashed with
+// SHA-256 to derive the key. In production the key is mandatory.
 
-import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
+
+let warned = false;
 
 function getKey(): Buffer | null {
-  const hex = process.env.ENCRYPTION_KEY;
-  if (!hex || !/^[0-9a-fA-F]{64}$/.test(hex)) {
-    console.warn(
-      "ENCRYPTION_KEY is missing or invalid; values will be stored/read without encryption. Generate with: openssl rand -hex 32"
-    );
+  const raw = process.env.ENCRYPTION_KEY;
+  if (!raw) {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("ENCRYPTION_KEY is required in production (generate with: openssl rand -hex 32)");
+    }
+    if (!warned) {
+      warned = true;
+      console.warn("ENCRYPTION_KEY is not set; secrets are only base64-encoded (development only).");
+    }
     return null;
   }
-  return Buffer.from(hex, "hex");
+  if (/^[0-9a-fA-F]{64}$/.test(raw)) return Buffer.from(raw, "hex");
+  return createHash("sha256").update(raw).digest();
 }
 
 /**
  * Encrypts a plaintext string with AES-256-GCM.
- * Returns a single string: iv:authTag:ciphertext (all hex-encoded).
+ * Returns iv:authTag:ciphertext (all hex-encoded). Without a key (development only)
+ * the value is base64-encoded instead.
  */
 export function encrypt(plaintext: string): string {
   const key = getKey();
-  if (!key) return plaintext;
+  if (!key) return Buffer.from(plaintext, "utf8").toString("base64");
 
   const iv = randomBytes(12); // 96-bit IV recommended for GCM
   const cipher = createCipheriv("aes-256-gcm", key, iv);
@@ -32,20 +42,19 @@ export function encrypt(plaintext: string): string {
 }
 
 /**
- * Decrypts a string produced by encrypt().
- * Throws on tampered ciphertext (GCM auth tag mismatch).
+ * Decrypts a string produced by encrypt(). Values without ":" are treated as legacy
+ * base64. Throws on tampered ciphertext (GCM auth tag mismatch).
  */
-export function decrypt(ciphertext: string): string {
-  const key = getKey();
-  if (!key) return ciphertext;
+export function decrypt(value: string): string {
+  if (!value.includes(":")) return Buffer.from(value, "base64").toString("utf8");
 
-  const parts = ciphertext.split(":");
+  const parts = value.split(":");
   if (parts.length !== 3) throw new Error("Invalid encrypted value format");
+  const key = getKey();
+  if (!key) throw new Error("ENCRYPTION_KEY is required to decrypt this value");
+
   const [ivHex, authTagHex, dataHex] = parts;
-  const iv = Buffer.from(ivHex, "hex");
-  const authTag = Buffer.from(authTagHex, "hex");
-  const data = Buffer.from(dataHex, "hex");
-  const decipher = createDecipheriv("aes-256-gcm", key, iv);
-  decipher.setAuthTag(authTag);
-  return Buffer.concat([decipher.update(data), decipher.final()]).toString("utf8");
+  const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(ivHex, "hex"));
+  decipher.setAuthTag(Buffer.from(authTagHex, "hex"));
+  return Buffer.concat([decipher.update(Buffer.from(dataHex, "hex")), decipher.final()]).toString("utf8");
 }

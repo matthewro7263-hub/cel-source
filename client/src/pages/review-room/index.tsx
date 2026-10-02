@@ -1,3 +1,5 @@
+import { openReviewRoomSocket } from "@/lib/reviewRoomSocket";
+import { panelImageAsDataUrl } from "@/lib/panelMedia";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
@@ -84,37 +86,42 @@ export default function ReviewRoomPage() {
   }, []);
 
   useEffect(() => {
-    const token = getAuthToken();
-    if (!token || !projectId) return;
-    const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-    const ws = new WebSocket(`${protocol}://${window.location.host}/api/projects/${projectId}/review-room?token=${encodeURIComponent(token)}`);
-    wsRef.current = ws;
+    if (!getAuthToken() || !projectId) return;
+    let cancelled = false;
+    let ws: WebSocket | null = null;
+    openReviewRoomSocket(projectId).then((socket) => {
+      if (!socket) return;
+      if (cancelled) { socket.close(); return; }
+      ws = socket;
+      wsRef.current = ws;
 
-    ws.onopen = () => setConnected(true);
-    ws.onclose = () => setConnected(false);
-    ws.onmessage = (event) => {
-      try {
-        const message = JSON.parse(event.data);
-        if (message.type === "presence") setPresence(message.count || 1);
-        if (message.type === "cursor") {
-          setCursors((prev) => ({ ...prev, [message.userId]: { x: message.x, y: message.y, userId: message.userId } }));
+      ws.onopen = () => setConnected(true);
+      ws.onclose = () => setConnected(false);
+      ws.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          if (message.type === "presence") setPresence(message.count || 1);
+          if (message.type === "cursor") {
+            setCursors((prev) => ({ ...prev, [message.userId]: { x: message.x, y: message.y, userId: message.userId } }));
+          }
+          if (message.type === "stroke" && canvasRef.current) {
+            drawSegment(canvasRef.current, message.from, message.to, message.color || "#9DD0FF");
+          }
+          if (message.type === "clear" && canvasRef.current) {
+            canvasRef.current.getContext("2d")?.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+            setEvents((prev) => ["Telestrator cleared", ...prev].slice(0, 6));
+          }
+          if (message.type === "playhead") setPlayhead(message.value || 0);
+          if (message.type === "panel") setCurrentPanel(message.value || 0);
+          if (message.type === "note") setEvents((prev) => [message.body, ...prev].slice(0, 6));
+        } catch {
+          // Ignore malformed WebSocket messages
         }
-        if (message.type === "stroke" && canvasRef.current) {
-          drawSegment(canvasRef.current, message.from, message.to, message.color || "#9DD0FF");
-        }
-        if (message.type === "clear" && canvasRef.current) {
-          canvasRef.current.getContext("2d")?.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-          setEvents((prev) => ["Telestrator cleared", ...prev].slice(0, 6));
-        }
-        if (message.type === "playhead") setPlayhead(message.value || 0);
-        if (message.type === "panel") setCurrentPanel(message.value || 0);
-        if (message.type === "note") setEvents((prev) => [message.body, ...prev].slice(0, 6));
-      } catch {
-        // Ignore malformed WebSocket messages
-      }
-    };
+      };
 
-    return () => ws.close();
+    }).catch(() => {});
+
+    return () => { cancelled = true; ws?.close(); };
   }, [projectId]);
 
   const send = (payload: Record<string, unknown>) => {
@@ -172,19 +179,20 @@ export default function ReviewRoomPage() {
     doc.setFontSize(10);
     doc.text(`Generated on ${new Date().toLocaleString()}`, 10, 28);
 
-    panels.forEach((p, i) => {
+    for (const [i, p] of panels.entries()) {
       if (i > 0) doc.addPage("landscape");
       doc.text(p.label, 10, 10);
       try {
-        if (p.imageData) {
-          doc.addImage(p.imageData, "JPEG", 10, 15, 277, 155);
+        const dataUrl = await panelImageAsDataUrl(p, { projectId });
+        if (dataUrl) {
+          doc.addImage(dataUrl, "JPEG", 10, 15, 277, 155);
         } else {
           doc.text("No image data available", 10, 20);
         }
       } catch (e) {
         doc.text("Image load failed", 10, 20);
       }
-    });
+    }
 
     doc.save(`review-project-${projectId}.pdf`);
     toast({ title: "PDF Exported", description: "Your review session notes have been saved." });

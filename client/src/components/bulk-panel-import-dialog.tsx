@@ -1,3 +1,4 @@
+import { uploadPanelImage, type UploadedImage } from "@/lib/panelUpload";
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient, getAuthToken } from "@/lib/queryClient";
@@ -35,6 +36,7 @@ interface PendingPanel {
   progress: number;
   error?: string;
   r2Key?: string;
+  imageData?: string;
 }
 
 export function BulkImportDialog({ storyboardId, projectId, onSuccess }: BulkImportDialogProps) {
@@ -156,46 +158,17 @@ export function BulkImportDialog({ storyboardId, projectId, onSuccess }: BulkImp
     });
   };
 
-  const uploadSingleFile = async (target: PendingPanel): Promise<string> => {
+  const uploadSingleFile = async (target: PendingPanel): Promise<UploadedImage> => {
     setFiles((prev) =>
       prev.map((f) => (f.id === target.id ? { ...f, status: "uploading", progress: 10, error: undefined } : f))
     );
 
-    const isHeic = target.filename.toLowerCase().endsWith(".heic") || target.filename.toLowerCase().endsWith(".heif");
-    let r2Key = "";
-
-    if (isHeic) {
-      const formData = new FormData();
-      formData.append("file", target.file);
-      const token = getAuthToken() || "";
-      const response = await fetch("/api/uploads/convert-heic", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
-      });
-      if (!response.ok) throw new Error("HEIC conversion or upload failed");
-      const result = await response.json();
-      r2Key = result.key;
-    } else {
-      const presignRes = await apiRequest("POST", "/api/uploads/presign", {
-        filename: target.filename,
-        contentType: target.file.type || "image/png",
-      });
-      if (!presignRes.ok) throw new Error("Failed to get presigned upload URL");
-      const { url, key, headers } = await presignRes.json();
-      const uploadResponse = await fetch(url, {
-        method: "PUT",
-        headers: headers || {},
-        body: target.file,
-      });
-      if (!uploadResponse.ok) throw new Error("Cloud storage upload failed");
-      r2Key = key;
-    }
+    const uploaded = await uploadPanelImage(target.file);
 
     setFiles((prev) =>
-      prev.map((f) => (f.id === target.id ? { ...f, status: "success", progress: 100, r2Key } : f))
+      prev.map((f) => (f.id === target.id ? { ...f, status: "success", progress: 100, ...uploaded } : f))
     );
-    return r2Key;
+    return uploaded;
   };
 
   const retryFile = async (fileId: string) => {
@@ -217,7 +190,7 @@ export function BulkImportDialog({ storyboardId, projectId, onSuccess }: BulkImp
 
   const runUploadPool = async (items: PendingPanel[], concurrency: number) => {
     const queue = [...items];
-    const results: { r2Key: string; caption: string; sceneId: number | null }[] = [];
+    const results: (UploadedImage & { caption: string; sceneId: number | null })[] = [];
     let successCount = 0;
 
     const workers = Array.from({ length: Math.min(concurrency, queue.length) }, async () => {
@@ -225,9 +198,9 @@ export function BulkImportDialog({ storyboardId, projectId, onSuccess }: BulkImp
         const target = queue.shift();
         if (!target) break;
 
-        if (target.status === "success" && target.r2Key) {
+        if (target.status === "success" && (target.r2Key || target.imageData)) {
           results.push({
-            r2Key: target.r2Key,
+            ...((target.r2Key ? { r2Key: target.r2Key } : { imageData: target.imageData! }) as UploadedImage),
             caption: target.filename,
             sceneId: selectedSceneId === "none" ? null : parseInt(selectedSceneId, 10),
           });
@@ -235,9 +208,9 @@ export function BulkImportDialog({ storyboardId, projectId, onSuccess }: BulkImp
         }
 
         try {
-          const r2Key = await uploadSingleFile(target);
+          const uploaded = await uploadSingleFile(target);
           results.push({
-            r2Key,
+            ...uploaded,
             caption: target.filename,
             sceneId: selectedSceneId === "none" ? null : parseInt(selectedSceneId, 10),
           });
@@ -284,13 +257,13 @@ export function BulkImportDialog({ storyboardId, projectId, onSuccess }: BulkImp
       } catch (err: any) {
         // Roll back orphaned R2 uploads when DB registration fails
         await Promise.allSettled(
-          uploadedPanels.map((panel) =>
-            apiRequest("DELETE", `/api/uploads/object?key=${encodeURIComponent(panel.r2Key)}`),
-          ),
+          uploadedPanels
+            .filter((panel) => panel.r2Key)
+            .map((panel) => apiRequest("DELETE", `/api/uploads/object?key=${encodeURIComponent(panel.r2Key!)}`)),
         );
         setFiles((prev) =>
           prev.map((f) =>
-            f.r2Key && uploadedPanels.some((p) => p.r2Key === f.r2Key)
+            (f.r2Key || f.imageData) && uploadedPanels.some((p) => (p.r2Key && p.r2Key === f.r2Key) || (p.imageData && p.imageData === f.imageData))
               ? { ...f, status: "error" as const, error: "Registration failed — upload rolled back" }
               : f,
           ),

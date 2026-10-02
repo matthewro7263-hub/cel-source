@@ -6,9 +6,17 @@ import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, Head
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { randomUUID } from "node:crypto";
 
+/** Thrown when R2 env vars are missing, so routes can answer 503 instead of a generic 500. */
+export class R2ConfigError extends Error {
+  constructor(name: string) {
+    super(`Cloud storage is not configured (missing ${name}).`);
+    this.name = "R2ConfigError";
+  }
+}
+
 function required(name: string): string {
   const v = process.env[name];
-  if (!v) throw new Error(`Missing required env var: ${name}`);
+  if (!v) throw new R2ConfigError(name);
   return v;
 }
 
@@ -78,6 +86,10 @@ export async function presignUpload(opts: PresignUploadOpts): Promise<PresignedU
 
 export async function presignDownload(key: string, expiresIn = 300): Promise<string> {
   return getSignedUrl(getR2Client(), new GetObjectCommand({ Bucket: getR2Bucket(), Key: key }), { expiresIn });
+}
+
+export async function putObject(key: string, body: Buffer, contentType: string): Promise<void> {
+  await getR2Client().send(new PutObjectCommand({ Bucket: getR2Bucket(), Key: key, ContentType: contentType, Body: body }));
 }
 
 export async function deleteObject(key: string): Promise<void> {

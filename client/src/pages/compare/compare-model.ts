@@ -2,6 +2,7 @@ export interface ComparePanel {
   id: number;
   orderIdx: number;
   imageData?: string | null;
+  imageUrl?: string | null;
   r2Key?: string | null;
   caption?: string;
   dialogue?: string;
@@ -42,7 +43,7 @@ export function flattenComparableMedia(
         key: `panel-${panel.id}`,
         kind: "panel" as const,
         label: `${storyboard.title} - Panel ${index + 1}`,
-        src: panel.imageData || "",
+        src: panel.imageData || panel.imageUrl || "",
         caption: [panel.dialogue, panel.caption].filter(Boolean).join(" - "),
       }));
   });

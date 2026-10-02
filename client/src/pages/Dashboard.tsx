@@ -143,7 +143,7 @@ export default function Dashboard() {
 
   return (
     <div 
-      className="relative z-10 min-h-screen text-[#e8ebf5] px-6 lg:px-10 py-8 lg:py-12"
+      className="cel-dashboard-dark relative z-10 min-h-screen text-[#e8ebf5] px-6 lg:px-10 py-8 lg:py-12"
       style={{ backgroundColor: "#0F0F0C" }}
     >
       <div className="flex items-center justify-between mb-8 pb-4 border-b border-[#282822]">

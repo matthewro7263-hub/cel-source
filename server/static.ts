@@ -11,10 +11,25 @@ export function serveStatic(app: Express) {
     );
   }
 
-  app.use(express.static(distPath));
+  app.use(
+    express.static(distPath, {
+      setHeaders(res, filePath) {
+        // Vite fingerprints everything under /assets, so it can be cached forever; the HTML shell must
+        // always be revalidated or users keep loading a stale bundle after a deploy.
+        if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+          res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        } else if (filePath.endsWith(".html")) {
+          res.setHeader("Cache-Control", "no-cache");
+        }
+      },
+    }),
+  );
 
-  // fall through to index.html if the file doesn't exist
-  app.use("/{*path}", (_req, res) => {
+  // SPA fallback. A request for a missing *file* (e.g. a stale /assets/chunk-abc.js) must 404 instead of
+  // returning index.html with a 200, which shows up as an unhelpful "Unexpected token <" in the browser.
+  app.use("/{*path}", (req, res) => {
+    if (path.extname(req.originalUrl.split("?")[0])) return res.status(404).send("Not found");
+    res.setHeader("Cache-Control", "no-cache");
     res.sendFile(path.resolve(distPath, "index.html"));
   });
 }

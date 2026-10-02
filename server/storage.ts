@@ -1,6 +1,4 @@
-import { Pool, neonConfig } from "@neondatabase/serverless";
-import { drizzle } from "drizzle-orm/neon-serverless";
-import ws from "ws";
+import { db, pool } from "./db";
 import { eq, and, or, inArray, asc, desc, ilike, sql, isNull, lt } from "drizzle-orm";
 import { randomBytes, scrypt, timingSafeEqual, createHmac } from "node:crypto";
 import { promisify } from "node:util";
@@ -16,18 +14,8 @@ const scryptAsync = promisify(scrypt) as (
 import * as mainSchema from "@shared/schema";
 import * as a11ySchema from "@shared/a11y_schema";
 import * as challengeSchema from "@shared/challenge_schema";
-import * as challengeLeaderboardSchema from "@shared/challenge_leaderboard_schema";
 import * as lorSchema from "@shared/lor_schema";
 import * as studioSchema from "@shared/studio_schema";
-
-const schema = {
-  ...mainSchema,
-  ...a11ySchema,
-  ...challengeSchema,
-  ...challengeLeaderboardSchema,
-  ...lorSchema,
-  ...studioSchema,
-};
 
 // Re-export individual tables for convenience in methods
 const {
@@ -84,12 +72,7 @@ import type {
   StudioCreditEntry, InsertStudioCreditEntry,
 } from "@shared/studio_schema";
 
-neonConfig.webSocketConstructor = ws;
-
-if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required");
-export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-
-export const db = drizzle(pool, { schema });
+export { db, pool };
 
 const projectIdCache = new AsyncLocalStorage<Map<number, number[]>>();
 
@@ -133,7 +116,14 @@ export function genToken(len = 16): string {
 }
 
 // ===== SESSIONS (cryptographic, stateless & persistent) =====
-const SESSION_SECRET = process.env.SESSION_SECRET || "fallback-secret-for-dev-only-change-in-prod-1234567890abcdef";
+const DEV_SESSION_SECRET = "dev-only-session-secret-do-not-use-in-production";
+const SESSION_SECRET = process.env.SESSION_SECRET || DEV_SESSION_SECRET;
+if (!process.env.SESSION_SECRET) {
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("SESSION_SECRET is required in production (generate one with: openssl rand -hex 32)");
+  }
+  console.warn("SESSION_SECRET is not set; using an insecure development secret.");
+}
 
 export function createSession(userId: number, tokenVersion: number): string {
   // Session expires in 30 days
@@ -176,8 +166,37 @@ export function getSessionUser(sid: string | undefined): number | undefined {
   return getSessionPayload(sid)?.userId;
 }
 
+// ===== SIGNED MEDIA URLS =====
+// <img>/<video>/canvas can't send a Bearer header, so panel images are exposed as short-lived,
+// HMAC-signed same-origin URLs. The URL itself is the credential and only ever appears in API
+// responses that already passed an access check (project member or valid share token).
+const MEDIA_URL_TTL_MS = 60 * 60 * 1000;
+
+function mediaSignature(kind: string, id: number, exp: number): string {
+  return createHmac("sha256", SESSION_SECRET).update(`media:${kind}:${id}:${exp}`).digest("hex");
+}
+
+export function signedMediaUrl(kind: "panel", id: number): string {
+  // Bucket the expiry so the same URL is returned repeatedly (browser cache friendly).
+  const exp = (Math.floor(Date.now() / MEDIA_URL_TTL_MS) + 2) * MEDIA_URL_TTL_MS;
+  return `/api/media/${kind}s/${id}?exp=${exp}&sig=${mediaSignature(kind, id, exp)}`;
+}
+
+export function verifySignedMedia(kind: "panel", id: number, exp: number, sig: string): boolean {
+  if (!Number.isFinite(exp) || Date.now() > exp) return false;
+  const expected = Buffer.from(mediaSignature(kind, id, exp), "hex");
+  let given: Buffer;
+  try { given = Buffer.from(sig, "hex"); } catch { return false; }
+  return given.length === expected.length && timingSafeEqual(given, expected);
+}
+
 export function destroySession(sid: string) {
   // Stateless token destruction is handled by client-side token clearing
+}
+
+/** Lite panel rows omit the (huge) inline image; give inline-image panels a signed URL instead. */
+function withPanelImageUrls<T extends { id: number; r2Key: string | null; hasImage: boolean }>(rows: T[]) {
+  return rows.map((p) => ({ ...p, imageUrl: p.hasImage && !p.r2Key ? signedMediaUrl("panel", p.id) : null }));
 }
 
 const coreStorage = {
@@ -188,7 +207,8 @@ const coreStorage = {
     const unique = Array.from(new Set(ids));
     return await db.select().from(users).where(inArray(users.id, unique));
   },
-  async getUserByEmail(email: string) { return await db.select().from(users).where(eq(users.email, email)).then(r => r[0]); },
+  // Case-insensitive so "Foo@x.com" and "foo@x.com" are the same account.
+  async getUserByEmail(email: string) { return await db.select().from(users).where(sql`lower(${users.email}) = ${email.trim().toLowerCase()}`).then(r => r[0]); },
   async createUser(u: InsertUser) { return await db.insert(users).values(u).returning().then(r => r[0] as any); },
   async updateUser(id: number, patch: Partial<InsertUser>) { return await db.update(users).set(patch).where(eq(users.id, id)).returning().then(r => r[0] as any); },
 
@@ -201,14 +221,29 @@ const coreStorage = {
         ;
       const ids = memberRows.map((r) => r.projectId);
       if (ids.length === 0) {
-        return await db.select().from(projects).where(eq(projects.ownerId, userId));
+        return await db.select().from(projects).where(eq(projects.ownerId, userId)).orderBy(asc(projects.id));
       }
       return db
         .select()
         .from(projects)
         .where(or(eq(projects.ownerId, userId), inArray(projects.id, ids)))
-        ;
+        .orderBy(asc(projects.id));
     },
+  /** True when the row exists AND belongs to the project; use before mutating nested resources by id. */
+  async existsInProject(
+    kind: "script" | "scene" | "storyboard" | "animatic" | "comment" | "renderEvent" | "snapshot" | "credit",
+    id: number,
+    projectId: number,
+  ): Promise<boolean> {
+    const tableByKind = {
+      script: scripts, scene: scenes, storyboard: storyboards, animatic: animatics, comment: comments,
+      renderEvent: studio_render_events, snapshot: studio_snapshots, credit: studio_credit_entries,
+    } as const;
+    const table = tableByKind[kind];
+    const rows = await db.select({ id: table.id }).from(table).where(and(eq(table.id, id), eq(table.projectId, projectId))).limit(1);
+    return rows.length > 0;
+  },
+
   async getProject(id: number) { return await db.select().from(projects).where(eq(projects.id, id)).then(r => r[0]); },
   async getProjectByToken(token: string) { return await db.select().from(projects).where(eq(projects.shareToken, token)).then(r => r[0]); },
   async createProject(p: InsertProject) {
@@ -232,7 +267,7 @@ const coreStorage = {
 
   // ===== MEMBERS =====
   async listMembers(projectId: number) {
-      const rows = await db.select().from(projectMembers).where(eq(projectMembers.projectId, projectId));
+      const rows = await db.select().from(projectMembers).where(eq(projectMembers.projectId, projectId)).orderBy(asc(projectMembers.id));
       if (rows.length === 0) return [];
       const userIds = rows.map(r => r.userId);
       const allUsers = await db.select().from(users).where(inArray(users.id, userIds));
@@ -244,13 +279,18 @@ const coreStorage = {
     },
   async addMember(m: InsertProjectMember) { return await db.insert(projectMembers).values(m).returning().then(r => r[0] as any); },
   async removeMember(projectId: number, userId: number) { return await db.delete(projectMembers).where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId))); },
+  async updateMemberRole(projectId: number, userId: number, role: string) { return await db.update(projectMembers).set({ role }).where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId))); },
+  async getMemberRole(projectId: number, userId: number): Promise<string | undefined> {
+    const row = await db.select({ role: projectMembers.role }).from(projectMembers).where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId))).then(r => r[0]);
+    return row?.role;
+  },
   async isMember(projectId: number, userId: number) {
       const row = await db.select().from(projectMembers).where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId))).then(r => r[0]);
       return !!row;
     },
 
   // ===== SCRIPTS =====
-  async listScripts(projectId: number) { return await db.select().from(scripts).where(eq(scripts.projectId, projectId)); },
+  async listScripts(projectId: number) { return await db.select().from(scripts).where(and(eq(scripts.projectId, projectId), isNull(scripts.deletedAt))).orderBy(asc(scripts.id)); },
   async listScriptsLite(projectId: number) {
     return await db
       .select({
@@ -269,13 +309,14 @@ const coreStorage = {
   async getScript(id: number) { return await db.select().from(scripts).where(eq(scripts.id, id)).then(r => r[0]); },
   async createScript(s: InsertScript) { return await db.insert(scripts).values({ ...s, updatedAt: new Date() }).returning().then(r => r[0] as any); },
   async updateScript(id: number, patch: Partial<InsertScript>) { return await db.update(scripts).set({ ...patch, updatedAt: new Date() }).where(eq(scripts.id, id)).returning().then(r => r[0] as any); },
-  async deleteScript(id: number) { return await db.delete(scripts).where(eq(scripts.id, id)); },
+  // Soft delete: rows go to Trash (restorable / permanently deletable via the bak router).
+  async deleteScript(id: number) { return await db.update(scripts).set({ deletedAt: new Date() }).where(eq(scripts.id, id)); },
 
   // ===== STORYBOARDS =====
-  async listStoryboards(projectId: number) { return await db.select().from(storyboards).where(eq(storyboards.projectId, projectId)); },
+  async listStoryboards(projectId: number) { return await db.select().from(storyboards).where(eq(storyboards.projectId, projectId)).orderBy(asc(storyboards.id)); },
   async listStoryboardsForProjectIds(projectIds: number[]) {
     if (projectIds.length === 0) return [];
-    return await db.select().from(storyboards).where(inArray(storyboards.projectId, projectIds));
+    return await db.select().from(storyboards).where(inArray(storyboards.projectId, projectIds)).orderBy(asc(storyboards.id));
   },
   async getStoryboard(id: number) { return await db.select().from(storyboards).where(eq(storyboards.id, id)).then(r => r[0]); },
   async createStoryboard(s: InsertStoryboard) { return await db.insert(storyboards).values({ ...s, createdAt: new Date() }).returning().then(r => r[0] as any); },
@@ -285,7 +326,7 @@ const coreStorage = {
     },
 
   // ===== PANELS =====
-  async listPanels(storyboardId: number) { return await db.select().from(storyboardPanels).where(eq(storyboardPanels.storyboardId, storyboardId)).orderBy(asc(storyboardPanels.orderIdx)); },
+  async listPanels(storyboardId: number) { return await db.select().from(storyboardPanels).where(and(eq(storyboardPanels.storyboardId, storyboardId), isNull(storyboardPanels.deletedAt))).orderBy(asc(storyboardPanels.orderIdx)); },
   async listPanelsLite(storyboardId: number) {
     return await db
       .select({
@@ -301,10 +342,12 @@ const coreStorage = {
         status: storyboardPanels.status,
         frameCount: storyboardPanels.frameCount,
         deletedAt: storyboardPanels.deletedAt,
+        hasImage: sql<boolean>`${storyboardPanels.imageData} is not null`,
       })
       .from(storyboardPanels)
       .where(and(eq(storyboardPanels.storyboardId, storyboardId), isNull(storyboardPanels.deletedAt)))
-      .orderBy(asc(storyboardPanels.orderIdx));
+      .orderBy(asc(storyboardPanels.orderIdx))
+      .then(withPanelImageUrls);
   },
   async listPanelsLiteBatch(storyboardIds: number[]) {
     if (storyboardIds.length === 0) return [];
@@ -322,17 +365,19 @@ const coreStorage = {
         status: storyboardPanels.status,
         frameCount: storyboardPanels.frameCount,
         deletedAt: storyboardPanels.deletedAt,
+        hasImage: sql<boolean>`${storyboardPanels.imageData} is not null`,
       })
       .from(storyboardPanels)
       .where(and(inArray(storyboardPanels.storyboardId, storyboardIds), isNull(storyboardPanels.deletedAt)))
-      .orderBy(asc(storyboardPanels.storyboardId), asc(storyboardPanels.orderIdx));
+      .orderBy(asc(storyboardPanels.storyboardId), asc(storyboardPanels.orderIdx))
+      .then(withPanelImageUrls);
   },
   async listPanelsForStoryboardIds(ids: number[]) {
     if (ids.length === 0) return [];
     return await db
       .select()
       .from(storyboardPanels)
-      .where(inArray(storyboardPanels.storyboardId, ids))
+      .where(and(inArray(storyboardPanels.storyboardId, ids), isNull(storyboardPanels.deletedAt)))
       .orderBy(asc(storyboardPanels.storyboardId), asc(storyboardPanels.orderIdx));
   },
   async createPanel(p: InsertPanel) { return await db.insert(storyboardPanels).values(p).returning().then(r => r[0] as any); },
@@ -352,7 +397,7 @@ const coreStorage = {
       }
     });
   },
-  async deletePanel(id: number) { return await db.delete(storyboardPanels).where(eq(storyboardPanels.id, id)); },
+  async deletePanel(id: number) { return await db.update(storyboardPanels).set({ deletedAt: new Date() }).where(eq(storyboardPanels.id, id)); },
   async getPanel(id: number) { return await db.select().from(storyboardPanels).where(eq(storyboardPanels.id, id)).then(r => r[0]); },
   async isR2KeyInProject(projectId: number, r2Key: string): Promise<boolean> {
     if (!r2Key) return false;
@@ -378,7 +423,7 @@ const coreStorage = {
   },
 
   // ===== ANIMATICS =====
-  async listAnimatics(projectId: number) { return await db.select().from(animatics).where(eq(animatics.projectId, projectId)); },
+  async listAnimatics(projectId: number) { return await db.select().from(animatics).where(eq(animatics.projectId, projectId)).orderBy(asc(animatics.id)); },
   async listAnimaticsLite(projectId: number) {
     return await db
       .select({
@@ -395,15 +440,15 @@ const coreStorage = {
   async deleteAnimatic(id: number) { return await db.delete(animatics).where(eq(animatics.id, id)); },
 
   // ===== SCENES =====
-  async listScenes(projectId: number) { return await db.select().from(scenes).where(eq(scenes.projectId, projectId)); },
+  async listScenes(projectId: number) { return await db.select().from(scenes).where(and(eq(scenes.projectId, projectId), isNull(scenes.deletedAt))).orderBy(asc(scenes.id)); },
   async listScenesForProjectIds(projectIds: number[]) {
     if (projectIds.length === 0) return [];
-    return await db.select().from(scenes).where(inArray(scenes.projectId, projectIds));
+    return await db.select().from(scenes).where(and(inArray(scenes.projectId, projectIds), isNull(scenes.deletedAt))).orderBy(asc(scenes.id));
   },
   async getScene(id: number) { return await db.select().from(scenes).where(eq(scenes.id, id)).then(r => r[0]); },
   async createScene(s: InsertScene) { return await db.insert(scenes).values(s).returning().then(r => r[0] as any); },
   async updateScene(id: number, patch: Partial<InsertScene>) { return await db.update(scenes).set(patch).where(eq(scenes.id, id)).returning().then(r => r[0] as any); },
-  async deleteScene(id: number) { return await db.delete(scenes).where(eq(scenes.id, id)); },
+  async deleteScene(id: number) { return await db.update(scenes).set({ deletedAt: new Date() }).where(eq(scenes.id, id)); },
 
   // ===== COMMENTS =====
   async listComments(projectId: number, opts?: { limit?: number; cursor?: number }) {
@@ -449,9 +494,8 @@ const coreStorage = {
         createdAt: assets.createdAt,
         deletedAt: assets.deletedAt,
       };
-      const baseConditions = category
-        ? and(eq(assets.projectId, projectId), eq(assets.category, category))
-        : eq(assets.projectId, projectId);
+      const live = and(eq(assets.projectId, projectId), isNull(assets.deletedAt));
+      const baseConditions = category ? and(live, eq(assets.category, category)) : live;
       const conditions = opts?.cursor
         ? and(baseConditions, lt(assets.id, opts.cursor))
         : baseConditions;
@@ -484,13 +528,13 @@ const coreStorage = {
     return await db
       .select(cols)
       .from(assets)
-      .where(inArray(assets.projectId, projectIds))
+      .where(and(inArray(assets.projectId, projectIds), isNull(assets.deletedAt)))
       .orderBy(desc(assets.createdAt));
   },
   async getAsset(id: number) { return await db.select().from(assets).where(eq(assets.id, id)).then(r => r[0]); },
   async createAsset(a: InsertAsset) { return await db.insert(assets).values({ ...a, createdAt: new Date() }).returning().then(r => r[0] as any); },
   async updateAsset(id: number, patch: Partial<Pick<InsertAsset, 'notes' | 'tags' | 'category'>>) { return await db.update(assets).set(patch).where(eq(assets.id, id)).returning().then(r => r[0] as any); },
-  async deleteAsset(id: number) { return await db.delete(assets).where(eq(assets.id, id)); },
+  async deleteAsset(id: number) { return await db.update(assets).set({ deletedAt: new Date() }).where(eq(assets.id, id)); },
 
   // ===== COMMISSIONS =====
   async listCommissions(ownerUserId: number) { return await db.select().from(commissions).where(eq(commissions.ownerUserId, ownerUserId)).orderBy(asc(commissions.status), desc(commissions.createdAt)); },
@@ -679,7 +723,7 @@ const extraStorage = {
   async createAiChatMessage(data: InsertAiChatMessage) { return await db.insert(aiChatMessages).values({ ...data, createdAt: new Date() }).returning().then(r => r[0] as any); },
 
   // v4 Achievements
-  async listAchievements(userId: number) { return await db.select().from(achievements).where(eq(achievements.userId, userId)); },
+  async listAchievements(userId: number) { return await db.select().from(achievements).where(eq(achievements.userId, userId)).orderBy(asc(achievements.id)); },
   async hasAchievement(userId: number, code: string) { return !!await db.select().from(achievements).where(and(eq(achievements.userId, userId), eq(achievements.code, code))).then(r => r[0]); },
   async unlockAchievement(userId: number, code: string) { return await db.insert(achievements).values({ userId, code, unlockedAt: new Date() }).returning().then(r => r[0] as any); },
   async logUserActivity(userId: number, date: string) {
@@ -694,7 +738,7 @@ const extraStorage = {
   },
 
   // v4 Panel Pins
-  async listPanelPins(panelId: number) { return await db.select().from(panelPins).where(eq(panelPins.panelId, panelId)); },
+  async listPanelPins(panelId: number) { return await db.select().from(panelPins).where(eq(panelPins.panelId, panelId)).orderBy(asc(panelPins.id)); },
   async listPanelPinsForStoryboard(storyboardId: number) {
     const panelRows = await db
       .select({ id: storyboardPanels.id })
@@ -702,14 +746,14 @@ const extraStorage = {
       .where(eq(storyboardPanels.storyboardId, storyboardId));
     const panelIds = panelRows.map((p) => p.id);
     if (panelIds.length === 0) return [];
-    return await db.select().from(panelPins).where(inArray(panelPins.panelId, panelIds));
+    return await db.select().from(panelPins).where(inArray(panelPins.panelId, panelIds)).orderBy(asc(panelPins.id));
   },
   async createPanelPin(p: InsertPanelPin) { return await db.insert(panelPins).values({ ...p, createdAt: new Date() }).returning().then(r => r[0] as any); },
   async deletePanelPin(id: number) { return await db.delete(panelPins).where(eq(panelPins.id, id)); },
   async getPanelPin(id: number) { return await db.select().from(panelPins).where(eq(panelPins.id, id)).then(r => r[0]); },
 
   // v4 Commission Line Items
-  async listCommissionLineItems(commissionId: number) { return await db.select().from(commissionLineItems).where(eq(commissionLineItems.commissionId, commissionId)); },
+  async listCommissionLineItems(commissionId: number) { return await db.select().from(commissionLineItems).where(eq(commissionLineItems.commissionId, commissionId)).orderBy(asc(commissionLineItems.id)); },
   async createCommissionLineItem(item: InsertCommissionLineItem) { return await db.insert(commissionLineItems).values({ ...item, createdAt: new Date() }).returning().then(r => r[0] as any); },
   async updateCommissionLineItem(id: number, patch: Partial<InsertCommissionLineItem>) { return await db.update(commissionLineItems).set(patch).where(eq(commissionLineItems.id, id)).returning().then(r => r[0] as any); },
   async getCommissionLineItem(id: number) { return await db.select().from(commissionLineItems).where(eq(commissionLineItems.id, id)).then(r => r[0]); },
@@ -717,7 +761,8 @@ const extraStorage = {
   async updateCommissionQuote(id: number, quoteCents: number | null, invoicedAt?: string | null) {
       const patch: any = {};
       if (quoteCents !== undefined) patch.quoteCents = quoteCents;
-      if (invoicedAt !== undefined) patch.invoicedAt = invoicedAt;
+      if (invoicedAt !== undefined) patch.invoicedAt = invoicedAt ? new Date(invoicedAt) : null;
+      if (Object.keys(patch).length === 0) return await db.select().from(commissions).where(eq(commissions.id, id)).then(r => r[0] as any);
       return await db.update(commissions).set(patch).where(eq(commissions.id, id)).returning().then(r => r[0] as any);
     },
 
@@ -729,7 +774,7 @@ const extraStorage = {
   async getInboxItem(id: number) { return await db.select().from(inboxItems).where(eq(inboxItems.id, id)).then(r => r[0]); },
 
   // v4 Tags
-  async listTags(userId: number) { return await db.select().from(tags).where(eq(tags.userId, userId)); },
+  async listTags(userId: number) { return await db.select().from(tags).where(eq(tags.userId, userId)).orderBy(asc(tags.id)); },
   async createTag(t: InsertTag) { return await db.insert(tags).values(t).returning().then(r => r[0] as any); },
   async updateTag(id: number, patch: Partial<InsertTag>) { return await db.update(tags).set(patch).where(eq(tags.id, id)).returning().then(r => r[0] as any); },
   async deleteTag(id: number) {
@@ -739,18 +784,19 @@ const extraStorage = {
   async getTag(id: number) { return await db.select().from(tags).where(eq(tags.id, id)).then(r => r[0]); },
 
   // v4 Tag Assignments
-  async listTagAssignments(entityKind: string, entityId: number) { return await db.select().from(tagAssignments).where(and(eq(tagAssignments.entityKind, entityKind), eq(tagAssignments.entityId, entityId))); },
+  async listTagAssignments(entityKind: string, entityId: number) { return await db.select().from(tagAssignments).where(and(eq(tagAssignments.entityKind, entityKind), eq(tagAssignments.entityId, entityId))).orderBy(asc(tagAssignments.id)); },
   async createTagAssignment(a: InsertTagAssignment) { return await db.insert(tagAssignments).values(a).returning().then(r => r[0] as any); },
   async deleteTagAssignment(id: number) { return await db.delete(tagAssignments).where(eq(tagAssignments.id, id)); },
   async getTagAssignment(id: number) { return await db.select().from(tagAssignments).where(eq(tagAssignments.id, id)).then(r => r[0]); },
 
   // v4 Scene Time Entries
-  async listSceneTimeEntries(sceneId: number) { return await db.select().from(sceneTimeEntries).where(eq(sceneTimeEntries.sceneId, sceneId)); },
+  async listSceneTimeEntries(sceneId: number) { return await db.select().from(sceneTimeEntries).where(eq(sceneTimeEntries.sceneId, sceneId)).orderBy(asc(sceneTimeEntries.id)); },
   async listSceneTimeEntriesForUser(sceneId: number, userId: number) {
     return await db
       .select()
       .from(sceneTimeEntries)
-      .where(and(eq(sceneTimeEntries.sceneId, sceneId), eq(sceneTimeEntries.userId, userId)));
+      .where(and(eq(sceneTimeEntries.sceneId, sceneId), eq(sceneTimeEntries.userId, userId)))
+      .orderBy(asc(sceneTimeEntries.id));
   },
   async getActiveSceneTimersForProject(projectId: number, userId: number) {
     const projectScenes = await db
@@ -784,7 +830,7 @@ const extraStorage = {
     },
 
   // v4 Commission Pricing Presets
-  async listCommissionPricingPresets(projectId: number) { return await db.select().from(commissionPricingPresets).where(eq(commissionPricingPresets.projectId, projectId)); },
+  async listCommissionPricingPresets(projectId: number) { return await db.select().from(commissionPricingPresets).where(eq(commissionPricingPresets.projectId, projectId)).orderBy(asc(commissionPricingPresets.id)); },
   async createCommissionPricingPreset(p: InsertCommissionPricingPreset) { return await db.insert(commissionPricingPresets).values({ ...p, createdAt: new Date() }).returning().then(r => r[0] as any); },
   async updateCommissionPricingPreset(id: number, patch: Partial<InsertCommissionPricingPreset>) { return await db.update(commissionPricingPresets).set(patch).where(eq(commissionPricingPresets.id, id)).returning().then(r => r[0] as any); },
   async getCommissionPricingPreset(id: number) { return await db.select().from(commissionPricingPresets).where(eq(commissionPricingPresets.id, id)).then(r => r[0]); },
@@ -948,7 +994,7 @@ const extraStorage = {
 
   async listChallengePrompts() { return await db.select().from(challenge_prompts).orderBy(desc(challenge_prompts.weekNumber)); },
   
-  async listChallengeSubmissions(userId: number) { return await db.select().from(challenge_submissions).where(eq(challenge_submissions.userId, userId)); },
+  async listChallengeSubmissions(userId: number) { return await db.select().from(challenge_submissions).where(eq(challenge_submissions.userId, userId)).orderBy(desc(challenge_submissions.id)); },
 
   async createChallengeSubmission(submission: InsertChallengeSubmission & { userId: number }) { return await db.insert(challenge_submissions).values({ ...submission, createdAt: new Date() }).returning().then(r => r[0] as any); },
 
@@ -1061,13 +1107,13 @@ const extraStorage = {
     },
 
   // === LORE ADDITIONS START ===
-  async listLorFacts(projectId: number) { return await db.select().from(lor_continuity_facts).where(eq(lor_continuity_facts.projectId, projectId)); },
+  async listLorFacts(projectId: number) { return await db.select().from(lor_continuity_facts).where(eq(lor_continuity_facts.projectId, projectId)).orderBy(asc(lor_continuity_facts.id)); },
   async createLorFact(f: InsertLorContinuityFact) { return await db.insert(lor_continuity_facts).values({ ...f, createdAt: new Date() }).returning().then(r => r[0] as any); },
   async updateLorFact(id: number, patch: Partial<InsertLorContinuityFact>) { return await db.update(lor_continuity_facts).set(patch).where(eq(lor_continuity_facts.id, id)).returning().then(r => r[0] as any); },
   async deleteLorFact(id: number) { return await db.delete(lor_continuity_facts).where(eq(lor_continuity_facts.id, id)); },
   async getLorFact(id: number) { return await db.select().from(lor_continuity_facts).where(eq(lor_continuity_facts.id, id)).then(r => r[0]); },
 
-  async listLorPalettes(projectId: number) { return await db.select().from(lor_palettes).where(eq(lor_palettes.projectId, projectId)); },
+  async listLorPalettes(projectId: number) { return await db.select().from(lor_palettes).where(eq(lor_palettes.projectId, projectId)).orderBy(asc(lor_palettes.id)); },
   async createLorPalette(p: InsertLorPalette) { return await db.insert(lor_palettes).values({ ...p, createdAt: new Date() }).returning().then(r => r[0] as any); },
   async deleteLorPalette(id: number) { return await db.delete(lor_palettes).where(eq(lor_palettes.id, id)); },
   async getLorPalette(id: number) { return await db.select().from(lor_palettes).where(eq(lor_palettes.id, id)).then(r => r[0]); },
@@ -1078,7 +1124,7 @@ const extraStorage = {
   async updateLorAssetVersion(id: number, patch: Partial<LorAssetVersion>) { return await db.update(lor_asset_versions).set(patch).where(eq(lor_asset_versions.id, id)).returning().then(r => r[0] as any); },
   async getLorAssetVersion(id: number) { return await db.select().from(lor_asset_versions).where(eq(lor_asset_versions.id, id)).then(r => r[0]); },
 
-  async listLorCasting(projectId: number) { return await db.select().from(lor_casting_matrix).where(eq(lor_casting_matrix.projectId, projectId)); },
+  async listLorCasting(projectId: number) { return await db.select().from(lor_casting_matrix).where(eq(lor_casting_matrix.projectId, projectId)).orderBy(asc(lor_casting_matrix.id)); },
   async upsertLorCasting(projectId: number, sceneId: number, entityId: number, present: boolean) {
       const existing = await db.select().from(lor_casting_matrix).where(
         and(

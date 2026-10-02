@@ -1,6 +1,8 @@
 import type { IncomingMessage, Server } from "node:http";
 import { WebSocket, WebSocketServer } from "ws";
-import { getSessionPayload, storage } from "./storage";
+import { randomBytes } from "node:crypto";
+import type { Express } from "express";
+import { canAccessProject, requireAuth } from "./auth";
 
 interface ReviewClientMeta {
   projectId: number;
@@ -9,21 +11,46 @@ interface ReviewClientMeta {
 
 const rooms = new Map<number, Set<WebSocket>>();
 
-async function canAccessProject(projectId: number, userId: number): Promise<boolean> {
-  const project = await storage.getProject(projectId);
-  if (!project) return false;
-  if (project.ownerId === userId) return true;
-  return await storage.isMember(projectId, userId);
+// Short-lived, single-use tickets so the long-lived session token never
+// appears in a WebSocket URL (which ends up in proxy/access logs).
+const TICKET_TTL_MS = 30_000;
+const tickets = new Map<string, { projectId: number; userId: number; expiresAt: number }>();
+
+function issueTicket(projectId: number, userId: number): string {
+  const now = Date.now();
+  for (const [t, v] of tickets) if (now >= v.expiresAt) tickets.delete(t);
+  const ticket = randomBytes(24).toString("hex");
+  tickets.set(ticket, { projectId, userId, expiresAt: now + TICKET_TTL_MS });
+  return ticket;
+}
+
+function consumeTicket(ticket: string | null, projectId: number): number | undefined {
+  if (!ticket) return undefined;
+  const entry = tickets.get(ticket);
+  tickets.delete(ticket);
+  if (!entry || Date.now() >= entry.expiresAt || entry.projectId !== projectId) return undefined;
+  return entry.userId;
+}
+
+export function registerReviewRoomTicketRoute(app: Express) {
+  app.post("/api/projects/:projectId/review-room/ticket", requireAuth, async (req, res) => {
+    const projectId = parseInt(String(req.params.projectId), 10);
+    if (!Number.isInteger(projectId)) return res.status(400).json({ message: "Invalid project id" });
+    if (!(await canAccessProject(projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
+    res.json({ ticket: issueTicket(projectId, req.user!.id), expiresIn: TICKET_TTL_MS / 1000 });
+  });
 }
 
 function sendJson(socket: WebSocket, payload: unknown) {
   if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(payload));
 }
 
-function broadcast(projectId: number, payload: unknown) {
+function broadcast(projectId: number, payload: unknown, except?: WebSocket) {
   const clients = rooms.get(projectId);
   if (!clients) return;
-  clients.forEach((client) => sendJson(client, payload));
+  clients.forEach((client) => {
+    if (client !== except) sendJson(client, payload);
+  });
 }
 
 function roomPresence(projectId: number) {
@@ -35,7 +62,7 @@ function roomPresence(projectId: number) {
 }
 
 export function registerReviewRoom(httpServer: Server) {
-  const wss = new WebSocketServer({ noServer: true });
+  const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 }); // default is 100MB
 
   httpServer.on("upgrade", (req, socket, head) => {
     const host = req.headers.host || "localhost";
@@ -44,11 +71,10 @@ export function registerReviewRoom(httpServer: Server) {
     if (!match) return;
 
     const projectId = parseInt(match[1], 10);
-    const token = url.searchParams.get("token") || undefined;
+    const ticket = url.searchParams.get("ticket");
 
     (async () => {
-      const session = getSessionPayload(token);
-      const userId = session?.userId;
+      const userId = consumeTicket(ticket, projectId);
       if (!userId || !(await canAccessProject(projectId, userId))) {
         socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
         socket.destroy();
@@ -82,11 +108,13 @@ export function registerReviewRoom(httpServer: Server) {
         const parsed = JSON.parse(raw.toString());
         const allowed = new Set(["cursor", "stroke", "clear", "playhead", "panel", "note", "script-cursor"]);
         if (!allowed.has(parsed.type)) return;
-        broadcast(meta.projectId, {
-          ...parsed,
-          userId: meta.userId,
-          sentAt: new Date().toISOString(),
-        });
+        // Clients already apply their own cursor/stroke/playhead locally, so echoing those back
+        // double-draws strokes and shows you as "another user". Notes have no local apply.
+        broadcast(
+          meta.projectId,
+          { ...parsed, userId: meta.userId, sentAt: new Date().toISOString() },
+          parsed.type === "note" ? undefined : ws,
+        );
       } catch {
         sendJson(ws, { type: "error", message: "Invalid review room message" });
       }

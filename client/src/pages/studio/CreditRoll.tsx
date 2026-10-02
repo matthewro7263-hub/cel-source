@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
+import { downloadAuthed } from "@/lib/download";
 import { ArrowLeft, ArrowUp, ArrowDown, Download, Plus, Trash2, Scroll, Save, Film } from "lucide-react";
 import { buildCreditRollText, buildPressKitSections, type PressKitCredit } from "./press-kit";
 
@@ -21,6 +22,9 @@ interface CreditEntry {
   orderIdx: number;
   createdAt: string;
 }
+
+// Stable reference: a fresh `[]` default every render re-triggers the sync effect below forever while loading.
+const NO_ENTRIES: CreditEntry[] = [];
 
 export default function CreditRoll() {
   const params = useParams() as { id: string };
@@ -42,7 +46,7 @@ export default function CreditRoll() {
   const [pressSynopsis, setPressSynopsis] = useState("");
   const [pressContact, setPressContact] = useState("");
 
-  const { data: serverEntries = [], isLoading } = useQuery<CreditEntry[]>({
+  const { data: serverEntries = NO_ENTRIES, isLoading } = useQuery<CreditEntry[]>({
     queryKey: ["/api/projects", projectId, "studio/credits"],
     queryFn: async () => {
       const res = await apiRequest("GET", `/api/projects/${projectId}/studio/credits`);
@@ -313,10 +317,8 @@ export default function CreditRoll() {
         <Button
           variant="outline"
           onClick={() => {
-            const a = document.createElement("a");
-            a.href = `/api/projects/${projectId}/export/credit-roll-png`;
-            a.download = `${safeTitle}-credit-roll.png`;
-            a.click();
+            downloadAuthed(`/api/projects/${projectId}/export/credit-roll-png`, `${safeTitle}-credit-roll.png`)
+              .catch((e: Error) => toast({ title: "PNG export failed", description: e.message, variant: "destructive" }));
           }}
           disabled={allCreditEntries.length === 0}
           data-testid="button-download-credit-png"

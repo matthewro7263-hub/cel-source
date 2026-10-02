@@ -1,3 +1,5 @@
+import { useAuth } from "@/lib/auth";
+import { openReviewRoomSocket } from "@/lib/reviewRoomSocket";
 import { useState, useRef, useEffect, useCallback, lazy, Suspense } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -386,23 +388,27 @@ function ScriptTab({ projectId }: { projectId: number }) {
   }, [draft.content, aiStatus, projectId]);
 
   useEffect(() => {
-    const token = getAuthToken();
-    if (!token || !projectId) return;
-    const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-    const ws = new WebSocket(`${protocol}://${window.location.host}/api/projects/${projectId}/review-room?token=${encodeURIComponent(token)}`);
-    wsRef.current = ws;
+    if (!getAuthToken() || !projectId) return;
+    let cancelled = false;
+    let ws: WebSocket | null = null;
+    openReviewRoomSocket(projectId).then((socket) => {
+      if (!socket) return;
+      if (cancelled) { socket.close(); return; }
+      ws = socket;
+      wsRef.current = ws;
 
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        if (msg.type === "script-cursor") {
-          setOtherCursors(prev => ({ ...prev, [msg.userId]: msg.pos }));
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === "script-cursor") {
+            setOtherCursors(prev => ({ ...prev, [msg.userId]: msg.pos }));
+          }
+        } catch {
+          // Ignore malformed WebSocket messages
         }
-      } catch {
-        // Ignore malformed WebSocket messages
-      }
-    };
-    return () => ws.close();
+      };
+    }).catch(() => {});
+    return () => { cancelled = true; ws?.close(); };
   }, [projectId]);
 
   const create = useMutation({
@@ -1613,9 +1619,13 @@ function SettingsTab({ project, members }: { project: Project; members: ProjectD
   const [deadline, setDeadline] = useState(project.deadline || "");
   const [shareEnabled, setShareEnabled] = useState(project.shareEnabled);
   const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState<"editor" | "reviewer">("editor");
   const [deleteConfirmName, setDeleteConfirmName] = useState("");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const { toast } = useToast();
+  const { user: currentUser } = useAuth();
+  // Sharing, webhooks, membership and deletion are owner-only on the server; hide the controls for everyone else.
+  const isOwner = project.ownerId === currentUser?.id;
 
   const patch = useMutation({
     mutationFn: async (data: Partial<Project>) => (await apiRequest("PATCH", `/api/projects/${project.id}`, data)).json(),
@@ -1641,7 +1651,7 @@ function SettingsTab({ project, members }: { project: Project; members: ProjectD
     },
   });
   const invite = useMutation({
-    mutationFn: async () => (await apiRequest("POST", `/api/projects/${project.id}/members`, { email: inviteEmail })).json(),
+    mutationFn: async () => (await apiRequest("POST", `/api/projects/${project.id}/members`, { email: inviteEmail, role: inviteRole })).json(),
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.project(project.id) });
       setInviteEmail("");
@@ -1652,6 +1662,12 @@ function SettingsTab({ project, members }: { project: Project; members: ProjectD
       }
     },
     onError: (err: any) => toast({ title: "Couldn't invite", description: String(err.message || err), variant: "destructive" }),
+  });
+  const changeRole = useMutation({
+    mutationFn: async ({ userId, role }: { userId: number; role: "editor" | "reviewer" }) =>
+      (await apiRequest("PATCH", `/api/projects/${project.id}/members/${userId}`, { role })).json(),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.project(project.id) }),
+    onError: (err: any) => toast({ title: "Couldn't change role", description: String(err.message || err), variant: "destructive" }),
   });
   const removeMember = useMutation({
     mutationFn: async (userId: number) =>
@@ -1697,23 +1713,46 @@ function SettingsTab({ project, members }: { project: Project; members: ProjectD
                 </Avatar>
                 <div className="min-w-0">
                   <div className="text-sm font-medium truncate">{m.user.name}</div>
-                  <div className="text-xs text-muted-foreground truncate">{m.user.email} · {m.role}</div>
+                  <div className="text-xs text-muted-foreground truncate">{m.user.email} · {m.role}{m.role === "reviewer" ? " (comment only)" : ""}</div>
                 </div>
               </div>
-              {m.role !== "owner" && (
-                <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => removeMember.mutate(m.user!.id)} data-testid={`button-remove-${m.user.id}`}>
+              {m.role !== "owner" && isOwner && (
+                <select
+                  className="h-7 rounded-md border border-border bg-background px-1.5 text-xs"
+                  value={m.role === "reviewer" ? "reviewer" : "editor"}
+                  onChange={(e) => changeRole.mutate({ userId: m.user!.id, role: e.target.value as "editor" | "reviewer" })}
+                  aria-label={`Role for ${m.user.name}`}
+                  data-testid={`select-role-${m.user.id}`}
+                >
+                  <option value="editor">Editor</option>
+                  <option value="reviewer">Reviewer</option>
+                </select>
+              )}
+              {m.role !== "owner" && (isOwner || m.user.id === currentUser?.id) && (
+                <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" title={m.user.id === currentUser?.id && !isOwner ? "Leave project" : "Remove member"} onClick={() => removeMember.mutate(m.user!.id)} data-testid={`button-remove-${m.user.id}`}>
                   <X size={14} />
                 </Button>
               )}
             </div>
           ))}
-          <div className="flex gap-2 pt-2">
+          {isOwner && <div className="flex gap-2 pt-2">
             <Input type="email" placeholder="someone@studio.com" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} data-testid="input-invite-email" />
+            <select
+              className="h-9 rounded-md border border-border bg-background px-2 text-sm"
+              value={inviteRole}
+              onChange={(e) => setInviteRole(e.target.value as "editor" | "reviewer")}
+              aria-label="Role for the invited member"
+              data-testid="select-invite-role"
+            >
+              <option value="editor">Editor</option>
+              <option value="reviewer">Reviewer</option>
+            </select>
             <Button onClick={() => invite.mutate()} disabled={!inviteEmail || invite.isPending} data-testid="button-invite">Invite</Button>
-          </div>
+          </div>}
         </div>
       </SettingsSection>
 
+      {isOwner && (
       <SettingsSection title="Discord Webhooks">
         <div className="space-y-3">
           <div className="text-sm text-muted-foreground mb-2">Send event notifications to a Discord channel.</div>
@@ -1740,7 +1779,9 @@ function SettingsTab({ project, members }: { project: Project; members: ProjectD
           </div>
         </div>
       </SettingsSection>
+      )}
 
+      {isOwner && (
       <SettingsSection title="Public share link">
         <div className="space-y-3">
           <div className="flex items-center justify-between">
@@ -1770,6 +1811,7 @@ function SettingsTab({ project, members }: { project: Project; members: ProjectD
           )}
         </div>
       </SettingsSection>
+      )}
 
       {/* v4: AI key + Tags settings */}
       <AiKeySettings projectId={project.id} />
@@ -1777,6 +1819,7 @@ function SettingsTab({ project, members }: { project: Project; members: ProjectD
 
       <BakSettingsExports projectId={project.id} />
 
+      {isOwner && (
       <SettingsSection title="Danger zone" tone="destructive">
         <AlertDialog
           open={deleteDialogOpen}
@@ -1819,6 +1862,7 @@ function SettingsTab({ project, members }: { project: Project; members: ProjectD
           </AlertDialogContent>
         </AlertDialog>
       </SettingsSection>
+      )}
     </div>
   );
 }

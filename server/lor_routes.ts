@@ -1,5 +1,6 @@
+import { requireAuth, canAccessProject, canEditProject } from "./auth";
 import type { Express, Request, Response, NextFunction } from "express";
-import { getSessionUser, storage } from "./storage";
+import { storage } from "./storage";
 import { LOR_EPISODE_BIBLE_SEED } from "./templates/lor_episode_bible";
 import { z } from "zod";
 import { notifyDiscord } from "./discord";
@@ -33,31 +34,6 @@ type LorStorage = typeof storage & {
 
 const lorStorage = storage as LorStorage;
 
-async function canAccessProject(projectId: number, userId: number): Promise<boolean> {
-  const p = await storage.getProject(projectId);
-  if (!p) return false;
-  if (p.ownerId === userId) return true;
-  return await storage.isMember(projectId, userId);
-}
-
-function extractToken(req: Request): string | undefined {
-  const auth = req.headers.authorization;
-  if (!auth) return undefined;
-  const parts = auth.split(" ");
-  if (parts.length === 2 && parts[0].toLowerCase() === "bearer") return parts[1];
-  return undefined;
-}
-
-async function requireAuth(req: Request, res: Response, next: NextFunction) {
-  const token = extractToken(req);
-  const userId = getSessionUser(token);
-  if (!userId) return res.status(401).json({ message: "Not authenticated" });
-  const user = await storage.getUser(userId);
-  if (!user) return res.status(401).json({ message: "User not found" });
-  (req as any).user = user;
-  next();
-}
-
 export function registerLorRoutes(app: Express) {
   // Zod schema for lor_facts PUT (only allow safe fields)
   const lorFactPutSchema = z.object({
@@ -77,13 +53,20 @@ export function registerLorRoutes(app: Express) {
 
   app.post("/api/projects/:id/lor_facts", requireAuth, async (req, res) => {
     const projectId = parseInt(String(req.params.id), 10);
-    if (!(await canAccessProject(projectId, (req as any).user.id))) return res.status(403).json({ message: "No access" });
+    if (!(await canEditProject(projectId, (req as any).user.id))) return res.status(403).json({ message: "No access" });
+    const parsed = z.object({
+      category: z.string().min(1).max(60).default('character'),
+      title: z.string().trim().min(1, "title is required").max(200),
+      body: z.string().default(''),
+      imageData: z.string().nullish(),
+    }).safeParse(req.body ?? {});
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message ?? "Invalid fact", issues: parsed.error.issues });
     const fact = await lorStorage.createLorFact({
       projectId,
-      category: req.body.category || 'character',
-      title: req.body.title,
-      body: req.body.body || '',
-      imageData: req.body.imageData || null,
+      category: parsed.data.category,
+      title: parsed.data.title,
+      body: parsed.data.body,
+      imageData: parsed.data.imageData || null,
     });
     res.json(fact);
   });
@@ -92,7 +75,7 @@ export function registerLorRoutes(app: Express) {
     const factId = parseInt(String(req.params.id), 10);
     const row = await lorStorage.getLorFact(factId);
     if (!row) return res.status(404).json({ message: "Not found" });
-    if (!(await canAccessProject(row.projectId, (req as any).user.id))) return res.status(403).json({ message: "No access" });
+    if (!(await canEditProject(row.projectId, (req as any).user.id))) return res.status(403).json({ message: "No access" });
     let patch: any;
     try { patch = lorFactPutSchema.parse(req.body); } catch (e: any) { return res.status(400).json({ message: e.message }); }
     const fact = await lorStorage.updateLorFact(factId, patch);
@@ -103,7 +86,7 @@ export function registerLorRoutes(app: Express) {
     const factId = parseInt(String(req.params.id), 10);
     const row = await lorStorage.getLorFact(factId);
     if (!row) return res.status(404).json({ message: "Not found" });
-    if (!(await canAccessProject(row.projectId, (req as any).user.id))) return res.status(403).json({ message: "No access" });
+    if (!(await canEditProject(row.projectId, (req as any).user.id))) return res.status(403).json({ message: "No access" });
     await lorStorage.deleteLorFact(factId);
     res.json({ success: true });
   });
@@ -111,7 +94,7 @@ export function registerLorRoutes(app: Express) {
   // 2. Episode Bible Template route
   app.post("/api/projects/:id/lor_seed_bible", requireAuth, async (req, res) => {
     const projectId = parseInt(String(req.params.id), 10);
-    if (!(await canAccessProject(projectId, (req as any).user.id))) return res.status(403).json({ message: "No access" });
+    if (!(await canEditProject(projectId, (req as any).user.id))) return res.status(403).json({ message: "No access" });
     for (const item of LOR_EPISODE_BIBLE_SEED) {
       await lorStorage.createLorFact({
         projectId,
@@ -131,7 +114,7 @@ export function registerLorRoutes(app: Express) {
 
   app.post("/api/projects/:id/lor_palettes", requireAuth, async (req, res) => {
     const projectId = parseInt(String(req.params.id), 10);
-    if (!(await canAccessProject(projectId, (req as any).user.id))) return res.status(403).json({ message: "No access" });
+    if (!(await canEditProject(projectId, (req as any).user.id))) return res.status(403).json({ message: "No access" });
     const palette = await lorStorage.createLorPalette({
       projectId,
       name: req.body.name || 'Palette',
@@ -144,7 +127,7 @@ export function registerLorRoutes(app: Express) {
     const paletteId = parseInt(String(req.params.id), 10);
     const row = await lorStorage.getLorPalette(paletteId);
     if (!row) return res.status(404).json({ message: "Not found" });
-    if (!(await canAccessProject(row.projectId, (req as any).user.id))) return res.status(403).json({ message: "No access" });
+    if (!(await canEditProject(row.projectId, (req as any).user.id))) return res.status(403).json({ message: "No access" });
     await lorStorage.deleteLorPalette(paletteId);
     res.json({ success: true });
   });
@@ -163,7 +146,7 @@ export function registerLorRoutes(app: Express) {
     const assetId = parseInt(String(req.params.id), 10);
     const asset = await storage.getAsset(assetId);
     if (!asset) return res.status(404).json({ message: "Not found" });
-    if (!(await canAccessProject(asset.projectId, (req as any).user.id))) return res.status(403).json({ message: "No access" });
+    if (!(await canEditProject(asset.projectId, (req as any).user.id))) return res.status(403).json({ message: "No access" });
     // find max version
     const existing = await lorStorage.listLorAssetVersions(assetId);
     const nextVer = existing.length > 0 ? Math.max(...existing.map((v: LorAssetVersion) => v.versionNum)) + 1 : 1;
@@ -193,7 +176,7 @@ export function registerLorRoutes(app: Express) {
     const versionId = parseInt(String(req.params.versionId), 10);
     const asset = await storage.getAsset(assetId);
     if (!asset) return res.status(404).json({ message: "Not found" });
-    if (!(await canAccessProject(asset.projectId, (req as any).user.id))) return res.status(403).json({ message: "No access" });
+    if (!(await canEditProject(asset.projectId, (req as any).user.id))) return res.status(403).json({ message: "No access" });
     
     await lorStorage.updateLorAssetVersionsForAsset(assetId, { approved: false });
     const approvedVer = await lorStorage.updateLorAssetVersion(versionId, { approved: true });
@@ -218,7 +201,7 @@ export function registerLorRoutes(app: Express) {
   app.post("/api/projects/:id/lor_casting/toggle", requireAuth, async (req, res) => {
     const { sceneId, entityId, present } = req.body;
     const projectId = parseInt(String(req.params.id), 10);
-    if (!(await canAccessProject(projectId, (req as any).user.id))) return res.status(403).json({ message: "No access" });
+    if (!(await canEditProject(projectId, (req as any).user.id))) return res.status(403).json({ message: "No access" });
     
     await lorStorage.upsertLorCasting(projectId, sceneId, entityId, present);
     
