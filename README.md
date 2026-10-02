@@ -109,6 +109,24 @@ cel-source/
 
 ---
 
+## Testing
+
+```bash
+pnpm check              # TypeScript
+pnpm lint               # React hook-order rules (ESLint)
+pnpm test               # unit tests (bun)
+# Black-box API/WebSocket suite against the production bundle and a real Postgres:
+createdb cel_it && DATABASE_URL=postgres://localhost:5432/cel_it pnpm test:integration
+```
+
+`pnpm test:integration` boots `dist/index.cjs`, so it also proves a fresh database migrates and
+that the "no R2 configured" fallbacks work. CI runs all of the above.
+
+For local development any Postgres works (`DATABASE_URL=postgres://...`); the Neon serverless driver is
+only used for `*.neon.tech` hosts (override with `CEL_DB_DRIVER=neon|pg`).
+
+---
+
 ## Environment variables
 
 See [.env.example](./.env.example). The critical ones:

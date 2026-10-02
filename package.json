@@ -10,7 +10,8 @@
     "check": "tsc",
     "test": "bun test",
     "db:push": "drizzle-kit push",
-    "lint": "eslint client/src server shared"
+    "lint": "eslint client/src server shared",
+    "test:integration": "node test/integration/run.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1145.0",
