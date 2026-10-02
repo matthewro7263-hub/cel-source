@@ -8,7 +8,7 @@ mock.module("drizzle-orm/neon-serverless", () => ({ drizzle: () => ({}) }));
 mock.module("ws", () => ({ default: class { constructor() {} } }));
 
 const { storage, createSession } = await import("./storage.ts");
-const { authenticateToken, canAccessProject, invalidateProjectAccess, isAdminEmail, requireAdmin } =
+const { authenticateToken, canAccessProject, canEditProject, invalidateProjectAccess, isAdminEmail, requireAdmin } =
   await import("./auth.ts");
 
 const s = storage as any;
@@ -18,7 +18,7 @@ beforeEach(() => {
   calls = 0;
   s.getUser = async (id: number) => (id === 1 ? { id: 1, email: "a@x.com", tokenVersion: 3 } : undefined);
   s.getProject = async (id: number) => { calls++; return id === 10 ? { id: 10, ownerId: 1 } : undefined; };
-  s.isMember = async (_p: number, userId: number) => userId === 2;
+  s.getMemberRole = async (_p: number, userId: number) => ({ 2: "editor", 4: "reviewer" } as Record<number, string>)[userId];
   invalidateProjectAccess(10);
 });
 
@@ -49,6 +49,13 @@ describe("canAccessProject", () => {
     expect(await canAccessProject(10, 2)).toBe(true);
     expect(await canAccessProject(10, 3)).toBe(false);
     expect(await canAccessProject(11, 1)).toBe(false);
+  });
+  test("reviewers can read but not edit; editors and owners can do both", async () => {
+    expect(await canAccessProject(10, 4)).toBe(true);
+    expect(await canEditProject(10, 4)).toBe(false);
+    expect(await canEditProject(10, 2)).toBe(true);
+    expect(await canEditProject(10, 1)).toBe(true);
+    expect(await canEditProject(10, 3)).toBe(false);
   });
   test("caches results until invalidated", async () => {
     await canAccessProject(10, 1);
