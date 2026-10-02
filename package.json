@@ -9,7 +9,8 @@
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
     "test": "bun test",
-    "db:push": "drizzle-kit push"
+    "db:push": "drizzle-kit push",
+    "lint": "eslint client/src server shared"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1145.0",
@@ -95,9 +96,12 @@
     "@types/react": "^18.3.31",
     "@types/react-dom": "^18.3.7",
     "@types/ws": "^8.18.2",
+    "@typescript-eslint/parser": "^8.71.0",
     "@vitejs/plugin-react": "^4.7.0",
     "autoprefixer": "^10.6.1",
     "esbuild": "^0.25.12",
+    "eslint": "^9.39.5",
+    "eslint-plugin-react-hooks": "^5.2.0",
     "postcss": "^8.5.28",
     "tailwindcss": "^3.4.19",
     "tsx": "^4.23.15",

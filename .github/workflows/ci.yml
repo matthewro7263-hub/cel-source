@@ -20,5 +20,6 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm check
+      - run: pnpm lint
       - run: pnpm test
       - run: pnpm build

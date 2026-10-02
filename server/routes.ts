@@ -23,7 +23,7 @@ function fireAchievements(ctx: Parameters<typeof checkAchievements>[0]) {
 import {
   insertCommissionSchema,
   audVoiceTakes, insertAudVoiceTakeSchema, audCaptions, insertAudCaptionSchema,
-  dltCommissionHours, sceneTimeEntries, scenes, commissions, projects
+  dltCommissionHours, sceneTimeEntries, scenes, scripts, commissions, projects
 } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import type { User as AppUser } from "@shared/schema";
@@ -467,10 +467,14 @@ const upload = multer({
       let extractedText = "";
 
       if (sourceFormat === "pdf") {
-        const pdfParseModule = await import("pdf-parse");
-        const pdfParse = (pdfParseModule as any).default || pdfParseModule;
-        const data = await pdfParse(buffer);
-        extractedText = data.text;
+        // pdf-parse v2 is class based; the default page joiner would inject "-- 1 of 3 --" markers.
+        const { PDFParse } = await import("pdf-parse");
+        const parser = new PDFParse({ data: new Uint8Array(buffer) });
+        try {
+          extractedText = (await parser.getText({ pageJoiner: "\n\n" })).text;
+        } finally {
+          await parser.destroy().catch(() => {});
+        }
       } else if (sourceFormat === "docx") {
         const mammoth = (await import("mammoth")).default;
         const result = await mammoth.extractRawText({ buffer });
@@ -485,14 +489,14 @@ const upload = multer({
         });
       }
 
-      if (!process.env.R2_BUCKET || !process.env.R2_ENDPOINT) {
-        throw new Error("Cloud storage (R2) is not configured on this server.");
+      // Keep the original file only when cloud storage is configured; the extracted text is
+      // what the editor and share page use, so uploads still work without R2.
+      let originalKey: string | null = null;
+      if (process.env.R2_BUCKET && process.env.R2_ENDPOINT) {
+        const safeName = originalname.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 120);
+        originalKey = `uploads/${req.user!.id}/scripts/${randomUUID()}-${safeName}`;
+        await putObject(originalKey, buffer, mimetype);
       }
-
-      const safeName = originalname.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 120);
-      const originalKey = `uploads/${req.user!.id}/scripts/${randomUUID()}-${safeName}`;
-
-      await putObject(originalKey, buffer, mimetype);
 
       const title = originalname.replace(/\.[^/.]+$/, "");
 
@@ -502,15 +506,12 @@ const upload = multer({
         content: extractedText,
       });
 
-      const { scripts } = await import("@shared/schema.js");
-      const { eq } = await import("drizzle-orm");
-
       await db.update(scripts).set({
         sourceType: "upload",
         sourceFormat,
-        originalKey
+        originalKey,
       }).where(eq(scripts.id, newScript.id));
-      
+
       const updatedScript = await storage.getScript(newScript.id);
 
       res.json(updatedScript);
