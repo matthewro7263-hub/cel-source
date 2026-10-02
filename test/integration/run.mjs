@@ -59,7 +59,7 @@ for (let i = 0; i < 60 && !up; i++) {
 }
 if (!up) { console.error("server did not become healthy:\n" + serverLog); process.exit(1); }
 
-const suites = ["api-core", "share", "script-upload", "exports-and-ws", "media-urls", "ai", "api-modules", "trash-and-snapshots", "accounts"];
+const suites = ["api-core", "share", "script-upload", "exports-and-ws", "media-urls", "ai", "api-modules", "trash-and-snapshots", "accounts", "client-payloads"];
 const failed = [];
 for (const name of suites) {
   console.log(`\n=== ${name}`);
