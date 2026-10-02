@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ApiError } from "@/lib/queryClient";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
@@ -12,7 +13,7 @@ import { initials } from "@/lib/utils-cel";
 const COLORS = ["#6E4FE8", "#E8744F", "#4FBFE8", "#E84F9F", "#4FE89A", "#E8C44F", "#E84F4F", "#4F6FE8"];
 
 export default function ProfileSettings() {
-  const { user } = useAuth();
+  const { user, applyToken, logout } = useAuth();
   const [name, setName] = useState(user?.name || "");
   const [color, setColor] = useState(user?.avatarColor || COLORS[0]);
   const { toast } = useToast();
@@ -23,6 +24,24 @@ export default function ProfileSettings() {
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
       toast({ title: "Profile saved" });
     },
+  });
+
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const changePassword = useMutation({
+    mutationFn: async () => (await apiRequest("POST", "/api/auth/password", { currentPassword, newPassword })).json() as Promise<{ token: string }>,
+    onSuccess: ({ token }) => {
+      // Other devices are signed out; keep this one signed in with the fresh token.
+      if (user) applyToken(token, user);
+      setCurrentPassword("");
+      setNewPassword("");
+      toast({ title: "Password changed", description: "Other devices have been signed out." });
+    },
+    onError: (err) => toast({ title: "Couldn't change password", description: err instanceof ApiError ? err.message : String(err), variant: "destructive" }),
+  });
+  const signOutEverywhere = useMutation({
+    mutationFn: async () => { await apiRequest("POST", "/api/auth/logout-all"); },
+    onSuccess: () => logout(),
   });
 
   if (!user) return null;
@@ -73,6 +92,31 @@ export default function ProfileSettings() {
               </Button>
             </div>
           </div>
+        </div>
+
+        <div className="glass p-5">
+          <h3 className="font-display font-semibold mb-4">Security</h3>
+          <form
+            className="space-y-4"
+            onSubmit={(e) => { e.preventDefault(); changePassword.mutate(); }}
+          >
+            <div className="space-y-1.5">
+              <Label htmlFor="current-password">Current password</Label>
+              <Input id="current-password" type="password" autoComplete="current-password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} data-testid="input-current-password" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="new-password">New password (8+ characters)</Label>
+              <Input id="new-password" type="password" autoComplete="new-password" minLength={8} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} data-testid="input-new-password" />
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <Button type="button" variant="outline" onClick={() => signOutEverywhere.mutate()} disabled={signOutEverywhere.isPending} data-testid="button-signout-everywhere">
+                Sign out everywhere
+              </Button>
+              <Button type="submit" disabled={changePassword.isPending || !currentPassword || newPassword.length < 8} data-testid="button-change-password">
+                {changePassword.isPending ? "Changing…" : "Change password"}
+              </Button>
+            </div>
+          </form>
         </div>
       </div>
     </div>

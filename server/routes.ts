@@ -1,5 +1,5 @@
 import multer from "multer";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer } from "node:http";
 import type { Server } from "node:http";
@@ -10,7 +10,7 @@ import {
   getSessionPayload, destroySession, genToken, verifySignedMedia,
 } from "./storage";
 import { isOwnedKey, presignDownload, putObject } from "./r2";
-import { notifyDiscord } from "./discord";
+import { isDiscordWebhookUrl, notifyDiscord } from "./discord";
 import { sendError } from "./errors";
 import { encrypt, decrypt } from "./crypto";
 import { registerIdParamValidators } from "./params";
@@ -128,6 +128,23 @@ const upload = multer({
     const token = extractToken(req);
     if (token) destroySession(token);
     res.json({ ok: true });
+  });
+
+  // Changing the password revokes every other session (tokenVersion bump) and returns a fresh token
+  // for this one. Invited users start with a random temporary password, so this must exist.
+  app.post("/api/auth/password", requireAuth, async (req, res) => {
+    const { currentPassword, newPassword } = z.object({
+      currentPassword: z.string().min(1),
+      newPassword: z.string().min(8).max(200),
+    }).parse(req.body);
+    if (!(await verifyPassword(currentPassword, req.user!.passwordHash))) {
+      return res.status(403).json({ message: "Current password is incorrect" });
+    }
+    const updated = await storage.updateUser(req.user!.id, {
+      passwordHash: await hashPassword(newPassword),
+      tokenVersion: req.user!.tokenVersion + 1,
+    });
+    res.json({ token: createSession(updated.id, updated.tokenVersion) });
   });
 
   // Tokens are stateless, so "logout everywhere" revokes them by bumping tokenVersion.
@@ -335,7 +352,7 @@ const upload = multer({
       cli_brandLogo: z.string().optional().nullable(),
       cli_brandColor: z.string().optional(),
       cli_brandWelcome: z.string().optional().nullable(),
-      dltDiscordWebhookUrl: z.string().url().nullable().optional(),
+      dltDiscordWebhookUrl: z.string().url().refine(isDiscordWebhookUrl, "Must be a https://discord.com/api/webhooks/... URL").nullable().optional(),
     });
     const patch = schema.parse(req.body);
     const before = await storage.getProject(id);
@@ -364,10 +381,11 @@ const upload = multer({
     let user = await storage.getUserByEmail(body.email);
     let tempPassword: string | undefined;
     if (!user) {
-      tempPassword = "changeme";
+      // Never a fixed/guessable password: anyone knowing the email could otherwise sign in as the invitee.
+      tempPassword = randomBytes(9).toString("base64url");
       const colors = ["#6E4FE8", "#E8744F", "#4FBFE8", "#E84F9F", "#4FE89A"];
       user = await storage.createUser({
-        email: body.email,
+        email: body.email.trim().toLowerCase(),
         name: body.email.split("@")[0],
         passwordHash: await hashPassword(tempPassword),
         avatarColor: colors[Math.floor(Math.random() * colors.length)],
@@ -2291,37 +2309,35 @@ ${body.scriptContent}
   });
 
   app.post ("/api/projects/:id/discord/test", requireAuth, async (req, res) => {
+    const projectId = parseInt(String(req.params.id), 10);
+    if (!(await canAccessProject(projectId, req.user!.id))) return res.status(403).json({ error: "No access" });
+    const project = await storage.getProject(projectId);
+    if (!project) return res.status(404).json({ error: "Project not found" });
+
+    const webhookUrl = (project as any).dltDiscordWebhookUrl;
+    if (!webhookUrl) return res.status(400).json({ error: "No webhook configured" });
+    if (!isDiscordWebhookUrl(webhookUrl)) return res.status(400).json({ error: "Webhook must be a https://discord.com/api/webhooks/... URL" });
+
     try {
-      const projectId = parseInt(String(req.params.id), 10);
-      const project = await storage.getProject(projectId);
-      if (!project) return res.status(404).json({ error: "Project not found" });
-      
-      const webhookUrl = (project as any).dltDiscordWebhookUrl;
-      if (!webhookUrl) return res.status(400).json({ error: "No webhook configured" });
-      
-      // Send webhook via fetch to discord
-      fetch(webhookUrl, {
+      const r = await fetch(webhookUrl, {
         method: "POST",
+        redirect: "manual",
+        signal: AbortSignal.timeout(10_000),
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           embeds: [{
             title: `Cel Notification Test: ${project.title}`,
             description: "Discord webhook integration is working correctly!",
             color: 0x9DD0FF,
-            timestamp: new Date().toISOString()
-          }]
-        })
-      }).then(r => {
-        if (!r.ok) {
-          console.error("Discord webhook failed:", r.statusText);
-        }
-      }).catch(err => {
-        console.error("Discord webhook fetch failed:", err);
+            timestamp: new Date().toISOString(),
+          }],
+        }),
       });
-      
+      // Report Discord's answer instead of claiming success for a webhook that rejected us.
+      if (!r.ok) return res.status(502).json({ error: `Discord responded ${r.status}` });
       res.json({ success: true });
     } catch (e: any) {
-      res.status(500).json({ error: e.message });
+      res.status(502).json({ error: `Could not reach Discord: ${e.message}` });
     }
   });
 
