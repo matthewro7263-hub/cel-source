@@ -23,6 +23,7 @@ import { ZodError } from "zod";
 
 const app = express();
 app.set("trust proxy", 1);
+app.disable("x-powered-by");
 const startedAt = Date.now();
 
 const DEFAULT_ALLOWED_ORIGINS = [
@@ -43,6 +44,16 @@ function parseAllowedOrigins(value: string | undefined): Set<string> {
 // CORS: allow credentials only for explicit origins.
 // Set CEL_ALLOWED_ORIGINS as a comma-separated list to override the defaults.
 const ALLOWED_ORIGINS = parseAllowedOrigins(process.env.CEL_ALLOWED_ORIGINS);
+
+// Baseline security headers (no CSP: the client relies on inline styles/scripts).
+app.use((_req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  if (process.env.NODE_ENV === "production") {
+    res.setHeader("Strict-Transport-Security", "max-age=15552000; includeSubDomains");
+  }
+  next();
+});
 
 app.use((req, res, next) => {
   const origin = req.headers.origin as string | undefined;
@@ -161,24 +172,12 @@ export function log(message: string, source = "express") {
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
-  let capturedJsonResponse: Record<string, any> | undefined = undefined;
-
-  const originalResJson = res.json;
-  res.json = function (bodyJson, ...args) {
-    capturedJsonResponse = bodyJson;
-    return originalResJson.apply(res, [bodyJson, ...args]);
-  };
-
   res.on("finish", () => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
       const contentLength = res.getHeader("content-length");
-      if (contentLength) {
-        logLine += ` size=${contentLength}b`;
-      } else if (capturedJsonResponse) {
-        logLine += ` size=${JSON.stringify(capturedJsonResponse).length}b`;
-      }
+      if (contentLength) logLine += ` size=${contentLength}b`;
       log(logLine);
     }
   });

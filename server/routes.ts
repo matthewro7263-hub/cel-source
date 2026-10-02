@@ -13,6 +13,7 @@ import { presignDownload, putObject } from "./r2";
 import { notifyDiscord } from "./discord";
 import { sendError } from "./errors";
 import { encrypt, decrypt } from "./crypto";
+import { registerIdParamValidators } from "./params";
 import { authenticateToken, extractToken, requireAuth, canAccessProject, invalidateProjectAccess } from "./auth";
 import { checkAchievements } from "./achievements";
 
@@ -50,6 +51,8 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
 });
+
+  registerIdParamValidators(app);
 
   registerReviewRoom(httpServer);
   registerReviewRoomTicketRoute(app);
@@ -93,7 +96,7 @@ const upload = multer({
     if (existing) return res.status(400).json({ message: "Email already in use" });
     const colors = ["#6E4FE8", "#E8744F", "#4FBFE8", "#E84F9F", "#4FE89A", "#E8C44F"];
     const user = await storage.createUser({
-      email: body.email,
+      email: body.email.trim().toLowerCase(),
       name: body.name,
       passwordHash: await hashPassword(body.password),
       avatarColor: colors[Math.floor(Math.random() * colors.length)],
@@ -675,6 +678,11 @@ const upload = multer({
     if (!(await canAccessProject(sb.projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
     const schema = z.object({ orderedIds: z.array(z.number().int()) });
     const { orderedIds } = schema.parse(req.body);
+    // Must be a permutation of the storyboard's live panels (no dupes, strangers or omissions).
+    const current = new Set((await storage.listPanelsLite(sbId)).map((p) => p.id));
+    if (orderedIds.length !== current.size || new Set(orderedIds).size !== orderedIds.length || !orderedIds.every((pid) => current.has(pid))) {
+      return res.status(400).json({ message: "orderedIds must list every panel in this storyboard exactly once" });
+    }
     await storage.reorderPanels(sbId, orderedIds);
     res.json({ ok: true });
   });

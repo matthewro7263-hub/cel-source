@@ -195,7 +195,8 @@ const coreStorage = {
     const unique = Array.from(new Set(ids));
     return await db.select().from(users).where(inArray(users.id, unique));
   },
-  async getUserByEmail(email: string) { return await db.select().from(users).where(eq(users.email, email)).then(r => r[0]); },
+  // Case-insensitive so "Foo@x.com" and "foo@x.com" are the same account.
+  async getUserByEmail(email: string) { return await db.select().from(users).where(sql`lower(${users.email}) = ${email.trim().toLowerCase()}`).then(r => r[0]); },
   async createUser(u: InsertUser) { return await db.insert(users).values(u).returning().then(r => r[0] as any); },
   async updateUser(id: number, patch: Partial<InsertUser>) { return await db.update(users).set(patch).where(eq(users.id, id)).returning().then(r => r[0] as any); },
 
