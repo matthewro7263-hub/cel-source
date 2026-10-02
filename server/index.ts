@@ -244,6 +244,11 @@ async function runMigrations() {
     return res.status(status).json({ message });
   });
 
+  // Unknown API routes must be JSON 404s, not the SPA's index.html (which the client then fails to parse).
+  app.use("/api", (_req, res) => {
+    res.status(404).json({ message: "Not found" });
+  });
+
   // importantly only setup vite in development and after
   // setting up all the other routes so the catch-all route
   // doesn't interfere with the other routes

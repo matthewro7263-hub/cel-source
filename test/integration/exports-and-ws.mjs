@@ -20,7 +20,7 @@ check("spritesheet 200", r.status === 200, r);
 // bak
 r = await call("POST", `/api/projects/${pid}/snapshot`, { label: "t" }, token);
 check("bak snapshot", r.status < 400, r);
-r = await call("GET", `/api/trash`, undefined, token);
+r = await call("GET", `/api/projects/${pid}/trash`, undefined, token);
 check("trash", r.status === 200, r);
 r = await call("POST", `/api/scenes/1/gltf-stub`, {}, token);
 check("gltf-stub not 5xx", r.status < 500, r);

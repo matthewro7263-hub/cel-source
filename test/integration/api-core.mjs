@@ -117,4 +117,24 @@ check("revoked token rejected", r.status === 401, r);
 // --- cleanup
 r = await call("DELETE", `/api/projects/${pid}`, undefined, token);
 check("delete project", r.status < 300, r);
+// --- static hosting / routing behaviour
+{
+  const { base } = await import("./lib.mjs");
+  let res = await fetch(base + "/api/definitely-not-a-route");
+  check("unknown API route is a JSON 404", res.status === 404 && /json/.test(res.headers.get("content-type") || ""), res.status);
+  res = await fetch(base + "/assets/missing-chunk-abc123.js");
+  check("missing static file is a 404, not index.html", res.status === 404, res.status);
+  res = await fetch(base + "/some/spa/route");
+  check("SPA routes fall back to index.html", res.status === 200 && /<div id="root"/.test(await res.text()));
+  check("index.html is revalidated", res.headers.get("cache-control") === "no-cache", res.headers.get("cache-control"));
+  const html = await (await fetch(base + "/")).text();
+  const asset = html.match(/\/?assets\/[\w.-]+\.js/)?.[0];
+  if (asset) {
+    res = await fetch(base + "/" + asset.replace(/^\//, ""));
+    check("fingerprinted assets are immutable", /immutable/.test(res.headers.get("cache-control") || ""), res.headers.get("cache-control"));
+  }
+  res = await fetch(base + "/health");
+  check("security headers present", res.headers.get("x-content-type-options") === "nosniff" && !res.headers.get("x-powered-by"), [...res.headers.keys()]);
+}
+
 process.exit(summary() ? 1 : 0);
