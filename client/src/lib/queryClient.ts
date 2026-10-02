@@ -63,7 +63,9 @@ export async function apiRequest(
   // run onSuccess with an error body. GETs keep returning the Response so callers can branch on
   // 403/404 themselves.
   if (!res.ok && method.toUpperCase() !== "GET") {
-    throw new ApiError(res.status, await readErrorMessage(res));
+    // A 401 from the login/signup endpoints means bad credentials, not an expired session.
+    const isAuthForm = /^\/api\/auth\/(login|signup)\b/.test(url);
+    throw new ApiError(res.status, await readErrorMessage(res, isAuthForm));
   }
   return res;
 }
@@ -76,7 +78,7 @@ export class ApiError extends Error {
   }
 }
 
-async function readErrorMessage(res: Response): Promise<string> {
+async function readErrorMessage(res: Response, keepServerMessage = false): Promise<string> {
   const text = await res.clone().text().catch(() => "");
   let message = text;
   try {
@@ -85,6 +87,7 @@ async function readErrorMessage(res: Response): Promise<string> {
   } catch {
     // not JSON: use the raw text
   }
+  if (keepServerMessage && message) return message;
   return formatApiError(res.status, message || res.statusText, true);
 }
 
