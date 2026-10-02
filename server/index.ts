@@ -117,6 +117,13 @@ const MEDIA_JSON_ROUTES = [
   /^\/api\/commissions$/,
   /^\/api\/tracks\/\d+\/clips$/,
   /^\/api\/clips\/\d+$/,
+  /^\/api\/mcp\/upload_asset$/,
+  /^\/api\/projects\/\d+$/, // PATCH carries the brand logo as a data URL
+  /^\/api\/projects\/\d+\/lor_facts$/,
+  /^\/api\/lor_facts\/\d+$/,
+  /^\/api\/assets\/\d+\/lor_versions$/,
+  /^\/api\/aud\/voice_takes$/,
+  /^\/api\/inbox(\/\d+)?$/, // scratchpad sketches are saved here as PNG data URLs
 ];
 const BULK_MEDIA_JSON_ROUTES = [
   /^\/api\/storyboards\/\d+\/panels\/bulk$/,

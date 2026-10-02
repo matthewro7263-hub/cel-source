@@ -50,4 +50,22 @@ await T("tax csv endpoint", "GET", "/api/biz/expenses");
 // share-less misc
 await T("achievements", "GET", "/api/achievements");
 await T("inbox patch assign", "PATCH", `/api/inbox/${(await call("GET", "/api/inbox", undefined, t)).json[0].id}`, { projectId: pid });
+
+// Large data-URL payloads the UI produces must clear the body parser (default limit is 1MB).
+const big = (mime) => `data:${mime};base64,` + "A".repeat(2 * 1024 * 1024);
+await T("brand logo (2MB data URL) on project PATCH", "PATCH", `/api/projects/${pid}`, { cli_brandLogo: big("image/png") });
+await T("brand logo cleared", "PATCH", `/api/projects/${pid}`, { cli_brandLogo: null });
+await T("voice take (2MB)", "POST", "/api/aud/voice_takes", { projectId: pid, audioData: big("audio/webm") });
+await T("scratchpad sketch to inbox (2MB)", "POST", "/api/inbox", { body: "sketch", tags: "", kind: "sketch", imageDataUrl: big("image/png") });
+await T("lore fact with image (2MB)", "POST", `/api/projects/${pid}/lor_facts`, { category: "character", title: "img", body: "", imageData: big("image/png") });
+await T("asset revision (2MB)", "POST", `/api/assets/${(await call("GET", `/api/projects/${pid}/assets`, undefined, t)).json.items[0].id}/lor_versions`, { fileData: big("image/png") });
+await T("mcp upload_asset (bare base64, 2MB)", "POST", "/api/mcp/upload_asset", { projectId: pid, filename: "m.bin", fileData: "A".repeat(2 * 1024 * 1024) });
+
+// Sign-off: server owns the timestamp (a client ISO string used to crash the insert)
+const approvals = (await call("GET", `/api/projects/${pid}/approvals`, undefined, t)).json;
+r = await T("approve milestone", "PUT", `/api/approvals/${approvals[0].id}`, { status: "approved", signature: "Matthew", approverName: "Matthew", approvedAt: "2020-01-01T00:00:00.000Z" });
+check("approval stamped by the server, with a hash", r.json.signatureHash && new Date(r.json.approvedAt).getFullYear() >= 2026, r.json);
+await T("approval needs a signature", "PUT", `/api/approvals/${approvals[1].id}`, { status: "approved" }, 400);
+await T("request changes", "PUT", `/api/approvals/${approvals[0].id}`, { status: "changes-requested", notes: "redo" });
+
 process.exit(summary() ? 1 : 0);

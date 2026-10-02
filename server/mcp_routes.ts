@@ -116,7 +116,13 @@ export function registerMcpRoutes(app: Express) {
           tags: z.string().optional()
         }).optional()
       });
-      const { projectId, filename, fileData, metadata } = schema.parse(req.body);
+      const { projectId, filename, fileData: rawFileData, metadata } = schema.parse(req.body);
+      if (rawFileData.length > 14 * 1024 * 1024) {
+        return mcpError(res, "File too large (max 10MB)", "PAYLOAD_TOO_LARGE", 413);
+      }
+      // Assets are stored as data: URLs everywhere else (the UI renders/downloads them as-is); MCP
+      // clients send bare base64, so wrap it.
+      const fileData = rawFileData.startsWith("data:") ? rawFileData : `data:application/octet-stream;base64,${rawFileData}`;
 
       if (!await canAccessProject(projectId, req.user!.id)) {
         return mcpError(res, "Forbidden", "FORBIDDEN", 403);

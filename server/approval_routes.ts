@@ -102,21 +102,22 @@ export function registerApprovalRoutes(app: Express) {
     if (patch.approverName !== undefined) normalized.approverName = normalizeOptional(patch.approverName);
     if (patch.signature !== undefined) normalized.signature = normalizeOptional(patch.signature);
     if (patch.notes !== undefined) normalized.notes = normalizeOptional(patch.notes);
-    if (patch.approvedAt !== undefined) normalized.approvedAt = patch.approvedAt;
+    // approvedAt is always server-controlled: set below on approval, cleared on any other status. A
+    // client-supplied timestamp would be forgeable (and was an ISO string headed for a timestamp column).
 
     if (patch.status === "approved") {
       const signature = normalizeOptional(patch.signature);
       if (!signature) {
         return res.status(400).json({ message: "Typed signature is required for approval" });
       }
-      const approvedAt = new Date().toISOString();
+      const approvedAt = new Date();
       normalized.signature = signature;
       normalized.approvedAt = approvedAt;
       normalized.signatureHash = buildSignatureHash({
         projectId: row.projectId,
         milestone: row.milestone,
         signature,
-        approvedAt,
+        approvedAt: approvedAt.toISOString(),
       });
     } else if (patch.status) {
       normalized.approvedAt = null;
