@@ -356,6 +356,9 @@ const upload = multer({
     });
     const patch = schema.parse(req.body);
     const before = await storage.getProject(id);
+    if ((patch.shareEnabled !== undefined || patch.dltDiscordWebhookUrl !== undefined) && before?.ownerId !== req.user!.id) {
+      return res.status(403).json({ message: "Only the project owner can change sharing or the Discord webhook" });
+    }
     const updated = await storage.updateProject(id, patch as any);
     if (patch.shareEnabled === true && !before?.shareEnabled) {
       fireAchievements({ userId: req.user!.id, event: "enable_share_link", projectId: id });
@@ -373,9 +376,17 @@ const upload = multer({
   });
 
   // ===== MEMBERS =====
+  /** Sharing, webhooks and membership are owner-only; members can edit content but not who has access. */
+  async function requireProjectOwner(projectId: number, userId: number, res: Response): Promise<boolean> {
+    const project = await storage.getProject(projectId);
+    if (!project) { res.status(404).json({ message: "Project not found" }); return false; }
+    if (project.ownerId !== userId) { res.status(403).json({ message: "Only the project owner can do this" }); return false; }
+    return true;
+  }
+
   app.post("/api/projects/:id/members", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
+    if (!(await requireProjectOwner(id, req.user!.id, res))) return;
     const schema = z.object({ email: z.string().email(), role: z.string().optional() });
     const body = schema.parse(req.body);
     let user = await storage.getUserByEmail(body.email);
@@ -402,7 +413,11 @@ const upload = multer({
   app.delete("/api/projects/:id/members/:userId", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     const userId = parseInt(String(req.params.userId), 10);
-    if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
+    // The owner manages everyone; any member may remove themselves (leave). The owner can't be removed.
+    const project = await storage.getProject(id);
+    if (!project) return res.status(404).json({ message: "Project not found" });
+    if (userId === project.ownerId) return res.status(400).json({ message: "The owner can't be removed from their own project" });
+    if (project.ownerId !== req.user!.id && userId !== req.user!.id) return res.status(403).json({ message: "Only the project owner can remove other members" });
     await storage.removeMember(id, userId);
     invalidateProjectAccess(id, userId);
     res.json({ ok: true });

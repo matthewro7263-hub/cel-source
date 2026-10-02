@@ -43,4 +43,22 @@ check("non-members can't fire the webhook test", r.status === 403, r);
 r = await call("PATCH", `/api/projects/${pid}`, { dltDiscordWebhookUrl: null }, token);
 check("webhook can be cleared", r.status === 200, r);
 
+// --- members can edit content but not manage access
+const inviteeId = (await call("GET", "/api/auth/me", undefined, fresh)).json.id;
+const ownerId = (await call("GET", "/api/auth/me", undefined, token)).json.id;
+check("member can read the project", (await call("GET", `/api/projects/${pid}`, undefined, fresh)).status === 200);
+r = await call("POST", `/api/projects/${pid}/members`, { email: `third${u}@example.com` }, fresh);
+check("member cannot invite others", r.status === 403, r);
+r = await call("PATCH", `/api/projects/${pid}`, { shareEnabled: true }, fresh);
+check("member cannot enable the public share link", r.status === 403, r);
+r = await call("PATCH", `/api/projects/${pid}`, { description: "edited by member" }, fresh);
+check("member can still edit project details", r.status === 200, r);
+r = await call("DELETE", `/api/projects/${pid}/members/${ownerId}`, undefined, fresh);
+check("owner cannot be removed", r.status === 400, r);
+r = await call("DELETE", `/api/projects/${pid}/members/${inviteeId}`, undefined, stranger);
+check("outsider cannot remove members", r.status === 403, r);
+r = await call("DELETE", `/api/projects/${pid}/members/${inviteeId}`, undefined, fresh);
+check("member can leave the project", r.status === 200, r);
+check("leaving revokes access immediately", (await call("GET", `/api/projects/${pid}`, undefined, fresh)).status === 403);
+
 process.exit(summary() ? 1 : 0);

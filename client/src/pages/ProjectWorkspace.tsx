@@ -1,3 +1,4 @@
+import { useAuth } from "@/lib/auth";
 import { openReviewRoomSocket } from "@/lib/reviewRoomSocket";
 import { useState, useRef, useEffect, useCallback, lazy, Suspense } from "react";
 import { useParams, useLocation } from "wouter";
@@ -1621,6 +1622,9 @@ function SettingsTab({ project, members }: { project: Project; members: ProjectD
   const [deleteConfirmName, setDeleteConfirmName] = useState("");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const { toast } = useToast();
+  const { user: currentUser } = useAuth();
+  // Sharing, webhooks, membership and deletion are owner-only on the server; hide the controls for everyone else.
+  const isOwner = project.ownerId === currentUser?.id;
 
   const patch = useMutation({
     mutationFn: async (data: Partial<Project>) => (await apiRequest("PATCH", `/api/projects/${project.id}`, data)).json(),
@@ -1705,20 +1709,21 @@ function SettingsTab({ project, members }: { project: Project; members: ProjectD
                   <div className="text-xs text-muted-foreground truncate">{m.user.email} · {m.role}</div>
                 </div>
               </div>
-              {m.role !== "owner" && (
-                <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => removeMember.mutate(m.user!.id)} data-testid={`button-remove-${m.user.id}`}>
+              {m.role !== "owner" && (isOwner || m.user.id === currentUser?.id) && (
+                <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" title={m.user.id === currentUser?.id && !isOwner ? "Leave project" : "Remove member"} onClick={() => removeMember.mutate(m.user!.id)} data-testid={`button-remove-${m.user.id}`}>
                   <X size={14} />
                 </Button>
               )}
             </div>
           ))}
-          <div className="flex gap-2 pt-2">
+          {isOwner && <div className="flex gap-2 pt-2">
             <Input type="email" placeholder="someone@studio.com" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} data-testid="input-invite-email" />
             <Button onClick={() => invite.mutate()} disabled={!inviteEmail || invite.isPending} data-testid="button-invite">Invite</Button>
-          </div>
+          </div>}
         </div>
       </SettingsSection>
 
+      {isOwner && (
       <SettingsSection title="Discord Webhooks">
         <div className="space-y-3">
           <div className="text-sm text-muted-foreground mb-2">Send event notifications to a Discord channel.</div>
@@ -1745,7 +1750,9 @@ function SettingsTab({ project, members }: { project: Project; members: ProjectD
           </div>
         </div>
       </SettingsSection>
+      )}
 
+      {isOwner && (
       <SettingsSection title="Public share link">
         <div className="space-y-3">
           <div className="flex items-center justify-between">
@@ -1775,6 +1782,7 @@ function SettingsTab({ project, members }: { project: Project; members: ProjectD
           )}
         </div>
       </SettingsSection>
+      )}
 
       {/* v4: AI key + Tags settings */}
       <AiKeySettings projectId={project.id} />
@@ -1782,6 +1790,7 @@ function SettingsTab({ project, members }: { project: Project; members: ProjectD
 
       <BakSettingsExports projectId={project.id} />
 
+      {isOwner && (
       <SettingsSection title="Danger zone" tone="destructive">
         <AlertDialog
           open={deleteDialogOpen}
@@ -1824,6 +1833,7 @@ function SettingsTab({ project, members }: { project: Project; members: ProjectD
           </AlertDialogContent>
         </AlertDialog>
       </SettingsSection>
+      )}
     </div>
   );
 }
