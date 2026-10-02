@@ -1,3 +1,4 @@
+import { openReviewRoomSocket } from "@/lib/reviewRoomSocket";
 import { useState, useRef, useEffect, useCallback, lazy, Suspense } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -386,23 +387,27 @@ function ScriptTab({ projectId }: { projectId: number }) {
   }, [draft.content, aiStatus, projectId]);
 
   useEffect(() => {
-    const token = getAuthToken();
-    if (!token || !projectId) return;
-    const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-    const ws = new WebSocket(`${protocol}://${window.location.host}/api/projects/${projectId}/review-room?token=${encodeURIComponent(token)}`);
-    wsRef.current = ws;
+    if (!getAuthToken() || !projectId) return;
+    let cancelled = false;
+    let ws: WebSocket | null = null;
+    openReviewRoomSocket(projectId).then((socket) => {
+      if (!socket) return;
+      if (cancelled) { socket.close(); return; }
+      ws = socket;
+      wsRef.current = ws;
 
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        if (msg.type === "script-cursor") {
-          setOtherCursors(prev => ({ ...prev, [msg.userId]: msg.pos }));
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === "script-cursor") {
+            setOtherCursors(prev => ({ ...prev, [msg.userId]: msg.pos }));
+          }
+        } catch {
+          // Ignore malformed WebSocket messages
         }
-      } catch {
-        // Ignore malformed WebSocket messages
-      }
-    };
-    return () => ws.close();
+      };
+    }).catch(() => {});
+    return () => { cancelled = true; ws?.close(); };
   }, [projectId]);
 
   const create = useMutation({

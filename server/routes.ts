@@ -1,18 +1,19 @@
 import multer from "multer";
-import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { randomUUID, createCipheriv, createDecipheriv, randomBytes, createHash } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer } from "node:http";
 import type { Server } from "node:http";
 import { z } from "zod";
+import rateLimit from "express-rate-limit";
 import {
   storage, db, hashPassword, verifyPassword, createSession,
-  getSessionUser, getSessionPayload, destroySession, genToken,
+  getSessionPayload, destroySession, genToken,
 } from "./storage";
-import { presignDownload } from "./r2";
+import { presignDownload, putObject } from "./r2";
 import { notifyDiscord } from "./discord";
 import { sendError } from "./errors";
+import { encrypt, decrypt } from "./crypto";
+import { authenticateToken, extractToken, requireAuth, canAccessProject, invalidateProjectAccess } from "./auth";
 import { checkAchievements } from "./achievements";
 
 function fireAchievements(ctx: Parameters<typeof checkAchievements>[0]) {
@@ -34,68 +35,11 @@ declare global {
 
 
 /** Extract bearer token from Authorization header */
-function extractToken(req: Request): string | undefined {
-  const auth = req.headers.authorization;
-  if (!auth) return undefined;
-  const parts = auth.split(" ");
-  if (parts.length === 2 && parts[0].toLowerCase() === "bearer") return parts[1];
-  return undefined;
-}
-
-async function requireAuth(req: Request, res: Response, next: NextFunction) {
-  const token = extractToken(req);
-  const session = getSessionPayload(token);
-  if (!session) return res.status(401).json({ message: "Not authenticated" });
-  const user = await storage.getUser(session.userId);
-  if (!user) return res.status(401).json({ message: "User not found" });
-  if (session.tokenVersion !== user.tokenVersion) {
-    return res.status(401).json({ message: "Session revoked" });
-  }
-  req.user = user;
-  next();
-}
-
-const ACCESS_CACHE_TTL_MS = 60_000;
-const accessCache = new Map<string, { allowed: boolean; expiresAt: number }>();
-
-function pruneAccessCache(now = Date.now()) {
-  for (const [key, entry] of accessCache) {
-    if (now >= entry.expiresAt) accessCache.delete(key);
-  }
-}
-
-function invalidateProjectAccess(projectId: number, userId?: number) {
-  if (userId !== undefined) {
-    accessCache.delete(`${projectId}:${userId}`);
-    return;
-  }
-  const prefix = `${projectId}:`;
-  for (const key of accessCache.keys()) {
-    if (key.startsWith(prefix)) accessCache.delete(key);
-  }
-}
-
-async function canAccessProject(projectId: number, userId: number): Promise<boolean> {
-  pruneAccessCache();
-  const key = `${projectId}:${userId}`;
-  const cached = accessCache.get(key);
-  if (cached && Date.now() < cached.expiresAt) return cached.allowed;
-
-  const p = await storage.getProject(projectId);
-  if (!p) {
-    accessCache.set(key, { allowed: false, expiresAt: Date.now() + ACCESS_CACHE_TTL_MS });
-    return false;
-  }
-  const allowed = p.ownerId === userId || await storage.isMember(projectId, userId);
-  accessCache.set(key, { allowed, expiresAt: Date.now() + ACCESS_CACHE_TTL_MS });
-  return allowed;
-}
-
 import { bakRouter } from "./routes/bak/index.js";
 import { registerStudioRoutes } from "./studio_routes";
 import { registerA11yRoutes } from "./a11y_routes";
 import { registerChallengeRoutes } from "./challenge_routes";
-import { registerReviewRoom } from "./review_room";
+import { registerReviewRoom, registerReviewRoomTicketRoute } from "./review_room";
 import { registerMcpRoutes } from "./mcp_routes";
 import { registerBizRoutes } from "./biz_routes";
 import { uploadsRouter } from "./uploads_routes";
@@ -108,6 +52,7 @@ const upload = multer({
 });
 
   registerReviewRoom(httpServer);
+  registerReviewRoomTicketRoute(app);
   registerMcpRoutes(app);
 
   app.use("/api", bakRouter);
@@ -122,43 +67,19 @@ const upload = multer({
 
   // No cookie-parser — we use Authorization: Bearer <token> only
 
-  // ===== RATE LIMITER =====
-  const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
-  function pruneRateLimitMap(now: number) {
-    for (const [ip, bucket] of rateLimitMap) {
-      if (now > bucket.resetTime) rateLimitMap.delete(ip);
-    }
-  }
-  function rateLimiter(options: { windowMs: number; max: number; message: string }) {
-    return (req: any, res: any, next: any) => {
-      const ip = req.ip || req.headers["x-forwarded-for"] || req.socket.remoteAddress || "unknown-ip";
-      const now = Date.now();
-      pruneRateLimitMap(now);
-      let bucket = rateLimitMap.get(ip);
-      if (!bucket || now > bucket.resetTime) {
-        bucket = { count: 1, resetTime: now + options.windowMs };
-        rateLimitMap.set(ip, bucket);
-        return next();
-      }
-      bucket.count++;
-      if (bucket.count > options.max) {
-        return res.status(429).json({ message: options.message });
-      }
-      next();
-    };
-  }
+  // ===== RATE LIMITERS (separate bucket per limiter) =====
+  const limiter = (windowMs: number, max: number, message: string) =>
+    rateLimit({
+      windowMs,
+      limit: max,
+      standardHeaders: true,
+      legacyHeaders: false,
+      handler: (_req, res) => res.status(429).json({ message }),
+    });
 
-  const signupLimiter = rateLimiter({
-    windowMs: 60 * 60 * 1000, // 1 hour
-    max: 10,
-    message: "Too many registrations from this IP, please try again in an hour."
-  });
-
-  const loginLimiter = rateLimiter({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 20,
-    message: "Too many login attempts, please try again in 15 minutes."
-  });
+  const signupLimiter = limiter(60 * 60 * 1000, 10, "Too many registrations from this IP, please try again in an hour.");
+  const loginLimiter = limiter(15 * 60 * 1000, 20, "Too many login attempts, please try again in 15 minutes.");
+  const commissionLimiter = limiter(60 * 60 * 1000, 5, "Too many submissions. Try again later.");
 
   // ===== AUTH =====
   app.post("/api/auth/signup", signupLimiter, async (req, res) => {
@@ -200,16 +121,14 @@ const upload = multer({
     res.json({ ok: true });
   });
 
-  app.get("/api/auth/me", async (req, res) => {
-    const token = extractToken(req);
-    const session = getSessionPayload(token);
-    if (!session) return res.status(401).json({ message: "Not authenticated" });
-    const user = await storage.getUser(session.userId);
-    if (!user) return res.status(401).json({ message: "User not found" });
-    if (session.tokenVersion !== user.tokenVersion) {
-      return res.status(401).json({ message: "Session revoked" });
-    }
-    const { passwordHash, ...safe } = user;
+  // Tokens are stateless, so "logout everywhere" revokes them by bumping tokenVersion.
+  app.post("/api/auth/logout-all", requireAuth, async (req, res) => {
+    await storage.updateUser(req.user!.id, { tokenVersion: req.user!.tokenVersion + 1 });
+    res.json({ ok: true });
+  });
+
+  app.get("/api/auth/me", requireAuth, async (req, res) => {
+    const { passwordHash, ...safe } = req.user!;
     res.json(safe);
   });
 
@@ -541,29 +460,14 @@ const upload = multer({
         throw new Error("Cloud storage (R2) is not configured on this server.");
       }
 
-      const { S3Client, PutObjectCommand } = await import("@aws-sdk/client-s3");
-      const r2Client = new S3Client({
-        region: "auto",
-        endpoint: process.env.R2_ENDPOINT,
-        credentials: {
-          accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-          secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
-        },
-      });
-
       const safeName = originalname.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 120);
       const originalKey = `uploads/${req.user!.id}/scripts/${randomUUID()}-${safeName}`;
 
-      await r2Client.send(new PutObjectCommand({
-        Bucket: process.env.R2_BUCKET,
-        Key: originalKey,
-        ContentType: mimetype,
-        Body: buffer
-      }));
+      await putObject(originalKey, buffer, mimetype);
 
       const title = originalname.replace(/\.[^/.]+$/, "");
 
-      const newScript = await (storage as any).createScript({
+      const newScript = await storage.createScript({
         projectId,
         title,
         content: extractedText,
@@ -578,7 +482,7 @@ const upload = multer({
         originalKey
       }).where(eq(scripts.id, newScript.id));
       
-      const updatedScript = await (storage as any).getScript(newScript.id);
+      const updatedScript = await storage.getScript(newScript.id);
 
       res.json(updatedScript);
     } catch (e: any) {
@@ -593,7 +497,7 @@ const upload = multer({
     
     if (!(await canAccessProject(projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
 
-    const script = await (storage as any).getScript(scriptId);
+    const script = await storage.getScript(scriptId);
     if (!script) return res.status(404).json({ message: "Script not found" });
     if (script.projectId !== projectId) return res.status(403).json({ message: "Script belongs to another project" });
     if (script.sourceType !== "upload" || !script.originalKey) {
@@ -604,23 +508,8 @@ const upload = multer({
       if (!process.env.R2_BUCKET || !process.env.R2_ENDPOINT) {
         throw new Error("Cloud storage (R2) is not configured on this server.");
       }
-      const { S3Client, GetObjectCommand } = await import("@aws-sdk/client-s3");
-      const { getSignedUrl } = await import("@aws-sdk/s3-request-presigner");
-      
-      const r2Client = new S3Client({
-        region: "auto",
-        endpoint: process.env.R2_ENDPOINT,
-        credentials: {
-          accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-          secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
-        },
-      });
+      const url = await presignDownload(script.originalKey, 300);
 
-      const url = await getSignedUrl(r2Client, new GetObjectCommand({
-        Bucket: process.env.R2_BUCKET,
-        Key: script.originalKey,
-      }), { expiresIn: 300 });
-      
       res.json({ url });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
@@ -795,7 +684,7 @@ const upload = multer({
     const sb = await storage.getStoryboard(sbId);
     if (!sb) return res.status(404).json({ message: "Storyboard not found" });
     if (!(await canAccessProject(sb.projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
-    const pins = await (storage as any).listPanelPinsForStoryboard(sbId);
+    const pins = await storage.listPanelPinsForStoryboard(sbId);
     const authorIds = [...new Set<number>(pins.map((p: any) => p.authorId as number))];
     const authors = await storage.getUsersByIds(authorIds);
     const authorMap = new Map(authors.map((a) => [a.id, a]));
@@ -903,7 +792,7 @@ const upload = multer({
   app.get("/api/projects/:id/scene-timers", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
-    const timers = await (storage as any).getActiveSceneTimersForProject(id, req.user!.id);
+    const timers = await storage.getActiveSceneTimersForProject(id, req.user!.id);
     res.json(timers);
   });
 
@@ -1035,33 +924,7 @@ const upload = multer({
   });
 
   // ===== COMMISSIONS (public intake) =====
-  // In-memory rate limiter: max 5 submissions per IP per hour
-  const commissionRateLimit = new Map<string, { count: number; resetAt: number }>();
-
-  function pruneCommissionRateLimit(now = Date.now()) {
-    for (const [ip, entry] of commissionRateLimit) {
-      if (now >= entry.resetAt) commissionRateLimit.delete(ip);
-    }
-  }
-
-  app.post("/api/commissions", async (req, res) => {
-    const ip = req.ip || req.socket.remoteAddress || "unknown";
-    const now = Date.now();
-    pruneCommissionRateLimit(now);
-    const entry = commissionRateLimit.get(ip);
-    if (entry) {
-      if (now < entry.resetAt && entry.count >= 5) {
-        return res.status(429).json({ message: "Too many submissions. Try again later." });
-      }
-      if (now >= entry.resetAt) {
-        commissionRateLimit.set(ip, { count: 1, resetAt: now + 3600_000 });
-      } else {
-        entry.count++;
-      }
-    } else {
-      commissionRateLimit.set(ip, { count: 1, resetAt: now + 3600_000 });
-    }
-
+  app.post("/api/commissions", commissionLimiter, async (req, res) => {
     const schema = insertCommissionSchema.extend({
       clientName: z.string().min(1),
       clientEmail: z.string().email(),
@@ -1401,13 +1264,13 @@ const upload = multer({
 
   // ===== FREESOUND PROXY =====
   app.get("/api/freesound/search", requireAuth, async (req, res) => {
-    const apiKey = process.env.FREESOUND_API_KEY || "FREESOUND_API_KEY_HERE";
-    if (apiKey === "FREESOUND_API_KEY_HERE") {
+    const apiKey = process.env.FREESOUND_API_KEY;
+    if (!apiKey) {
       console.warn("[Cel] FREESOUND_API_KEY not set — sound effects search will not work. Get a free key at https://freesound.org/apiv2/apply/");
       return res.status(503).json({ message: "Freesound API key not configured. See server console.", results: { results: [] } });
     }
     const q = String(req.query.q || "");
-    const page = parseInt(String(req.query.page || "1"), 10);
+    const page = Math.max(1, parseInt(String(req.query.page || "1"), 10) || 1);
     try {
       const url = `https://freesound.org/apiv2/search/text/?query=${encodeURIComponent(q)}&fields=id,name,previews,duration,username,license&page=${page}&page_size=15&token=${apiKey}`;
       const r = await fetch(url);
@@ -1423,11 +1286,12 @@ const upload = multer({
   });
 
   app.get("/api/freesound/:soundId/preview", requireAuth, async (req, res) => {
-    const apiKey = process.env.FREESOUND_API_KEY || "FREESOUND_API_KEY_HERE";
-    if (apiKey === "FREESOUND_API_KEY_HERE") {
+    const apiKey = process.env.FREESOUND_API_KEY;
+    if (!apiKey) {
       return res.status(503).json({ message: "Freesound API key not configured." });
     }
     const soundId = parseInt(String(req.params.soundId), 10);
+    if (!Number.isInteger(soundId)) return res.status(400).json({ message: "Invalid sound id" });
     try {
       const infoUrl = `https://freesound.org/apiv2/sounds/${soundId}/?fields=previews&token=${apiKey}`;
       const infoR = await fetch(infoUrl);
@@ -1499,7 +1363,7 @@ const upload = multer({
     const token = req.params.token;
     const p = await storage.getProjectByToken(token);
     if (!p || !p.shareEnabled) return res.status(404).json({ message: "Not found" });
-    const approvals = await (storage as any).getCliApprovals(p.id);
+    const approvals = await storage.getCliApprovals(p.id);
     res.json(approvals);
   });
 
@@ -1508,7 +1372,7 @@ const upload = multer({
   app.get("/api/projects/:id/ai/key", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
-    const row = await (storage as any).getProjectAiKey(id);
+    const row = await storage.getProjectAiKey(id);
     res.json({ hasKey: !!row, model: row?.model || null });
   });
 
@@ -1517,14 +1381,14 @@ const upload = multer({
     if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
     const schema = z.object({ key: z.string().min(1), model: z.string().optional() });
     const body = schema.parse(req.body);
-    await (storage as any).setProjectAiKey(id, obfuscateKey(body.key), body.model);
+    await storage.setProjectAiKey(id, encrypt(body.key), body.model);
     res.json({ ok: true });
   });
 
   app.delete("/api/projects/:id/ai/key", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
-    await (storage as any).deleteProjectAiKey(id);
+    await storage.deleteProjectAiKey(id);
     res.json({ ok: true });
   });
 
@@ -1535,9 +1399,9 @@ const upload = multer({
     let body: { scriptText: string };
     try { body = schema.parse(req.body); } catch (e: any) { return res.status(400).json({ message: e.message }); }
 
-    const keyRow = await (storage as any).getProjectAiKey(id);
+    const keyRow = await storage.getProjectAiKey(id);
     if (!keyRow) return res.status(400).json({ message: "No AI key set for this project" });
-    const apiKey = deobfuscateKey(keyRow.encryptedKey);
+    const apiKey = decrypt(keyRow.encryptedKey);
 
     const models = keyRow.model ? [keyRow.model] : ["meta-llama/llama-3.2-3b-instruct:free", "google/gemma-2-9b-it:free"];
     const systemPrompt = `You are a storyboard artist's assistant. Given a script passage, suggest 4-8 shots. For each, give: shot number, shot type (wide/medium/close/insert/OTS/etc.), camera move, action description (1-2 sentences). Return as JSON array with fields: shotNumber, shotType, cameraMove, actionDescription.`;
@@ -1580,7 +1444,7 @@ const upload = multer({
   app.get("/api/projects/:id/ai/sessions", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
-    const sessions = await (storage as any).listAiChatSessions(id);
+    const sessions = await storage.listAiChatSessions(id);
     res.json(sessions);
   });
 
@@ -1589,22 +1453,25 @@ const upload = multer({
     if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
     const schema = z.object({ title: z.string().optional(), scriptId: z.number().optional() });
     const body = schema.parse(req.body);
-    const session = await (storage as any).createAiChatSession({ projectId: id, ...body });
+    const session = await storage.createAiChatSession({ projectId: id, ...body });
     res.json(session);
   });
 
   app.delete("/api/projects/:id/ai/sessions/:sessionId", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
-    await storage.deleteAiChatSession(parseInt(String(req.params.sessionId), 10));
+    const chatSession = await storage.getAiChatSession(parseInt(String(req.params.sessionId), 10));
+    if (!chatSession || chatSession.projectId !== id) return res.status(404).json({ message: "Session not found" });
+    await storage.deleteAiChatSession(chatSession.id);
     res.json({ ok: true });
   });
 
   app.get("/api/projects/:id/ai/sessions/:sessionId/messages", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
-    const messages = await storage.listAiChatMessages(parseInt(String(req.params.sessionId), 10));
-    res.json(messages);
+    const chatSession = await storage.getAiChatSession(parseInt(String(req.params.sessionId), 10));
+    if (!chatSession || chatSession.projectId !== id) return res.status(404).json({ message: "Session not found" });
+    res.json(await storage.listAiChatMessages(chatSession.id));
   });
 
   app.post("/api/projects/:id/ai/chat", requireAuth, async (req, res) => {
@@ -1619,9 +1486,12 @@ const upload = multer({
     let body;
     try { body = schema.parse(req.body); } catch (e: any) { return res.status(400).json({ message: e.message }); }
 
-    const keyRow = await (storage as any).getProjectAiKey(id);
+    const chatSession = await storage.getAiChatSession(body.sessionId);
+    if (!chatSession || chatSession.projectId !== id) return res.status(404).json({ message: "Session not found" });
+
+    const keyRow = await storage.getProjectAiKey(id);
     if (!keyRow) return res.status(400).json({ message: "No AI key set for this project" });
-    const apiKey = deobfuscateKey(keyRow.encryptedKey);
+    const apiKey = decrypt(keyRow.encryptedKey);
     // Use user's preferred model or fallback to Gemma 2 9B (which supports tools well)
     const models = keyRow.model ? [keyRow.model] : ["google/gemma-2-9b-it:free"];
 
@@ -1636,13 +1506,13 @@ You have access to tools that can edit the current script directly. When a user 
 ${body.scriptContent}
 </Current_Script_Context>`;
 
-    await (storage as any).createAiChatMessage({
-      sessionId: String(body.sessionId),
+    await storage.createAiChatMessage({
+      sessionId: body.sessionId,
       role: "user",
       content: body.content
     });
 
-    const messages = (await (storage as any).listAiChatMessages(String(body.sessionId))).map((m: any) => {
+    const messages = (await storage.listAiChatMessages(body.sessionId)).map((m: any) => {
       const msg: any = { role: m.role, content: m.content };
       if (m.toolCalls) msg.tool_calls = JSON.parse(m.toolCalls);
       if (m.toolCallId) msg.tool_call_id = m.toolCallId;
@@ -1736,8 +1606,8 @@ ${body.scriptContent}
         for (const line of lines) {
           const dataText = line.substring(6);
           if (dataText === "[DONE]") {
-            const saved = await (storage as any).createAiChatMessage({
-              sessionId: String(body.sessionId),
+            const saved = await storage.createAiChatMessage({
+              sessionId: body.sessionId,
               role: "assistant",
               content: fullContent,
               toolCalls: toolCalls.length > 0 ? JSON.stringify(toolCalls) : null
@@ -1776,7 +1646,7 @@ ${body.scriptContent}
     if (!(await canAccessProject(projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
     const { scriptContent, lastVersion } = req.body;
 
-    const apiKey = await (storage as any).getProjectAiKey(projectId);
+    const apiKey = await storage.getProjectAiKey(projectId);
     if (!apiKey) return res.status(404).json({ message: "No API key configured" });
 
     const prompt = `You are the Cel Assistant. The user has just finished a draft of their script. 
@@ -1815,7 +1685,7 @@ ${body.scriptContent}
   // ===== v4 ACHIEVEMENTS =====
   app.get("/api/achievements", requireAuth, async (req, res) => {
     const { ACHIEVEMENT_DEFS } = await import("./achievements");
-    const unlocked: any[] = await (storage as any).listAchievements(req.user!.id);
+    const unlocked: any[] = await storage.listAchievements(req.user!.id);
     const result = ACHIEVEMENT_DEFS.map((def: any) => {
       const row = unlocked.find((u: any) => u.code === def.code);
       return { ...def, unlockedAt: row?.unlockedAt || null, locked: !row };
@@ -1830,7 +1700,7 @@ ${body.scriptContent}
     if (!panel) return res.status(404).json({ message: "Panel not found" });
     const sb = await storage.getStoryboard(panel.storyboardId);
     if (!sb || !(await canAccessProject(sb.projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
-    const pins = await (storage as any).listPanelPins(id);
+    const pins = await storage.listPanelPins(id);
     const authorIds = [...new Set<number>(pins.map((p: any) => p.authorId as number))];
     const authors = await storage.getUsersByIds(authorIds);
     const authorMap = new Map(authors.map((a) => [a.id, a]));
@@ -1856,19 +1726,19 @@ ${body.scriptContent}
     });
     let body: any;
     try { body = schema.parse(req.body); } catch (e: any) { return res.status(400).json({ message: e.message }); }
-    const pin = await (storage as any).createPanelPin({ panelId: id, ...body, authorId: req.user!.id });
+    const pin = await storage.createPanelPin({ panelId: id, ...body, authorId: req.user!.id });
     res.json(pin);
   });
 
   app.delete ("/api/pins/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    const pin = await (storage as any).getPanelPin(id);
+    const pin = await storage.getPanelPin(id);
     if (!pin) return res.status(404).json({ message: "Not found" });
     const panel = await storage.getPanel(pin.panelId);
     if (!panel) return res.status(404).json({ message: "Panel not found" });
     const sb = await storage.getStoryboard(panel.storyboardId);
     if (!sb || !(await canAccessProject(sb.projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
-    await (storage as any).deletePanelPin(id);
+    await storage.deletePanelPin(id);
     res.json({ ok: true });
   });
 
@@ -1880,7 +1750,7 @@ ${body.scriptContent}
     if (!p || !p.shareEnabled) return res.status(404).json({ message: "Not found" });
     const panel = await storage.getPanel(panelId);
     if (!panel) return res.status(404).json({ message: "Panel not found" });
-    res.json(await (storage as any).listPanelPins(panelId));
+    res.json(await storage.listPanelPins(panelId));
   });
 
   // ===== v4 COMMISSION LINE ITEMS =====
@@ -1889,7 +1759,7 @@ ${body.scriptContent}
     const c = await storage.getCommission(id);
     if (!c) return res.status(404).json({ message: "Not found" });
     if (c.ownerUserId !== req.user!.id) return res.status(403).json({ message: "No access" });
-    res.json(await (storage as any).listCommissionLineItems(id));
+    res.json(await storage.listCommissionLineItems(id));
   });
 
   app.post ("/api/commissions/:id/line-items", requireAuth, async (req, res) => {
@@ -1904,12 +1774,12 @@ ${body.scriptContent}
     });
     let body: any;
     try { body = schema.parse(req.body); } catch (e: any) { return res.status(400).json({ message: e.message }); }
-    res.json(await (storage as any).createCommissionLineItem({ commissionId: id, ...body }));
+    res.json(await storage.createCommissionLineItem({ commissionId: id, ...body }));
   });
 
   app.patch ("/api/commission-line-items/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    const lineItem = await (storage as any).getCommissionLineItem(id);
+    const lineItem = await storage.getCommissionLineItem(id);
     if (!lineItem) return res.status(404).json({ message: "Not found" });
     const c = await storage.getCommission(lineItem.commissionId);
     if (!c || c.ownerUserId !== req.user!.id) return res.status(403).json({ message: "No access" });
@@ -1920,16 +1790,16 @@ ${body.scriptContent}
     });
     let patch: any;
     try { patch = schema.parse(req.body); } catch (e: any) { return res.status(400).json({ message: e.message }); }
-    res.json(await (storage as any).updateCommissionLineItem(id, patch));
+    res.json(await storage.updateCommissionLineItem(id, patch));
   });
 
   app.delete ("/api/commission-line-items/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    const lineItem = await (storage as any).getCommissionLineItem(id);
+    const lineItem = await storage.getCommissionLineItem(id);
     if (!lineItem) return res.status(404).json({ message: "Not found" });
     const c = await storage.getCommission(lineItem.commissionId);
     if (!c || c.ownerUserId !== req.user!.id) return res.status(403).json({ message: "No access" });
-    await (storage as any).deleteCommissionLineItem(id);
+    await storage.deleteCommissionLineItem(id);
     res.json({ ok: true });
   });
 
@@ -1944,7 +1814,7 @@ ${body.scriptContent}
     });
     let body: any;
     try { body = schema.parse(req.body); } catch (e: any) { return res.status(400).json({ message: e.message }); }
-    await (storage as any).updateCommissionQuote(id, body.quoteCents, body.invoicedAt);
+    await storage.updateCommissionQuote(id, body.quoteCents, body.invoicedAt);
     res.json(await storage.getCommission(id));
   });
 
@@ -1952,7 +1822,7 @@ ${body.scriptContent}
   app.get("/api/projects/:id/pricing-presets", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!(await canAccessProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
-    res.json(await (storage as any).listCommissionPricingPresets(id));
+    res.json(await storage.listCommissionPricingPresets(id));
   });
 
   app.post("/api/projects/:id/pricing-presets", requireAuth, async (req, res) => {
@@ -1966,21 +1836,21 @@ ${body.scriptContent}
     });
     let body: any;
     try { body = schema.parse(req.body); } catch (e: any) { return res.status(400).json({ message: e.message }); }
-    res.json(await (storage as any).createCommissionPricingPreset({ projectId: id, ...body }));
+    res.json(await storage.createCommissionPricingPreset({ projectId: id, ...body }));
   });
 
   app.delete ("/api/pricing-presets/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    const preset = await (storage as any).getCommissionPricingPreset(id);
+    const preset = await storage.getCommissionPricingPreset(id);
     if (!preset) return res.status(404).json({ message: "Not found" });
     if (!(await canAccessProject(preset.projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
-    await (storage as any).deleteCommissionPricingPreset(id);
+    await storage.deleteCommissionPricingPreset(id);
     res.json({ ok: true });
   });
 
   // ===== v4 INBOX =====
   app.get ("/api/inbox", requireAuth, async (req, res) => {
-    res.json(await (storage as any).listInboxItems(req.user!.id));
+    res.json(await storage.listInboxItems(req.user!.id));
   });
 
   app.post("/api/inbox", requireAuth, async (req, res) => {
@@ -1991,12 +1861,12 @@ ${body.scriptContent}
     });
     let item: any;
     try { item = schema.parse(req.body); } catch (e: any) { return res.status(400).json({ message: e.message }); }
-    res.json(await (storage as any).createInboxItem({ userId: req.user!.id, ...item }));
+    res.json(await storage.createInboxItem({ userId: req.user!.id, ...item }));
   });
 
   app.patch ("/api/inbox/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    const item = await (storage as any).getInboxItem(id);
+    const item = await storage.getInboxItem(id);
     if (!item || item.userId !== req.user!.id) return res.status(403).json({ message: "No access" });
     const schema = z.object({
       body: z.string().min(1).optional(),
@@ -2005,53 +1875,58 @@ ${body.scriptContent}
     });
     let patch: any;
     try { patch = schema.parse(req.body); } catch (e: any) { return res.status(400).json({ message: e.message }); }
-    res.json(await (storage as any).updateInboxItem(id, patch));
+    res.json(await storage.updateInboxItem(id, patch));
   });
 
   app.delete ("/api/inbox/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    const item = await (storage as any).getInboxItem(id);
+    const item = await storage.getInboxItem(id);
     if (!item || item.userId !== req.user!.id) return res.status(403).json({ message: "No access" });
-    await (storage as any).deleteInboxItem(id);
+    await storage.deleteInboxItem(id);
     res.json({ ok: true });
   });
 
   // ===== v4 TAGS =====
   app.get ("/api/tags", requireAuth, async (req, res) => {
-    res.json(await (storage as any).listTags(req.user!.id));
+    res.json(await storage.listTags(req.user!.id));
   });
 
   app.post("/api/tags", requireAuth, async (req, res) => {
     const schema = z.object({ name: z.string().min(1), color: z.string().optional().default("#6E4FE8") });
     let body: any;
     try { body = schema.parse(req.body); } catch (e: any) { return res.status(400).json({ message: e.message }); }
-    res.json(await (storage as any).createTag({ userId: req.user!.id, ...body }));
+    res.json(await storage.createTag({ userId: req.user!.id, ...body }));
   });
 
   app.patch ("/api/tags/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    const tag = await (storage as any).getTag(id);
+    const tag = await storage.getTag(id);
     if (!tag) return res.status(404).json({ message: "Not found" });
     if (tag.userId !== req.user!.id) return res.status(403).json({ message: "No access" });
     const schema = z.object({ name: z.string().min(1).optional(), color: z.string().optional() });
     let patch: any;
     try { patch = schema.parse(req.body); } catch (e: any) { return res.status(400).json({ message: e.message }); }
-    res.json(await (storage as any).updateTag(id, patch));
+    res.json(await storage.updateTag(id, patch));
   });
 
   app.delete ("/api/tags/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    const tag = await (storage as any).getTag(id);
+    const tag = await storage.getTag(id);
     if (!tag) return res.status(404).json({ message: "Not found" });
     if (tag.userId !== req.user!.id) return res.status(403).json({ message: "No access" });
-    await (storage as any).deleteTag(id);
+    await storage.deleteTag(id);
     res.json({ ok: true });
   });
 
   app.get("/api/tag-assignments", requireAuth, async (req, res) => {
     const { kind, entityId } = req.query as { kind: string; entityId: string };
     if (!kind || !entityId) return res.status(400).json({ message: "kind and entityId required" });
-    res.json(await (storage as any).listTagAssignments(kind, parseInt(entityId, 10)));
+    const entityNum = parseInt(entityId, 10);
+    if (!Number.isInteger(entityNum)) return res.status(400).json({ message: "entityId must be an integer" });
+    // Only reveal assignments made with the caller's own tags.
+    const ownTagIds = new Set((await storage.listTags(req.user!.id)).map((t) => t.id));
+    const assignments = await storage.listTagAssignments(kind, entityNum);
+    res.json(assignments.filter((a) => ownTagIds.has(a.tagId)));
   });
 
   app.post("/api/tag-assignments", requireAuth, async (req, res) => {
@@ -2062,18 +1937,18 @@ ${body.scriptContent}
     });
     let body: any;
     try { body = schema.parse(req.body); } catch (e: any) { return res.status(400).json({ message: e.message }); }
-    const tag = await (storage as any).getTag(body.tagId);
+    const tag = await storage.getTag(body.tagId);
     if (!tag || tag.userId !== req.user!.id) return res.status(403).json({ message: "No access" });
-    res.json(await (storage as any).createTagAssignment(body));
+    res.json(await storage.createTagAssignment(body));
   });
 
   app.delete ("/api/tag-assignments/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
-    const assignment = await (storage as any).getTagAssignment(id);
+    const assignment = await storage.getTagAssignment(id);
     if (!assignment) return res.status(404).json({ message: "Not found" });
-    const tag = await (storage as any).getTag(assignment.tagId);
+    const tag = await storage.getTag(assignment.tagId);
     if (!tag || tag.userId !== req.user!.id) return res.status(403).json({ message: "No access" });
-    await (storage as any).deleteTagAssignment(id);
+    await storage.deleteTagAssignment(id);
     res.json({ ok: true });
   });
 
@@ -2095,11 +1970,11 @@ ${body.scriptContent}
     if (!scene) return res.status(404).json({ message: "Scene not found" });
     if (!(await canAccessProject(scene.projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
     // Stop any already-running timer first
-    const existing = await (storage as any).getActiveTimeEntry(id, req.user!.id);
+    const existing = await storage.getActiveTimeEntry(id, req.user!.id);
     if (existing) {
-      await (storage as any).stopTimer(existing.id);
+      await storage.stopTimer(existing.id);
     }
-    const entry = await (storage as any).startTimer(id, req.user!.id);
+    const entry = await storage.startTimer(id, req.user!.id);
     res.json(entry);
   });
 
@@ -2108,9 +1983,9 @@ ${body.scriptContent}
     const scene = await storage.getScene(id);
     if (!scene) return res.status(404).json({ message: "Scene not found" });
     if (!(await canAccessProject(scene.projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
-    const active = await (storage as any).getActiveTimeEntry(id, req.user!.id);
+    const active = await storage.getActiveTimeEntry(id, req.user!.id);
     if (!active) return res.status(404).json({ message: "No active timer" });
-    const entry = await (storage as any).stopTimer(active.id);
+    const entry = await storage.stopTimer(active.id);
     res.json(entry);
   });
 
@@ -2133,7 +2008,7 @@ ${body.scriptContent}
       if (data.projectId && !(await canAccessProject(data.projectId, req.user!.id))) {
         return res.status(403).json({ message: "Forbidden" });
       }
-      const take = await (storage as any).createAudVoiceTake(data);
+      const take = await storage.createAudVoiceTake(data);
       res.json(take);
     } catch (e: any) {
       res.status(400).json({ error: e.message });
@@ -2146,7 +2021,7 @@ ${body.scriptContent}
       if (!(await canAccessProject(projectId, req.user!.id))) {
         return res.status(403).json({ message: "Forbidden" });
       }
-      const takes = await (storage as any).getAudVoiceTakesByProject(projectId);
+      const takes = await storage.getAudVoiceTakesByProject(projectId);
       res.json(takes);
     } catch(e:any) {
       res.status(400).json({ error: e.message });
@@ -2161,7 +2036,7 @@ ${body.scriptContent}
         return res.status(403).json({ message: "Forbidden" });
       }
       const data = insertAudCaptionSchema.parse({ ...req.body, animaticProjectId });
-      const caption = await (storage as any).createAudCaption(data);
+      const caption = await storage.createAudCaption(data);
       res.json(caption);
     } catch (e: any) {
       res.status(400).json({ error: e.message });
@@ -2175,7 +2050,7 @@ ${body.scriptContent}
       if (!ap || !(await canAccessProject(ap.projectId, req.user!.id))) {
         return res.status(403).json({ message: "Forbidden" });
       }
-      const captions = await (storage as any).getAudCaptionsByAnimatic(animaticProjectId);
+      const captions = await storage.getAudCaptionsByAnimatic(animaticProjectId);
       res.json(captions);
     } catch(e:any) {
       res.status(400).json({ error: e.message });
@@ -2185,14 +2060,14 @@ ${body.scriptContent}
   app.delete ("/api/aud/captions/:id", requireAuth, async (req, res) => {
     try {
        const id = parseInt(String(req.params.id));
-       const caption = await (storage as any).getAudCaption(id);
+       const caption = await storage.getAudCaption(id);
        if (caption) {
          const ap = await storage.getAnimaticProject(caption.animaticProjectId);
          if (!ap || !(await canAccessProject(ap.projectId, req.user!.id))) {
            return res.status(403).json({ message: "Forbidden" });
          }
        }
-       await (storage as any).deleteAudCaption(id);
+       await storage.deleteAudCaption(id);
        res.json({ success: true });
     } catch (e: any) {
        res.status(400).json({ error: e.message });
@@ -2236,7 +2111,7 @@ ${body.scriptContent}
         return res.status(400).json({ error: "Invalid hours" });
       }
       
-      const record = await (storage as any).addCommissionHours({ commissionId, hours: parsedHours });
+      const record = await storage.addCommissionHours({ commissionId, hours: parsedHours });
       res.json(record);
     } catch (e: any) {
       res.status(500).json({ error: e.message });
@@ -2380,22 +2255,25 @@ ${body.scriptContent}
   });
 
   // ===== CLI APPROVALS / FEEDBACK (token or auth) =====
+  async function checkShareOrMemberAccess(req: Request, projectId: number): Promise<{ status: number; message: string } | null> {
+    const shareToken = req.query.token as string | undefined;
+    if (shareToken) {
+      const project = await storage.getProjectByToken(shareToken);
+      if (!project || project.id !== projectId || !project.shareEnabled) return { status: 403, message: "No access" };
+      return null;
+    }
+    const auth = await authenticateToken(extractToken(req));
+    if (!auth.ok) return { status: 401, message: auth.reason === "revoked" ? "Session revoked" : "Not authenticated" };
+    if (!(await canAccessProject(projectId, auth.user.id))) return { status: 403, message: "No access" };
+    return null;
+  }
+
   app.get ("/api/projects/:id/cli_approvals", async (req, res) => {
     try {
       const projectId = parseInt(String(req.params.id), 10);
-      const token = req.query.token as string | undefined;
-      if (token) {
-        const project = await storage.getProjectByToken(token);
-        if (!project || project.id !== projectId || !project.shareEnabled) {
-          return res.status(403).json({ message: "No access" });
-        }
-      } else {
-        const authToken = req.headers.authorization?.split(" ")[1];
-        const userId = getSessionUser(authToken);
-        if (!userId) return res.status(401).json({ message: "Not authenticated" });
-        if (!(await canAccessProject(projectId, userId))) return res.status(403).json({ message: "No access" });
-      }
-      const approvals = await (storage as any).getCliApprovals(projectId);
+      const denied = await checkShareOrMemberAccess(req, projectId);
+      if (denied) return res.status(denied.status).json({ message: denied.message });
+      const approvals = await storage.getCliApprovals(projectId);
       res.json(approvals);
     } catch (e: any) {
       res.status(400).json({ error: e.message });
@@ -2405,20 +2283,10 @@ ${body.scriptContent}
   app.post ("/api/projects/:id/cli_approvals", async (req, res) => {
     try {
       const projectId = parseInt(String(req.params.id), 10);
-      const token = req.query.token as string | undefined;
-      if (token) {
-        const project = await storage.getProjectByToken(token);
-        if (!project || project.id !== projectId || !project.shareEnabled) {
-          return res.status(403).json({ message: "No access" });
-        }
-      } else {
-        const authToken = req.headers.authorization?.split(" ")[1];
-        const userId = getSessionUser(authToken);
-        if (!userId) return res.status(401).json({ message: "Not authenticated" });
-        if (!(await canAccessProject(projectId, userId))) return res.status(403).json({ message: "No access" });
-      }
+      const denied = await checkShareOrMemberAccess(req, projectId);
+      if (denied) return res.status(denied.status).json({ message: denied.message });
       const { phase, signedName, signatureData, signedAt } = req.body;
-      const approval = await (storage as any).createCliApproval({ projectId, phase, signedName, signatureData, signedAt });
+      const approval = await storage.createCliApproval({ projectId, phase, signedName, signatureData, signedAt });
       res.json(approval);
     } catch (e: any) {
       res.status(400).json({ error: e.message });
@@ -2428,19 +2296,9 @@ ${body.scriptContent}
   app.get ("/api/projects/:id/cli_feedback", async (req, res) => {
     try {
       const projectId = parseInt(String(req.params.id), 10);
-      const token = req.query.token as string | undefined;
-      if (token) {
-        const project = await storage.getProjectByToken(token);
-        if (!project || project.id !== projectId || !project.shareEnabled) {
-          return res.status(403).json({ message: "No access" });
-        }
-      } else {
-        const authToken = req.headers.authorization?.split(" ")[1];
-        const userId = getSessionUser(authToken);
-        if (!userId) return res.status(401).json({ message: "Not authenticated" });
-        if (!(await canAccessProject(projectId, userId))) return res.status(403).json({ message: "No access" });
-      }
-      const feedback = await (storage as any).getCliFeedback(projectId);
+      const denied = await checkShareOrMemberAccess(req, projectId);
+      if (denied) return res.status(denied.status).json({ message: denied.message });
+      const feedback = await storage.getCliFeedback(projectId);
       res.json(feedback);
     } catch (e: any) {
       res.status(400).json({ error: e.message });
@@ -2450,20 +2308,10 @@ ${body.scriptContent}
   app.post ("/api/projects/:id/cli_feedback", async (req, res) => {
     try {
       const projectId = parseInt(String(req.params.id), 10);
-      const token = req.query.token as string | undefined;
-      if (token) {
-        const project = await storage.getProjectByToken(token);
-        if (!project || project.id !== projectId || !project.shareEnabled) {
-          return res.status(403).json({ message: "No access" });
-        }
-      } else {
-        const authToken = req.headers.authorization?.split(" ")[1];
-        const userId = getSessionUser(authToken);
-        if (!userId) return res.status(401).json({ message: "Not authenticated" });
-        if (!(await canAccessProject(projectId, userId))) return res.status(403).json({ message: "No access" });
-      }
+      const denied = await checkShareOrMemberAccess(req, projectId);
+      if (denied) return res.status(denied.status).json({ message: denied.message });
       const { sceneId, fields } = req.body;
-      const feedback = await (storage as any).createCliFeedback({ projectId, sceneId, fields });
+      const feedback = await storage.createCliFeedback({ projectId, sceneId, fields });
       res.json(feedback);
     } catch (e: any) {
       res.status(400).json({ error: e.message });
@@ -2471,65 +2319,4 @@ ${body.scriptContent}
   });
 
   return httpServer;
-}
-
-// Helper: secure aes-256-gcm encryption for AI keys at-rest
-function getEncryptionKey(): Buffer | null {
-  const envKey = process.env.ENCRYPTION_KEY;
-  if (!envKey) return null;
-  if (/^[0-9a-fA-F]{64}$/.test(envKey)) {
-    return Buffer.from(envKey, "hex");
-  }
-  return createHash("sha256").update(envKey).digest();
-}
-
-function obfuscateKey(key: string): string {
-  try {
-    const encKey = getEncryptionKey();
-    if (!encKey) return Buffer.from(key).toString("base64");
-    const iv = randomBytes(12);
-    const cipher = createCipheriv("aes-256-gcm", encKey, iv);
-    let encrypted = cipher.update(key, "utf8", "hex");
-    encrypted += cipher.final("hex");
-    const authTag = cipher.getAuthTag();
-    return `${iv.toString("hex")}:${authTag.toString("hex")}:${encrypted}`;
-  } catch (err) {
-    return Buffer.from(key).toString("base64");
-  }
-}
-
-function deobfuscateKey(key: string): string {
-  try {
-    if (!key.includes(":")) {
-      return Buffer.from(key, "base64").toString("utf8");
-    }
-    const parts = key.split(":");
-    const encKey = getEncryptionKey();
-    if (!encKey) return Buffer.from(key, "base64").toString("utf8");
-    if (parts.length === 3) {
-      const [ivHex, authTagHex, encryptedHex] = parts;
-      const iv = Buffer.from(ivHex, "hex");
-      const authTag = Buffer.from(authTagHex, "hex");
-      const decipher = createDecipheriv("aes-256-gcm", encKey, iv);
-      decipher.setAuthTag(authTag);
-      let decrypted = decipher.update(encryptedHex, "hex", "utf8");
-      decrypted += decipher.final("utf8");
-      return decrypted;
-    }
-    if (parts.length === 2) {
-      const [ivHex, encryptedHex] = parts;
-      const iv = Buffer.from(ivHex, "hex");
-      const decipher = createDecipheriv("aes-256-gcm", encKey, iv);
-      let decrypted = decipher.update(encryptedHex, "hex", "utf8");
-      try {
-        decrypted += decipher.final("utf8");
-      } catch {
-        // legacy format without auth tag
-      }
-      return decrypted;
-    }
-    return Buffer.from(key, "base64").toString("utf8");
-  } catch {
-    try { return Buffer.from(key, "base64").toString("utf8"); } catch { return ""; }
-  }
 }

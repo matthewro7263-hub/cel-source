@@ -1,5 +1,6 @@
+import { requireAuth, canAccessProject } from "./auth";
 import type { Express, Request, Response, NextFunction } from "express";
-import { getSessionUser, storage } from "./storage";
+import { storage } from "./storage";
 import { LOR_EPISODE_BIBLE_SEED } from "./templates/lor_episode_bible";
 import { z } from "zod";
 import { notifyDiscord } from "./discord";
@@ -32,31 +33,6 @@ type LorStorage = typeof storage & {
 };
 
 const lorStorage = storage as LorStorage;
-
-async function canAccessProject(projectId: number, userId: number): Promise<boolean> {
-  const p = await storage.getProject(projectId);
-  if (!p) return false;
-  if (p.ownerId === userId) return true;
-  return await storage.isMember(projectId, userId);
-}
-
-function extractToken(req: Request): string | undefined {
-  const auth = req.headers.authorization;
-  if (!auth) return undefined;
-  const parts = auth.split(" ");
-  if (parts.length === 2 && parts[0].toLowerCase() === "bearer") return parts[1];
-  return undefined;
-}
-
-async function requireAuth(req: Request, res: Response, next: NextFunction) {
-  const token = extractToken(req);
-  const userId = getSessionUser(token);
-  if (!userId) return res.status(401).json({ message: "Not authenticated" });
-  const user = await storage.getUser(userId);
-  if (!user) return res.status(401).json({ message: "User not found" });
-  (req as any).user = user;
-  next();
-}
 
 export function registerLorRoutes(app: Express) {
   // Zod schema for lor_facts PUT (only allow safe fields)

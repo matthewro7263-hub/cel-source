@@ -119,7 +119,11 @@ See [.env.example](./.env.example). The critical ones:
 | `ENCRYPTION_KEY` | 64-char hex (32 bytes) for AES-256 at-rest encryption. Generate with `openssl rand -hex 32` |
 | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` | Cloudflare R2 credentials |
 | `DISCORD_WEBHOOK_URL` | *(optional)* default Discord channel for notifications |
-| `SESSION_SECRET` | Cookie signing key |
+| `SESSION_SECRET` | **Required in production.** Signs session tokens. Generate with `openssl rand -hex 32` |
+| `ENCRYPTION_KEY` | **Required in production** (see above) |
+| `CEL_ADMIN_EMAILS` | *(optional)* comma-separated emails allowed to create challenge prompts / snapshots |
+| `CEL_SEED_DEMO` | *(optional)* set to `true` to seed demo accounts in production (they use a public password) |
+| `FREESOUND_API_KEY` | *(optional)* enables sound-effect search |
 
 Never commit `.env.local`. `.env.example` is the safe template.
 

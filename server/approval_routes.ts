@@ -1,35 +1,11 @@
+import { requireAuth, canAccessProject } from "./auth";
 import type { Express, Request, Response, NextFunction } from "express";
-import { db, getSessionUser, storage } from "./storage";
+import { db, storage } from "./storage";
 import { eq } from "drizzle-orm";
 import { approval_signoffs } from "../shared/approval_schema";
 import { z } from "zod";
 import { createHash } from "node:crypto";
 import { notifyDiscord } from "./discord";
-
-async function canAccessProject(projectId: number, userId: number): Promise<boolean> {
-  const p = await storage.getProject(projectId);
-  if (!p) return false;
-  if (p.ownerId === userId) return true;
-  return await storage.isMember(projectId, userId);
-}
-
-function extractToken(req: Request): string | undefined {
-  const auth = req.headers.authorization;
-  if (!auth) return undefined;
-  const parts = auth.split(" ");
-  if (parts.length === 2 && parts[0].toLowerCase() === "bearer") return parts[1];
-  return undefined;
-}
-
-async function requireAuth(req: Request, res: Response, next: NextFunction) {
-  const token = extractToken(req);
-  const userId = getSessionUser(token);
-  if (!userId) return res.status(401).json({ message: "Not authenticated" });
-  const user = await storage.getUser(userId);
-  if (!user) return res.status(401).json({ message: "User not found" });
-  (req as any).user = user;
-  next();
-}
 
 const MILESTONES = ["storyboard", "animatic", "final"] as const;
 

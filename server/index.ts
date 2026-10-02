@@ -12,12 +12,14 @@ import { registerArchiveRoutes } from "./archive_routes";
 import { registerSpriteSheetRoutes } from "./spritesheet_routes";
 import { startLeaderboardCron } from "./leaderboard_cron";
 import { createServer } from "node:http";
+import type { IncomingMessage } from "node:http";
 import { neonConfig } from "@neondatabase/serverless";
 import ws from "ws";
 import { drizzle } from "drizzle-orm/neon-serverless";
 import { migrate } from "drizzle-orm/neon-serverless/migrator";
 import { pool } from "./storage";
 import { checkR2Health } from "./r2";
+import { ZodError } from "zod";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -78,14 +80,35 @@ declare module "http" {
   }
 }
 
-app.use(
-  express.json({
-    limit: "1mb", // default limit for most routes
-    verify: (req, _res, buf) => {
-      req.rawBody = buf;
-    },
-  }),
-);
+// A single global 1mb parser would reject every JSON route that carries base64
+// media (panels, animatics, assets, commissions, clips, spritesheets) before its
+// own size check could run, so the limit is chosen per route.
+const jsonVerify = (req: IncomingMessage, _res: unknown, buf: Buffer) => {
+  req.rawBody = buf;
+};
+const defaultJson = express.json({ limit: "1mb", verify: jsonVerify });
+const mediaJson = express.json({ limit: "16mb", verify: jsonVerify });
+const bulkMediaJson = express.json({ limit: "50mb", verify: jsonVerify });
+
+const MEDIA_JSON_ROUTES = [
+  /^\/api\/storyboards\/\d+\/panels$/,
+  /^\/api\/panels\/\d+$/,
+  /^\/api\/projects\/\d+\/animatics$/,
+  /^\/api\/projects\/\d+\/assets(\/\d+)?$/,
+  /^\/api\/commissions$/,
+  /^\/api\/tracks\/\d+\/clips$/,
+  /^\/api\/clips\/\d+$/,
+];
+const BULK_MEDIA_JSON_ROUTES = [
+  /^\/api\/storyboards\/\d+\/panels\/bulk$/,
+  /^\/api\/projects\/\d+\/spritesheet$/,
+];
+
+app.use((req, res, next) => {
+  if (BULK_MEDIA_JSON_ROUTES.some((re) => re.test(req.path))) return bulkMediaJson(req, res, next);
+  if (MEDIA_JSON_ROUTES.some((re) => re.test(req.path))) return mediaJson(req, res, next);
+  return defaultJson(req, res, next);
+});
 
 app.use(express.urlencoded({ extended: false, limit: "1mb" }));
 
@@ -175,16 +198,23 @@ async function runMigrations() {
     await migrate(migrationDb, { migrationsFolder: path.join(__dirname, "../migrations") });
     log("database migrations completed", "migrations");
   } catch (err) {
-    console.error("Database migration failed; continuing startup:", err);
+    console.error("Database migration failed:", err);
+    // A half-migrated production DB would serve errors for missing tables; fail fast instead.
+    if (process.env.NODE_ENV === "production") throw err;
+    console.error("Continuing startup in development.");
   }
 }
 
 (async () => {
   await runMigrations();
-  try {
-    await seedIfEmpty();
-  } catch (err) {
-    console.error("Seed failed; continuing startup:", err);
+  // Demo accounts use a well-known password, so never seed them in production
+  // unless explicitly requested (e.g. for a public demo instance).
+  if (process.env.NODE_ENV !== "production" || process.env.CEL_SEED_DEMO === "true") {
+    try {
+      await seedIfEmpty();
+    } catch (err) {
+      console.error("Seed failed; continuing startup:", err);
+    }
   }
   startLeaderboardCron();
   await registerRoutes(httpServer, app);
@@ -195,8 +225,13 @@ async function runMigrations() {
   registerSpriteSheetRoutes(app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
+    if (err instanceof ZodError) {
+      return res.status(400).json({ message: "Invalid request", issues: err.issues });
+    }
     const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
+    const message = status >= 500 && process.env.NODE_ENV === "production"
+      ? "Internal Server Error"
+      : err.message || "Internal Server Error";
 
     console.error("Internal Server Error:", err);
 
@@ -228,4 +263,7 @@ async function runMigrations() {
   httpServer.listen(listenOptions, () => {
     log(`serving on ${host}:${port}`);
   });
-})();
+})().catch((err) => {
+  console.error("Fatal startup error:", err);
+  process.exit(1);
+});

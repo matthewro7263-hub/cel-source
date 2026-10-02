@@ -80,6 +80,10 @@ export async function presignDownload(key: string, expiresIn = 300): Promise<str
   return getSignedUrl(getR2Client(), new GetObjectCommand({ Bucket: getR2Bucket(), Key: key }), { expiresIn });
 }
 
+export async function putObject(key: string, body: Buffer, contentType: string): Promise<void> {
+  await getR2Client().send(new PutObjectCommand({ Bucket: getR2Bucket(), Key: key, ContentType: contentType, Body: body }));
+}
+
 export async function deleteObject(key: string): Promise<void> {
   await getR2Client().send(new DeleteObjectCommand({ Bucket: getR2Bucket(), Key: key }));
 }

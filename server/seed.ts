@@ -297,24 +297,24 @@ Right. New game. *Detectives.*
   // v4 tags (2)
   let urgentTagId: number | null = null;
   let polishTagId: number | null = null;
-  if (typeof (storage as any).createTag === "function") {
-    const urgentTag = await (storage as any).createTag({ name: "urgent", color: "#EF4444", userId: matthew.id });
+  if (typeof storage.createTag === "function") {
+    const urgentTag = await storage.createTag({ name: "urgent", color: "#EF4444", userId: matthew.id });
     urgentTagId = urgentTag?.id ?? null;
-    const polishTag = await (storage as any).createTag({ name: "polish", color: "#F59E0B", userId: matthew.id });
+    const polishTag = await storage.createTag({ name: "polish", color: "#F59E0B", userId: matthew.id });
     polishTagId = polishTag?.id ?? null;
   }
 
   // v4 tag assignment — tag scene 1 as urgent
   const allScenesSeed = await storage._db.select().from(scenesTable);
-  if (urgentTagId && allScenesSeed.length > 0 && typeof (storage as any).createTagAssignment === "function") {
-    await (storage as any).createTagAssignment({ tagId: urgentTagId, entityKind: "scene", entityId: allScenesSeed[0].id });
+  if (urgentTagId && allScenesSeed.length > 0 && typeof storage.createTagAssignment === "function") {
+    await storage.createTagAssignment({ tagId: urgentTagId, entityKind: "scene", entityId: allScenesSeed[0].id });
   }
 
   // v4 panel pin (1) — pin on panel 1 (use current schema: body + authorId)
   const allPanelsSeed = await storage._db.select().from(panelsTable);
-  if (allPanelsSeed.length > 0 && typeof (storage as any).createPanelPin === "function") {
+  if (allPanelsSeed.length > 0 && typeof storage.createPanelPin === "function") {
     try {
-      await (storage as any).createPanelPin({
+      await storage.createPanelPin({
         panelId: allPanelsSeed[0].id,
         authorId: matthew.id,
         xPercent: 30,
@@ -328,24 +328,24 @@ Right. New game. *Detectives.*
 
   // v4 achievement unlock — first_project for matthew
   try {
-    if (typeof (storage as any).unlockAchievement === "function") {
-      await (storage as any).unlockAchievement(matthew.id, "first_project");
-      await (storage as any).unlockAchievement(matthew.id, "first_scene");
+    if (typeof storage.unlockAchievement === "function") {
+      await storage.unlockAchievement(matthew.id, "first_project");
+      await storage.unlockAchievement(matthew.id, "first_scene");
     }
   } catch (e: any) { console.warn("[seed] achievements skipped:", e?.message); }
 
   // v4 commission line items (2) on Sophie's commission
-  const allCommissions = await (storage as any).listCommissions ? await (storage as any).listCommissions(matthew.id) : [];
+  const allCommissions = await storage.listCommissions ? await storage.listCommissions(matthew.id) : [];
   const sophieCommission = allCommissions[0];
   try {
-    if (sophieCommission && typeof (storage as any).createCommissionLineItem === "function") {
-      await (storage as any).createCommissionLineItem({
+    if (sophieCommission && typeof storage.createCommissionLineItem === "function") {
+      await storage.createCommissionLineItem({
         commissionId: sophieCommission.id,
         description: "Character design + 3 expressions",
         quantity: 1,
         unitPriceCents: 8000,
       });
-      await (storage as any).createCommissionLineItem({
+      await storage.createCommissionLineItem({
         commissionId: sophieCommission.id,
         description: "30-second 2D animation",
         quantity: 1,

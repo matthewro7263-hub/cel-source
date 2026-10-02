@@ -1,5 +1,6 @@
+import { requireAuth, canAccessProject } from "./auth";
 import type { Express, Request, Response, NextFunction } from "express";
-import { db, getSessionUser, storage } from "./storage";
+import { db, storage } from "./storage";
 import { eq, inArray } from "drizzle-orm";
 import archiver from "archiver";
 import { getCanvasModule } from "./canvas_lazy";
@@ -17,31 +18,6 @@ import {
   studio_render_events, studio_render_budget, studio_snapshots, studio_credit_entries 
 } from "@shared/studio_schema";
 import { biz_festivals, biz_expenses } from "@shared/biz_schema";
-
-async function canAccessProject(projectId: number, userId: number): Promise<boolean> {
-  const p = await storage.getProject(projectId);
-  if (!p) return false;
-  if (p.ownerId === userId) return true;
-  return await storage.isMember(projectId, userId);
-}
-
-function extractToken(req: Request): string | undefined {
-  const auth = req.headers.authorization;
-  if (!auth) return undefined;
-  const parts = auth.split(" ");
-  if (parts.length === 2 && parts[0].toLowerCase() === "bearer") return parts[1];
-  return undefined;
-}
-
-async function requireAuth(req: Request, res: Response, next: NextFunction) {
-  const token = extractToken(req);
-  const userId = getSessionUser(token);
-  if (!userId) return res.status(401).json({ message: "Not authenticated" });
-  const user = await storage.getUser(userId);
-  if (!user) return res.status(401).json({ message: "User not found" });
-  (req as any).user = user;
-  next();
-}
 
 export function registerArchiveRoutes(app: Express) {
   app.get("/api/projects/:id/archive", requireAuth, async (req, res) => {

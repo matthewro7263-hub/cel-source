@@ -1,5 +1,6 @@
+import { requireAdmin, requireAuth } from "./auth";
 import type { Express, Request, Response, NextFunction } from "express";
-import { storage, getSessionUser, db } from "./storage";
+import { storage, db } from "./storage";
 import {
   insertChallengePromptSchema,
   insertChallengeSubmissionSchema,
@@ -39,24 +40,6 @@ async function getCachedLiveLeaderboard(week: number, limit: number) {
 // Local auth helpers — mirror the pattern used in biz_routes.ts.
 // ---------------------------------------------------------------------------
 
-function extractToken(req: Request): string | undefined {
-  const auth = req.headers.authorization;
-  if (!auth) return undefined;
-  const parts = auth.split(" ");
-  if (parts.length === 2 && parts[0].toLowerCase() === "bearer") return parts[1];
-  return undefined;
-}
-
-async function requireAuth(req: Request, res: Response, next: NextFunction) {
-  const token = extractToken(req);
-  const userId = getSessionUser(token);
-  if (!userId) return res.status(401).json({ message: "Not authenticated" });
-  const user = await storage.getUser(userId);
-  if (!user) return res.status(401).json({ message: "User not found" });
-  (req as any).user = user;
-  next();
-}
-
 // ---------------------------------------------------------------------------
 // Speedrun deadline helper
 // ---------------------------------------------------------------------------
@@ -70,14 +53,14 @@ function speedrunDeadline(prompt: { createdAt: Date; deadlineHours: number | nul
 export function registerChallengeRoutes(app: Express) {
   // ── Public: anyone can browse prompt list ──────────────────────────────────
   app.get("/api/challenges/prompts", async (_req, res) => {
-    const prompts = await (storage as any).listChallengePrompts();
+    const prompts = await storage.listChallengePrompts();
     res.json(prompts);
   });
 
   // ── Authed: the logged-in user's own submissions ───────────────────────────
   app.get("/api/challenges/submissions", requireAuth, async (req, res) => {
     const userId = (req as any).user.id;
-    const submissions = await (storage as any).listChallengeSubmissions(userId);
+    const submissions = await storage.listChallengeSubmissions(userId);
     res.json(submissions);
   });
 
@@ -85,7 +68,7 @@ export function registerChallengeRoutes(app: Express) {
     const userId = (req as any).user.id;
     const limit = Math.min(parseInt(String(req.query.limit || "20"), 10) || 20, 100);
     const offset = Math.max(parseInt(String(req.query.offset || "0"), 10) || 0, 0);
-    res.json(await (storage as any).listChallengeFeed(userId, { limit, offset }));
+    res.json(await storage.listChallengeFeed(userId, { limit, offset }));
   });
 
   // ── Authed: create submission (with speedrun deadline guard) ───────────────
@@ -114,7 +97,7 @@ export function registerChallengeRoutes(app: Express) {
       }
     }
 
-    const submission = await (storage as any).createChallengeSubmission({ ...body, userId });
+    const submission = await storage.createChallengeSubmission({ ...body, userId });
     bustLeaderboardCache();
     res.json(submission);
   });
@@ -127,7 +110,7 @@ export function registerChallengeRoutes(app: Express) {
       .object({ sticker: z.enum(["spark", "heart", "study", "wow"]) })
       .parse(req.body);
     try {
-      const result = await (storage as any).toggleChallengeReaction(
+      const result = await storage.toggleChallengeReaction(
         submissionId,
         userId,
         body.sticker,
@@ -140,7 +123,7 @@ export function registerChallengeRoutes(app: Express) {
   });
 
   // ── Authed (admin): create a new prompt (including speedrun) ───────────────
-  app.post("/api/challenges/prompts", requireAuth, async (req, res) => {
+  app.post("/api/challenges/prompts", requireAdmin, async (req, res) => {
     const body = insertChallengePromptSchema.parse(req.body);
     const prompt = await db
       .insert(challenge_prompts)
@@ -205,7 +188,7 @@ export function registerChallengeRoutes(app: Express) {
     }
   });
 
-  app.post("/api/challenges/leaderboard/snapshot", requireAuth, async (req, res) => {
+  app.post("/api/challenges/leaderboard/snapshot", requireAdmin, async (req, res) => {
     const schema = z.object({ week: z.number().int().min(1).max(53) });
     let body: { week: number };
     try {

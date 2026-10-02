@@ -4,7 +4,7 @@
 // Requires the request to be authenticated (req.user with .id).
 
 import { Router, type Request, type Response, type NextFunction } from "express";
-import { presignUpload, presignDownload, deleteObject, listUserObjects, isOwnedKey, getR2Bucket } from "./r2";
+import { presignUpload, presignDownload, deleteObject, listUserObjects, isOwnedKey, putObject } from "./r2";
 import type { User as AppUser } from "@shared/schema";
 import multer from "multer";
 import { randomUUID } from "node:crypto";
@@ -113,25 +113,9 @@ uploadsRouter.post("/convert-heic", requireUser, localUpload.single("file"), asy
       .webp({ quality: 80 })
       .toBuffer();
 
-    // Import S3 client & PutObjectCommand
-    const { S3Client, PutObjectCommand } = await import("@aws-sdk/client-s3");
-    const s3 = new S3Client({
-      region: "auto",
-      endpoint: process.env.R2_ENDPOINT!,
-      credentials: {
-        accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-        secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
-      },
-    });
-
     // Save under user's directory in R2
     const key = `uploads/${req.user!.id}/storyboards/${randomUUID()}-${Date.now()}.webp`;
-    await s3.send(new PutObjectCommand({
-      Bucket: getR2Bucket(),
-      Key: key,
-      ContentType: "image/webp",
-      Body: webpBuffer,
-    }));
+    await putObject(key, webpBuffer, "image/webp");
 
     res.json({ key });
   } catch (err: any) {

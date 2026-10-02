@@ -1,6 +1,7 @@
+import { requireAuth, canAccessProject } from "../../auth.js";
 import { Router, Request, Response, NextFunction } from "express";
 import { db } from "../../storage.js";
-import { storage, getSessionUser } from "../../storage.js";
+import { storage } from "../../storage.js";
 import {
   scripts, storyboardPanels, scenes, assets, bakSnapshots, bakGltfExports,
   projects, comments, projectMembers, storyboards
@@ -16,31 +17,6 @@ let canvasModulePromise: Promise<typeof import("canvas")> | null = null;
 function getCanvasModule() {
   canvasModulePromise ??= import("canvas");
   return canvasModulePromise;
-}
-
-function extractToken(req: Request): string | undefined {
-  const auth = req.headers.authorization;
-  if (!auth) return undefined;
-  const parts = auth.split(" ");
-  if (parts.length === 2 && parts[0].toLowerCase() === "bearer") return parts[1];
-  return undefined;
-}
-
-async function requireAuth(req: Request, res: Response, next: NextFunction) {
-  const token = extractToken(req);
-  const userId = getSessionUser(token);
-  if (!userId) return res.status(401).json({ message: "Not authenticated" });
-  const user = await storage.getUser(userId);
-  if (!user) return res.status(401).json({ message: "User not found" });
-  req.user = user;
-  next();
-}
-
-async function canAccessProject(projectId: number, userId: number): Promise<boolean> {
-  const p = await storage.getProject(projectId);
-  if (!p) return false;
-  if (p.ownerId === userId) return true;
-  return await storage.isMember(projectId, userId);
 }
 
 function safeArchiveName(value: string): string {

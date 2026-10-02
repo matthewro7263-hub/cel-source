@@ -133,7 +133,14 @@ export function genToken(len = 16): string {
 }
 
 // ===== SESSIONS (cryptographic, stateless & persistent) =====
-const SESSION_SECRET = process.env.SESSION_SECRET || "fallback-secret-for-dev-only-change-in-prod-1234567890abcdef";
+const DEV_SESSION_SECRET = "dev-only-session-secret-do-not-use-in-production";
+const SESSION_SECRET = process.env.SESSION_SECRET || DEV_SESSION_SECRET;
+if (!process.env.SESSION_SECRET) {
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("SESSION_SECRET is required in production (generate one with: openssl rand -hex 32)");
+  }
+  console.warn("SESSION_SECRET is not set; using an insecure development secret.");
+}
 
 export function createSession(userId: number, tokenVersion: number): string {
   // Session expires in 30 days

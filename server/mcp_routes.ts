@@ -1,5 +1,6 @@
 import { Express, Request, Response, NextFunction } from "express";
-import { storage, getSessionPayload } from "./storage";
+import { storage } from "./storage";
+import { authenticateToken, canAccessProject, extractToken } from "./auth";
 import { z } from "zod";
 
 /**
@@ -11,32 +12,19 @@ import { z } from "zod";
  * project. Never trust client-supplied user IDs.
  */
 
-function extractToken(req: Request): string | undefined {
-  const auth = req.headers.authorization;
-  if (!auth) return undefined;
-  const parts = auth.split(" ");
-  if (parts.length === 2 && parts[0].toLowerCase() === "bearer") return parts[1];
-  return undefined;
-}
-
 async function requireAuth(req: Request, res: Response, next: NextFunction) {
-  const token = extractToken(req);
-  const session = token ? getSessionPayload(token) : undefined;
-  if (!session) return res.status(401).json({ error: "Unauthorized", code: "UNAUTHORIZED" });
-  const user = await storage.getUser(session.userId);
-  if (!user) return res.status(401).json({ error: "Unauthorized", code: "UNAUTHORIZED" });
-  if (session.tokenVersion !== user.tokenVersion) {
-    return res.status(401).json({ error: "Session revoked", code: "SESSION_REVOKED" });
+  try {
+    const result = await authenticateToken(extractToken(req));
+    if (!result.ok) {
+      return result.reason === "revoked"
+        ? res.status(401).json({ error: "Session revoked", code: "SESSION_REVOKED" })
+        : res.status(401).json({ error: "Unauthorized", code: "UNAUTHORIZED" });
+    }
+    req.user = result.user;
+    next();
+  } catch (err) {
+    next(err);
   }
-  req.user = user;
-  next();
-}
-
-async function canAccessProject(projectId: number, userId: number): Promise<boolean> {
-  const p = await storage.getProject(projectId);
-  if (!p) return false;
-  if (p.ownerId === userId) return true;
-  return await storage.isMember(projectId, userId);
 }
 
 export function registerMcpRoutes(app: Express) {
