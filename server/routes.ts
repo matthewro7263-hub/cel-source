@@ -7,7 +7,7 @@ import { z } from "zod";
 import rateLimit from "express-rate-limit";
 import {
   storage, db, hashPassword, verifyPassword, createSession,
-  getSessionPayload, destroySession, genToken,
+  getSessionPayload, destroySession, genToken, verifySignedMedia,
 } from "./storage";
 import { presignDownload, putObject } from "./r2";
 import { notifyDiscord } from "./discord";
@@ -239,6 +239,7 @@ const upload = multer({
             storyboardId: lastPanel.storyboardId,
             orderIdx: lastPanel.orderIdx,
             r2Key: lastPanel.r2Key,
+            imageUrl: lastPanel.imageUrl ?? null,
             caption: lastPanel.caption,
             dialogue: lastPanel.dialogue,
           } : null,
@@ -384,6 +385,25 @@ const upload = multer({
     await storage.removeMember(id, userId);
     invalidateProjectAccess(id, userId);
     res.json({ ok: true });
+  });
+
+  // Signed, credential-free panel image URLs (see signedMediaUrl in storage.ts).
+  app.get("/api/media/panels/:id", async (req, res) => {
+    const id = parseInt(String(req.params.id), 10);
+    if (!verifySignedMedia("panel", id, Number(req.query.exp), String(req.query.sig ?? ""))) {
+      return res.status(403).json({ message: "Invalid or expired media link" });
+    }
+    const panel = await storage.getPanel(id);
+    if (!panel || panel.deletedAt) return res.status(404).json({ message: "Not found" });
+    if (!panel.imageData && panel.r2Key) return res.redirect(await presignDownload(panel.r2Key, 300));
+    const match = /^data:(image\/[a-z0-9.+-]+);base64,(.+)$/is.exec(panel.imageData ?? "");
+    if (!match) return res.status(404).json({ message: "No image" });
+    res.setHeader("Content-Type", match[1]);
+    // Inline SVG would otherwise be a scriptable document on our origin.
+    res.setHeader("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Cache-Control", "private, max-age=3600");
+    res.send(Buffer.from(match[2], "base64"));
   });
 
   // Project-scoped R2 media (presigned URL for panels/assets in this project)

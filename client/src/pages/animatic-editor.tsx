@@ -9,7 +9,7 @@ import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { queryKeys } from "@/lib/queryKeys";
-import { resolvePanelImageUrl } from "@/lib/panelMedia";
+import { panelImageSrcImmediate, resolvePanelImageUrl } from "@/lib/panelMedia";
 import { useToast } from "@/hooks/use-toast";
 import {
   Play, Pause, SkipBack, SkipForward, ChevronsLeft, ChevronsRight,
@@ -142,7 +142,8 @@ export default function AnimaticEditor() {
     if (!storyboards || !projectId) return;
     const allPanels = storyboards.flatMap((sb) => sb.panels);
     for (const p of allPanels) {
-      if (p.imageData) panelImageCache.current.set(p.id, p.imageData);
+      const immediate = panelImageSrcImmediate(p);
+      if (immediate) panelImageCache.current.set(p.id, immediate);
       else if (p.r2Key) {
         resolvePanelImageUrl(p, { projectId }).then((url) => {
           if (url) {
@@ -160,9 +161,10 @@ export default function AnimaticEditor() {
       if (panelImageCache.current.has(panelId)) return panelImageCache.current.get(panelId);
       const allPanels = storyboards?.flatMap((sb) => sb.panels) ?? [];
       const p = allPanels.find((panel) => panel.id === panelId);
-      if (p?.imageData) {
-        panelImageCache.current.set(panelId, p.imageData);
-        return p.imageData;
+      const immediate = p ? panelImageSrcImmediate(p) : "";
+      if (immediate) {
+        panelImageCache.current.set(panelId, immediate);
+        return immediate;
       }
       return panelImageCache.current.get(panelId);
     },

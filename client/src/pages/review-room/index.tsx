@@ -1,4 +1,5 @@
 import { openReviewRoomSocket } from "@/lib/reviewRoomSocket";
+import { panelImageAsDataUrl } from "@/lib/panelMedia";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
@@ -178,19 +179,20 @@ export default function ReviewRoomPage() {
     doc.setFontSize(10);
     doc.text(`Generated on ${new Date().toLocaleString()}`, 10, 28);
 
-    panels.forEach((p, i) => {
+    for (const [i, p] of panels.entries()) {
       if (i > 0) doc.addPage("landscape");
       doc.text(p.label, 10, 10);
       try {
-        if (p.imageData) {
-          doc.addImage(p.imageData, "JPEG", 10, 15, 277, 155);
+        const dataUrl = await panelImageAsDataUrl(p, { projectId });
+        if (dataUrl) {
+          doc.addImage(dataUrl, "JPEG", 10, 15, 277, 155);
         } else {
           doc.text("No image data available", 10, 20);
         }
       } catch (e) {
         doc.text("Image load failed", 10, 20);
       }
-    });
+    }
 
     doc.save(`review-project-${projectId}.pdf`);
     toast({ title: "PDF Exported", description: "Your review session notes have been saved." });

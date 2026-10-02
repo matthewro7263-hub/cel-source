@@ -63,7 +63,16 @@ app.use((req, res, next) => {
 
   res.header("Vary", "Origin");
 
-  if (!ALLOWED_ORIGINS.has(origin)) {
+  // Browsers attach Origin to module scripts and POSTs even when same-origin, so a
+  // request from the host that is serving the app is always fine.
+  let sameOrigin = false;
+  try {
+    sameOrigin = new URL(origin).host === req.get("host");
+  } catch {
+    // malformed Origin header: fall through to the allowlist check
+  }
+
+  if (!sameOrigin && !ALLOWED_ORIGINS.has(origin)) {
     return res.status(403).json({ message: "CORS origin forbidden" });
   }
 

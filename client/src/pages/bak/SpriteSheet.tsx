@@ -1,3 +1,4 @@
+import { panelImageSrcImmediate } from "@/lib/panelMedia";
 import { useState } from "react";
 import { useParams, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
@@ -101,9 +102,9 @@ export default function BakSpriteSheetPage() {
                       className={`relative cursor-pointer border-2 rounded-lg overflow-hidden transition-all ${isSelected ? 'border-[#9DD0FF] ring-2 ring-[#9DD0FF]/50' : 'border-transparent hover:border-muted-foreground/30'}`}
                     >
                       <div className="aspect-video bg-muted flex items-center justify-center relative">
-                        {p.imageData ? (
+                        {panelImageSrcImmediate(p) ? (
                           <img
-                            src={p.imageData}
+                            src={panelImageSrcImmediate(p)}
                             alt={p.caption || p.dialogue || `Sprite panel ${p.orderIdx + 1}`}
                             className="object-cover w-full h-full"
                           />

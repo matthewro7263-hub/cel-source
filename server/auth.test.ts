@@ -79,3 +79,24 @@ describe("admin gate", () => {
     expect(status).toBe(403);
   });
 });
+
+describe("signed media urls", () => {
+  const { signedMediaUrl, verifySignedMedia } = require("./storage.ts");
+  const parse = (url: string) => {
+    const u = new URL(url, "http://x");
+    return { id: Number(u.pathname.split("/").pop()), exp: Number(u.searchParams.get("exp")), sig: u.searchParams.get("sig")! };
+  };
+  test("round-trips and is stable within a bucket", () => {
+    const a = signedMediaUrl("panel", 7);
+    expect(a).toBe(signedMediaUrl("panel", 7));
+    const { id, exp, sig } = parse(a);
+    expect(verifySignedMedia("panel", id, exp, sig)).toBe(true);
+  });
+  test("rejects other ids, bad signatures and expired links", () => {
+    const { id, exp, sig } = parse(signedMediaUrl("panel", 7));
+    expect(verifySignedMedia("panel", id + 1, exp, sig)).toBe(false);
+    expect(verifySignedMedia("panel", id, exp, "zz")).toBe(false);
+    expect(verifySignedMedia("panel", id, exp, sig.replace(/^./, sig[0] === "0" ? "1" : "0"))).toBe(false);
+    expect(verifySignedMedia("panel", id, Date.now() - 1, sig)).toBe(false);
+  });
+});

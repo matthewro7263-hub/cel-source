@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation, Link } from "wouter";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -17,7 +17,13 @@ export default function Login() {
   const [password, setPassword] = useState("celdemo");
   const [showPass, setShowPass] = useState(false);
   const { toast } = useToast();
-  const { applyToken } = useAuth();
+  const { user, applyToken } = useAuth();
+
+  // Navigate once auth state has actually committed. Navigating straight from onSuccess races
+  // AuthProvider's state update, so the protected route briefly sees no user and bounces back here.
+  useEffect(() => {
+    if (user) setLocation("/dashboard");
+  }, [user, setLocation]);
 
   const m = useMutation({
     mutationFn: async () => {
@@ -26,8 +32,6 @@ export default function Login() {
     },
     onSuccess: async (data: { user: any; token: string }) => {
       applyToken(data.token, data.user);
-              // applyToken now persists to localStorage synchronously — safe to navigate immediately
-              setLocation("/dashboard");
     },
     onError: (err: any) => {
       toast({ title: "Couldn't sign in", description: String(err.message || err), variant: "destructive" });

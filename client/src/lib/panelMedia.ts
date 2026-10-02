@@ -1,6 +1,7 @@
 import { apiRequest } from "./queryClient";
 
-type PanelLike = { imageData?: string | null; r2Key?: string | null };
+/** imageUrl is the signed same-origin URL the lite panel APIs return for inline images. */
+type PanelLike = { imageData?: string | null; imageUrl?: string | null; r2Key?: string | null };
 
 const presignCache = new Map<string, { url: string; expiresAt: number }>();
 
@@ -29,17 +30,30 @@ export function shareMediaPath(shareToken: string) {
   return `/api/share/${shareToken}/media`;
 }
 
-/** Immediate src when available (imageData only). Empty string means async resolve needed. */
+/** Immediate src when available (inline data or signed URL). Empty string means async resolve needed. */
 export function panelImageSrcImmediate(panel: PanelLike): string {
-  if (panel.imageData) return panel.imageData;
-  return "";
+  return panel.imageData || panel.imageUrl || "";
+}
+
+/** Fetch a panel image as a data: URL (needed by jsPDF, which can't take a remote URL). */
+export async function panelImageAsDataUrl(panel: PanelLike, opts: { projectId?: number; shareToken?: string } = {}): Promise<string> {
+  const src = panel.imageData || (await resolvePanelImageUrl(panel, opts));
+  if (!src || src.startsWith("data:")) return src;
+  const blob = await (await fetch(src)).blob();
+  return await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
 }
 
 export async function resolvePanelImageUrl(
   panel: PanelLike,
   opts: { projectId?: number; shareToken?: string },
 ): Promise<string> {
-  if (panel.imageData) return panel.imageData;
+  const immediate = panelImageSrcImmediate(panel);
+  if (immediate) return immediate;
   if (!panel.r2Key) return "";
   if (opts.projectId) {
     return fetchPresignedUrl(projectMediaPath(opts.projectId), `p${opts.projectId}`, panel.r2Key);

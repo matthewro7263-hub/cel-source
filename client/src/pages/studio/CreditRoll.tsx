@@ -23,6 +23,9 @@ interface CreditEntry {
   createdAt: string;
 }
 
+// Stable reference: a fresh `[]` default every render re-triggers the sync effect below forever while loading.
+const NO_ENTRIES: CreditEntry[] = [];
+
 export default function CreditRoll() {
   const params = useParams() as { id: string };
   const projectId = parseInt(params.id, 10);
@@ -43,7 +46,7 @@ export default function CreditRoll() {
   const [pressSynopsis, setPressSynopsis] = useState("");
   const [pressContact, setPressContact] = useState("");
 
-  const { data: serverEntries = [], isLoading } = useQuery<CreditEntry[]>({
+  const { data: serverEntries = NO_ENTRIES, isLoading } = useQuery<CreditEntry[]>({
     queryKey: ["/api/projects", projectId, "studio/credits"],
     queryFn: async () => {
       const res = await apiRequest("GET", `/api/projects/${projectId}/studio/credits`);

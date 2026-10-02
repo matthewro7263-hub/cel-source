@@ -1599,3 +1599,32 @@
 .prose-cel li {
   @apply mb-1;
 }
+
+/* The dashboard is a fixed dark "production queue" surface. The shared .glass token is a light
+   translucent fill, which left light-grey cards under near-white text there. */
+.cel-dashboard-dark {
+  /* Re-point the semantic text tokens so chips/labels that use them stay legible on dark. */
+  --foreground: 228 40% 94%;
+  --muted-foreground: 60 3% 55%;
+}
+.cel-dashboard-dark .glass {
+  background: #151511;
+  border-color: #282822;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  color: #e8ebf5;
+}
+.cel-dashboard-dark .cel-soft-button {
+  background: #151511;
+  border: 1px solid #282822;
+  box-shadow: none;
+  color: #e8ebf5;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.cel-dashboard-dark .cel-soft-button::before,
+.cel-dashboard-dark .cel-soft-button::after { display: none; }
+.cel-dashboard-dark .cel-soft-button:hover { background: #1f1f1a; box-shadow: none; }
+.cel-dashboard-dark .cel-soft-button[data-variant="default"] { background: #3E63DD; border-color: #3E63DD; color: #fff; }
+.cel-dashboard-dark .cel-soft-button[data-variant="default"]:hover { background: #3555c2; }

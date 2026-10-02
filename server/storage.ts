@@ -166,8 +166,37 @@ export function getSessionUser(sid: string | undefined): number | undefined {
   return getSessionPayload(sid)?.userId;
 }
 
+// ===== SIGNED MEDIA URLS =====
+// <img>/<video>/canvas can't send a Bearer header, so panel images are exposed as short-lived,
+// HMAC-signed same-origin URLs. The URL itself is the credential and only ever appears in API
+// responses that already passed an access check (project member or valid share token).
+const MEDIA_URL_TTL_MS = 60 * 60 * 1000;
+
+function mediaSignature(kind: string, id: number, exp: number): string {
+  return createHmac("sha256", SESSION_SECRET).update(`media:${kind}:${id}:${exp}`).digest("hex");
+}
+
+export function signedMediaUrl(kind: "panel", id: number): string {
+  // Bucket the expiry so the same URL is returned repeatedly (browser cache friendly).
+  const exp = (Math.floor(Date.now() / MEDIA_URL_TTL_MS) + 2) * MEDIA_URL_TTL_MS;
+  return `/api/media/${kind}s/${id}?exp=${exp}&sig=${mediaSignature(kind, id, exp)}`;
+}
+
+export function verifySignedMedia(kind: "panel", id: number, exp: number, sig: string): boolean {
+  if (!Number.isFinite(exp) || Date.now() > exp) return false;
+  const expected = Buffer.from(mediaSignature(kind, id, exp), "hex");
+  let given: Buffer;
+  try { given = Buffer.from(sig, "hex"); } catch { return false; }
+  return given.length === expected.length && timingSafeEqual(given, expected);
+}
+
 export function destroySession(sid: string) {
   // Stateless token destruction is handled by client-side token clearing
+}
+
+/** Lite panel rows omit the (huge) inline image; give inline-image panels a signed URL instead. */
+function withPanelImageUrls<T extends { id: number; r2Key: string | null; hasImage: boolean }>(rows: T[]) {
+  return rows.map((p) => ({ ...p, imageUrl: p.hasImage && !p.r2Key ? signedMediaUrl("panel", p.id) : null }));
 }
 
 const coreStorage = {
@@ -307,10 +336,12 @@ const coreStorage = {
         status: storyboardPanels.status,
         frameCount: storyboardPanels.frameCount,
         deletedAt: storyboardPanels.deletedAt,
+        hasImage: sql<boolean>`${storyboardPanels.imageData} is not null`,
       })
       .from(storyboardPanels)
       .where(and(eq(storyboardPanels.storyboardId, storyboardId), isNull(storyboardPanels.deletedAt)))
-      .orderBy(asc(storyboardPanels.orderIdx));
+      .orderBy(asc(storyboardPanels.orderIdx))
+      .then(withPanelImageUrls);
   },
   async listPanelsLiteBatch(storyboardIds: number[]) {
     if (storyboardIds.length === 0) return [];
@@ -328,10 +359,12 @@ const coreStorage = {
         status: storyboardPanels.status,
         frameCount: storyboardPanels.frameCount,
         deletedAt: storyboardPanels.deletedAt,
+        hasImage: sql<boolean>`${storyboardPanels.imageData} is not null`,
       })
       .from(storyboardPanels)
       .where(and(inArray(storyboardPanels.storyboardId, storyboardIds), isNull(storyboardPanels.deletedAt)))
-      .orderBy(asc(storyboardPanels.storyboardId), asc(storyboardPanels.orderIdx));
+      .orderBy(asc(storyboardPanels.storyboardId), asc(storyboardPanels.orderIdx))
+      .then(withPanelImageUrls);
   },
   async listPanelsForStoryboardIds(ids: number[]) {
     if (ids.length === 0) return [];

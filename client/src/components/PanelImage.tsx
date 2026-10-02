@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { panelImageSrcImmediate, resolvePanelImageUrl } from "@/lib/panelMedia";
 
-type PanelLike = { imageData?: string | null; r2Key?: string | null };
+type PanelLike = { imageData?: string | null; imageUrl?: string | null; r2Key?: string | null };
 
 interface PanelImageProps extends React.ImgHTMLAttributes<HTMLImageElement> {
   panel: PanelLike;
@@ -38,7 +38,7 @@ export function PanelImage({
       .then((url) => { if (!cancelled) setSrc(url); })
       .catch(() => { if (!cancelled) { setSrc(""); setFailed(true); } });
     return () => { cancelled = true; };
-  }, [panel.imageData, panel.r2Key, projectId, shareToken]);
+  }, [panel.imageData, panel.imageUrl, panel.r2Key, projectId, shareToken]);
 
   if (!src || failed) return <>{fallback}</>;
   return <img src={src} alt={alt} {...imgProps} />;
