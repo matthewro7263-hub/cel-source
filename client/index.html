@@ -2,27 +2,41 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
-    <link rel="icon" type="image/png" href="/favicon.png" />
+    <!-- Pinch-zoom stays enabled (WCAG 1.4.4): no maximum-scale / user-scalable=no. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Cel — Animation Production Hub</title>
-    <meta name="description" content="The production hub for animators. Script, storyboard, animatic, and ship." />
+    <meta name="description" content="The production hub for animators. Script, storyboard, animatic, review and ship." />
+    <meta name="theme-color" content="#f4f4f5" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0f172a" media="(prefers-color-scheme: dark)" />
 
-    <!-- Google Fonts — JetBrains Mono for monospace touches -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=Geist+Mono:wght@100..900&family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap"
-      rel="stylesheet"
-    />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="48x48" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <!-- %APP_URL% is filled in by the server (APP_URL / RENDER_EXTERNAL_URL) so previews get absolute URLs. -->
+    <link rel="canonical" href="%APP_URL%/" />
 
-    <!-- Fontshare — General Sans (body) + Cabinet Grotesk (display) -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Cel" />
+    <meta property="og:title" content="Cel — Make your animation. Not your spreadsheet." />
+    <meta property="og:description" content="Storyboards, animatics, review and a commissions queue for indie animators, in one quiet place." />
+    <meta property="og:url" content="%APP_URL%/" />
+    <meta property="og:image" content="%APP_URL%/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <!-- Geist, Geist Mono and JetBrains Mono are bundled with the app (see src/main.tsx).
+         General Sans and Cabinet Grotesk are only distributed through Fontshare. -->
+    <link rel="preconnect" href="https://api.fontshare.com" />
+    <link rel="preconnect" href="https://cdn.fontshare.com" crossorigin />
     <link
       href="https://api.fontshare.com/v2/css?f[]=general-sans@400,500,600,700&f[]=cabinet-grotesk@500,600,700,800&display=swap"
       rel="stylesheet"
     />
-
   </head>
   <body>
+    <noscript>Cel needs JavaScript to run. Please enable it in your browser.</noscript>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

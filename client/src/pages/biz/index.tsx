@@ -1041,7 +1041,7 @@ export default function BizPage() {
         icon={<Briefcase size={20} className="text-primary" />}
         description="Manage festivals, contracts, tax exports, and expense tracking without leaving the authenticated workspace."
         summary={
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
             <SummaryStat label="Active submissions" value={String(pendingFestivals)} detail="Planned or submitted festivals" />
             <SummaryStat label="Contracts" value={String(contracts.length)} detail="Reusable legal templates" />
             <SummaryStat label="Expenses" value={`$${expenseTotal.toFixed(2)}`} detail={`${expenses.length} logged items`} />

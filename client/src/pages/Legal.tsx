@@ -66,6 +66,7 @@ export function PrivacyPage() {
             <li>Cloud file storage (Cloudflare R2), if the operator has enabled it, for larger uploads.</li>
             <li>An email provider (Resend), if enabled, to send password-reset links, project invitations and commission notifications.</li>
             <li><strong>OpenRouter and the AI model provider you pick,</strong> only if you add your own API key and use an AI feature. The text or image you send to that feature (for example a script passage, or an asset thumbnail when auto-tagging) is forwarded to them. Your key is stored encrypted and is used only for your project's requests.</li>
+            <li><strong>Fontshare</strong> (Indian Type Foundry) serves two of our typefaces. Like any font host it sees your IP address and browser details when the fonts load. Everything else the app needs is served from the same address as the page.</li>
             <li><strong>Discord,</strong> if a project owner adds a webhook, which then receives that project's activity notifications.</li>
           </ul>
         </li>

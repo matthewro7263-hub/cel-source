@@ -7,6 +7,8 @@
 //
 // sendMail never throws: an email outage must not break signup, invites or password reset.
 
+export { appLink, appUrl } from "./app_url";
+
 export interface MailMessage {
   to: string;
   subject: string;
@@ -24,17 +26,6 @@ const DEFAULT_FROM = "Cel <onboarding@resend.dev>";
 
 export function mailConfigured(): boolean {
   return !!process.env.RESEND_API_KEY;
-}
-
-/** Public origin for links in emails, without a trailing slash. Falls back to Render's URL, then localhost. */
-export function appUrl(): string {
-  const raw = process.env.APP_URL || process.env.RENDER_EXTERNAL_URL || `http://localhost:${process.env.PORT ?? "5000"}`;
-  return raw.replace(/\/+$/, "");
-}
-
-/** The client uses hash routing, so app links look like https://host/#/path. */
-export function appLink(path: string): string {
-  return `${appUrl()}/#${path.startsWith("/") ? path : `/${path}`}`;
 }
 
 export async function sendMail(input: MailMessage): Promise<MailResult> {

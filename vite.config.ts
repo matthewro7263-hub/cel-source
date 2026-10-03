@@ -12,7 +12,9 @@ export default defineConfig({
     },
   },
   root: path.resolve(import.meta.dirname, "client"),
-  base: "./",
+  // Absolute asset URLs: the server answers deep paths (/privacy, /login...) with the app shell, which would
+  // otherwise resolve "./assets/..." against that path and load nothing.
+  base: "/",
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,

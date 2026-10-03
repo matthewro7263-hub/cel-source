@@ -142,27 +142,24 @@ export default function Dashboard() {
   });
 
   return (
-    <div 
-      className="cel-dashboard-dark relative z-10 min-h-screen text-[#e8ebf5] px-6 lg:px-10 py-8 lg:py-12"
-      style={{ backgroundColor: "#0F0F0C" }}
-    >
-      <div className="flex items-center justify-between mb-8 pb-4 border-b border-[#282822]">
+    <div className="relative z-10 min-h-screen px-6 lg:px-10 py-8 lg:py-12">
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-8 pb-4 border-b border-border">
         <div>
-          <p className="text-[10px] font-mono font-medium uppercase tracking-widest text-[#8b8b84] mb-1">
-            Active Production Queue
+          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-1">
+            Active production queue
           </p>
-          <h1 className="text-xl font-bold tracking-tight text-[#e8ebf5] uppercase font-mono">
+          <h1 className="font-display text-2xl font-bold tracking-tight">
             Dashboard
           </h1>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <Button 
             variant="outline" 
             size="sm" 
             onClick={() => createSandbox.mutate()} 
             disabled={createSandbox.isPending}
-            className="rounded-[4px] border-[#282822] bg-[#151511] text-[#e8ebf5] hover:bg-[#1f1f1a] font-mono text-xs h-9 px-4"
+            className="rounded-[4px] font-mono text-xs h-9 px-4"
           >
             {createSandbox.isPending ? "Creating Sandbox…" : "Sandbox Project"}
           </Button>
@@ -173,7 +170,7 @@ export default function Dashboard() {
                 variant="default"
                 size="sm"
                 data-testid="button-new-project"
-                className="rounded-[4px] bg-[#3E63DD] hover:bg-[#3555c2] text-white font-mono text-xs h-9 px-4"
+                className="rounded-[4px] bg-primary hover:bg-primary/90 text-primary-foreground font-mono text-xs h-9 px-4"
               >
                 <Plus size={14} className="mr-1" /> New Project
               </Button>
@@ -273,13 +270,13 @@ export default function Dashboard() {
         </div>
       ) : isError ? (
         <div className="glass py-16 px-6 flex flex-col items-center text-center">
-          <p className="text-sm text-[#8b8b84] mb-4 font-mono">Couldn't load the production queue.</p>
+          <p className="text-sm text-muted-foreground mb-4 font-mono">Couldn't load the production queue.</p>
           <Button
             variant="default"
             onClick={() => refetch()}
             disabled={isFetching}
             data-testid="button-retry-queue"
-            className="rounded-[4px] bg-[#3E63DD] hover:bg-[#3555c2] text-white text-xs font-mono h-9 px-4"
+            className="rounded-[4px] bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-mono h-9 px-4"
           >
             {isFetching ? "Retrying…" : "Retry"}
           </Button>
@@ -290,8 +287,8 @@ export default function Dashboard() {
         <div className="grid gap-6 xl:grid-cols-[1fr_360px]">
           {/* LEFT: Active Production Queue */}
           <div className="space-y-4">
-            <h2 className="text-xs font-mono uppercase tracking-widest text-[#8b8b84] mb-2 flex items-center gap-2">
-              <Activity size={12} className="text-[#3E63DD]" />
+            <h2 className="text-xs font-mono uppercase tracking-widest text-muted-foreground mb-2 flex items-center gap-2">
+              <Activity size={12} className="text-primary" />
               Queue ({queueData.queueItems.length} active projects)
             </h2>
 
@@ -325,7 +322,7 @@ export default function Dashboard() {
                       />
                       <div className="space-y-1">
                         <span
-                          className="font-mono font-bold text-sm tracking-tight text-[#e8ebf5] hover:text-[#3E63DD] transition-colors block"
+                          className="font-mono font-bold text-sm tracking-tight text-foreground hover:text-primary transition-colors block"
                           onClick={(e) => e.stopPropagation()}
                         >
                           {item.project.title}
@@ -335,8 +332,8 @@ export default function Dashboard() {
                         <div className="flex flex-wrap items-center gap-2 text-xs">
                           {item.currentScene ? (
                             <>
-                              <span className="text-[#8b8b84]">Current:</span>
-                               <span className="text-[#e8ebf5] font-semibold">
+                              <span className="text-muted-foreground">Current:</span>
+                               <span className="text-foreground font-semibold">
                                  Scene <span className="font-mono">{item.currentScene.number}</span> - {item.currentScene.title}
                                </span>
                               <span className={`${chipClass(item.currentScene.status)} font-mono text-[10px] uppercase tracking-wider`}>
@@ -344,7 +341,7 @@ export default function Dashboard() {
                               </span>
                             </>
                           ) : (
-                            <span className="text-[#8b8b84] italic">No active scene in work</span>
+                            <span className="text-muted-foreground italic">No active scene in work</span>
                           )}
 
                           {item.project.deadline && (
@@ -359,7 +356,7 @@ export default function Dashboard() {
                     {/* Last edited panel thumbnail */}
                     <div className="flex items-center gap-3 shrink-0">
                       <div className="space-y-1">
-                        <span className="text-[10px] uppercase font-mono tracking-wider text-[#8b8b84] block">Last edit</span>
+                        <span className="text-[10px] uppercase font-mono tracking-wider text-muted-foreground block">Last edit</span>
                         {item.lastPanel ? (
                           <div className="flex items-center gap-2">
                             <Link
@@ -369,30 +366,30 @@ export default function Dashboard() {
                               <PanelImage
                                 panel={item.lastPanel}
                                 projectId={item.project.id}
-                                className="w-16 h-10 object-cover rounded-[4px] border border-[#282822] bg-black hover:ring-1 hover:ring-[#3E63DD] cursor-pointer transition-all"
+                                className="w-16 h-10 object-cover rounded-[4px] border border-border bg-black hover:ring-1 hover:ring-primary cursor-pointer transition-all"
                                 alt="Last edit thumbnail"
                                 loading="lazy"
                                 decoding="async"
                                 fallback={
-                                  <div className="w-16 h-10 bg-neutral-900 border border-[#282822] flex items-center justify-center text-[8px] text-neutral-600 rounded-[4px] font-mono">
+                                  <div className="w-16 h-10 bg-muted border border-border flex items-center justify-center text-[8px] text-muted-foreground rounded-[4px] font-mono">
                                     NO IMAGE
                                   </div>
                                 }
                               />
                             </Link>
                             <div className="max-w-[120px] text-left">
-                              <div className="text-[10px] font-mono text-[#e8ebf5] truncate">
+                              <div className="text-[10px] font-mono text-foreground truncate">
                                 Panel #{item.lastPanel.orderIdx + 1}
                               </div>
                               {item.lastPanel.caption && (
-                                <div className="text-[9px] text-[#8b8b84] truncate italic">
+                                <div className="text-[9px] text-muted-foreground truncate italic">
                                   "{item.lastPanel.caption}"
                                 </div>
                               )}
                             </div>
                           </div>
                         ) : (
-                          <div className="w-32 h-10 border border-dashed border-[#282822] flex items-center justify-center rounded-[4px] text-[10px] font-mono text-[#8b8b84]">
+                          <div className="w-32 h-10 border border-dashed border-border flex items-center justify-center rounded-[4px] text-[10px] font-mono text-muted-foreground">
                             No panels created
                           </div>
                         )}
@@ -401,8 +398,8 @@ export default function Dashboard() {
                       {/* Pending count badge */}
                       <div className="text-right flex items-center gap-3">
                         <div className="space-y-0.5 min-w-[64px]">
-                          <span className="text-[10px] uppercase font-mono tracking-wider text-[#8b8b84] block">Pending</span>
-                          <span className="font-mono font-bold text-sm text-[#FFD9A8]">
+                          <span className="text-[10px] uppercase font-mono tracking-wider text-muted-foreground block">Pending</span>
+                          <span className="font-mono font-bold text-sm text-amber-600 dark:text-amber-300">
                             {item.pendingItemsCount} items
                           </span>
                         </div>
@@ -413,7 +410,7 @@ export default function Dashboard() {
                             e.stopPropagation();
                             setLocation(`/projects/${item.project.id}`);
                           }}
-                          className="w-7 h-7 rounded-[4px] bg-[#1a1a15] hover:bg-[#282822] border border-[#282822] flex items-center justify-center text-[#8b8b84] hover:text-[#e8ebf5] transition-colors"
+                          className="w-7 h-7 rounded-[4px] bg-muted hover:bg-accent border border-border flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
                           aria-label={`Open ${item.project.title}`}
                         >
                           <ArrowRight size={13} />
@@ -428,18 +425,18 @@ export default function Dashboard() {
 
           {/* RIGHT: Recent Activity Feed */}
           <div className="space-y-4">
-            <h2 className="text-xs font-mono uppercase tracking-widest text-[#8b8b84] mb-2 flex items-center gap-2">
-              <Activity size={12} className="text-[#3E63DD]" />
+            <h2 className="text-xs font-mono uppercase tracking-widest text-muted-foreground mb-2 flex items-center gap-2">
+              <Activity size={12} className="text-primary" />
               Recent Activity
             </h2>
 
             <div className="glass p-4 space-y-4 min-h-[300px]">
               {queueData.recentActivity.length === 0 ? (
-                <div className="text-center py-12 text-sm text-[#8b8b84] italic font-mono">
+                <div className="text-center py-12 text-sm text-muted-foreground italic font-mono">
                   No recent activity logged
                 </div>
               ) : (
-                <div className="space-y-4 divide-y divide-[#282822]/60">
+                <div className="space-y-4 divide-y divide-border/60">
                   {queueData.recentActivity.map((activity, idx) => {
                     const isComment = activity.type === "comment";
                     return (
@@ -454,14 +451,14 @@ export default function Dashboard() {
 
                         <div className="flex-1 min-w-0 space-y-1">
                           <div className="flex items-baseline justify-between gap-2">
-                            <span className="font-semibold text-[#e8ebf5] font-mono">{activity.user.name}</span>
-                            <span className="text-[10px] text-[#8b8b84] shrink-0 font-mono">
+                            <span className="font-semibold text-foreground font-mono">{activity.user.name}</span>
+                            <span className="text-[10px] text-muted-foreground shrink-0 font-mono">
                               <span title={formatAbsolute(activity.timestamp)}>{formatRelative(activity.timestamp)}</span>
                             </span>
                           </div>
 
-                          <div className="text-xs text-[#8b8b84] leading-relaxed break-words">
-                            <span className="flex items-center gap-1 text-[10px] font-mono text-[#3E63DD] uppercase mb-0.5">
+                          <div className="text-xs text-muted-foreground leading-relaxed break-words">
+                            <span className="flex items-center gap-1 text-[10px] font-mono text-primary uppercase mb-0.5">
                               {isComment ? (
                                 <MessageSquare size={10} />
                               ) : (
@@ -496,27 +493,27 @@ function EmptyState({ onNew }: { onNew: () => void }) {
   return (
     <div className="glass py-20 px-6 flex flex-col items-center text-center">
       <div className="mb-6">
-        <svg width="120" height="120" viewBox="0 0 160 160" className="opacity-70">
-          <rect x="20" y="30" width="120" height="100" rx="4" fill="none" stroke="#3E63DD" strokeWidth="1.5" opacity="0.5" />
-          <rect x="28" y="42" width="8" height="8" rx="1" fill="#3E63DD" opacity="0.6" />
-          <rect x="124" y="42" width="8" height="8" rx="1" fill="#3E63DD" opacity="0.6" />
-          <rect x="28" y="76" width="8" height="8" rx="1" fill="#3E63DD" opacity="0.6" />
-          <rect x="124" y="76" width="8" height="8" rx="1" fill="#3E63DD" opacity="0.6" />
-          <rect x="28" y="110" width="8" height="8" rx="1" fill="#3E63DD" opacity="0.6" />
-          <rect x="124" y="110" width="8" height="8" rx="1" fill="#3E63DD" opacity="0.6" />
-          <line x1="80" y1="60" x2="80" y2="100" stroke="#3E63DD" strokeWidth="3" strokeLinecap="square" />
-          <line x1="60" y1="80" x2="100" y2="80" stroke="#3E63DD" strokeWidth="3" strokeLinecap="square" />
+        <svg width="120" height="120" viewBox="0 0 160 160" className="opacity-70 text-primary">
+          <rect x="20" y="30" width="120" height="100" rx="4" fill="none" stroke="currentColor" strokeWidth="1.5" opacity="0.5" />
+          <rect x="28" y="42" width="8" height="8" rx="1" fill="currentColor" opacity="0.6" />
+          <rect x="124" y="42" width="8" height="8" rx="1" fill="currentColor" opacity="0.6" />
+          <rect x="28" y="76" width="8" height="8" rx="1" fill="currentColor" opacity="0.6" />
+          <rect x="124" y="76" width="8" height="8" rx="1" fill="currentColor" opacity="0.6" />
+          <rect x="28" y="110" width="8" height="8" rx="1" fill="currentColor" opacity="0.6" />
+          <rect x="124" y="110" width="8" height="8" rx="1" fill="currentColor" opacity="0.6" />
+          <line x1="80" y1="60" x2="80" y2="100" stroke="currentColor" strokeWidth="3" strokeLinecap="square" />
+          <line x1="60" y1="80" x2="100" y2="80" stroke="currentColor" strokeWidth="3" strokeLinecap="square" />
         </svg>
       </div>
-      <h3 className="font-mono text-sm uppercase tracking-wider text-[#e8ebf5] mb-2">No projects in production</h3>
-      <p className="text-xs text-[#8b8b84] mb-6 max-w-sm font-mono leading-relaxed">
+      <h3 className="font-mono text-sm uppercase tracking-wider text-foreground mb-2">No projects in production</h3>
+      <p className="text-xs text-muted-foreground mb-6 max-w-sm font-mono leading-relaxed">
         Start by creating your first animation project. You will get scenes, scripts, storyboards, and activity feeds.
       </p>
       <Button 
         variant="default" 
         onClick={onNew} 
         data-testid="button-empty-new-project"
-        className="rounded-[4px] bg-[#3E63DD] hover:bg-[#3555c2] text-white text-xs font-mono h-9 px-4"
+        className="rounded-[4px] bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-mono h-9 px-4"
       >
         <Plus size={14} className="mr-1" /> Create first project
       </Button>

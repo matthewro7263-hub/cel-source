@@ -130,10 +130,10 @@ export default {
         "3xl": ["var(--text-3xl)", { lineHeight: "1.1" }],
       },
       fontFamily: {
-        sans: ["Geist", "Inter", "system-ui", "var(--font-sans)"],
+        sans: ["Geist Variable", "Geist", "Inter", "system-ui", "var(--font-sans)"],
         serif: ["var(--font-serif)"],
-        mono: ["Geist Mono", "JetBrains Mono", "var(--font-mono)", "monospace"],
-        celmono: ["JetBrains Mono", "Fira Code", "monospace"],
+        mono: ["Geist Mono Variable", "Geist Mono", "JetBrains Mono Variable", "JetBrains Mono", "var(--font-mono)", "monospace"],
+        celmono: ["JetBrains Mono Variable", "JetBrains Mono", "Fira Code", "monospace"],
       },
       transitionTimingFunction: {
         cel: "var(--ease-out)",

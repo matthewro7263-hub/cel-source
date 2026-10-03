@@ -148,7 +148,7 @@ export default function CommissionsQueue() {
         </>
       }
       summary={
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
           <QueueStat label="New" value={String(statusCounts.new ?? 0)} detail="Fresh intake requests" />
           <QueueStat label="Quoted" value={String(statusCounts.quoted ?? 0)} detail="Waiting on approval" />
           <QueueStat label="In progress" value={String(statusCounts["in-progress"] ?? 0)} detail="Active commission work" />

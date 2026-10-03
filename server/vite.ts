@@ -1,3 +1,4 @@
+import { appUrl } from "./app_url";
 import type { Express } from 'express';
 import { createServer as createViteServer, createLogger } from "vite";
 import type { Server } from 'node:http';
@@ -48,6 +49,7 @@ export async function setupVite(server: Server, app: Express) {
         `src="/src/main.tsx"`,
         `src="/src/main.tsx?v=${randomUUID()}"`,
       );
+      template = template.replaceAll("%APP_URL%", appUrl());
       const page = await vite.transformIndexHtml(url, template);
       res.status(200).set({ "Content-Type": "text/html" }).end(page);
     } catch (e) {

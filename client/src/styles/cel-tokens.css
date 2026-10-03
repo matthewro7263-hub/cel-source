@@ -1,6 +1,6 @@
 :root {
-  --font-sans: 'Geist', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-mono: 'Geist Mono', monospace;
+  --font-sans: 'Geist Variable', 'Geist', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'Geist Mono Variable', 'Geist Mono', monospace;
 
   /* Apple-like neutrals */
   --cel-bg: #f5f5f7;
