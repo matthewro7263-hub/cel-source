@@ -3,6 +3,7 @@ import { useLocation, Link } from "wouter";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
+import { useAppConfig } from "@/lib/config";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
@@ -13,11 +14,21 @@ import { Eye, EyeOff } from "lucide-react";
 
 export default function Login() {
   const [, setLocation] = useLocation();
-  const [email, setEmail] = useState("matthew@cel.app");
-  const [password, setPassword] = useState("celdemo");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
   const { toast } = useToast();
   const { user, applyToken } = useAuth();
+  const { data: config } = useAppConfig();
+  const demo = config?.demo ?? null;
+
+  // The server only advertises demo credentials when the demo account exists (never on a real deployment).
+  useEffect(() => {
+    if (demo) {
+      setEmail((current) => current || demo.email);
+      setPassword((current) => current || demo.password);
+    }
+  }, [demo]);
 
   // Navigate once auth state has actually committed. Navigating straight from onSuccess races
   // AuthProvider's state update, so the protected route briefly sees no user and bounces back here.
@@ -72,6 +83,7 @@ export default function Login() {
             <Input
               id="email"
               type="email"
+              autoComplete="username"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               data-testid="input-email"
@@ -80,11 +92,17 @@ export default function Login() {
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="password" className="text-sm font-medium">Password</Label>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="password" className="text-sm font-medium">Password</Label>
+              <Link href="/forgot-password" className="text-xs text-primary hover:underline" data-testid="link-forgot-password">
+                Forgot password?
+              </Link>
+            </div>
             <div className="relative">
               <Input
                 id="password"
                 type={showPass ? "text" : "password"}
+                autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 data-testid="input-password"
@@ -95,7 +113,7 @@ export default function Login() {
                 type="button"
                 onClick={() => setShowPass(!showPass)}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                tabIndex={-1}
+                aria-label={showPass ? "Hide password" : "Show password"}
               >
                 {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
@@ -124,9 +142,11 @@ export default function Login() {
           </p>
         </LiquidGlassCard>
 
-        <p className="text-[11px] text-muted-foreground text-center mt-5 font-mono">
-          Demo: matthew@cel.app / celdemo
-        </p>
+        {demo && (
+          <p className="text-[11px] text-muted-foreground text-center mt-5 font-mono">
+            Demo: {demo.email} / {demo.password}
+          </p>
+        )}
       </div>
     </div>
   );

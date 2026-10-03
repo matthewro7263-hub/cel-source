@@ -10,10 +10,27 @@ export const users = pgTable("users", {
   avatarColor: text("avatar_color").notNull().default("#6E4FE8"),
   passwordHash: text("password_hash").notNull(),
   tokenVersion: integer("token_version").notNull().default(0),
+  // Opt-out for non-essential email (commission requests, etc.). Security email is always sent.
+  emailNotifications: boolean("email_notifications").notNull().default(true),
 });
 export const insertUserSchema = createInsertSchema(users).omit({ id: true });
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
+
+// ===== PASSWORD RESET / INVITE TOKENS =====
+// Only the SHA-256 of the emailed token is stored, so a database leak can't be used to take over accounts.
+export const passwordResetTokens = pgTable("password_reset_tokens", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull(),
+  tokenHash: text("token_hash").notNull().unique(),
+  kind: text("kind").notNull().default("reset"), // reset | invite
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  usedAt: timestamp("used_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  passwordResetTokensUserIdIdx: index("password_reset_tokens_user_id_idx").on(table.userId),
+}));
+export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
 
 // ===== PROJECTS =====
 export const projects = pgTable("projects", {

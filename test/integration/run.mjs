@@ -14,6 +14,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "..", "..");
 const PORT = process.env.IT_PORT ?? "5057";
 const MOCK_PORT = process.env.IT_MOCK_PORT ?? "5099";
+const MOCK_MAIL_PORT = process.env.IT_MOCK_MAIL_PORT ?? "5098";
 
 if (!process.env.DATABASE_URL) {
   console.error("DATABASE_URL is required (point it at a throwaway Postgres database).");
@@ -31,6 +32,8 @@ process.on("SIGINT", () => process.exit(130));
 
 // Mock OpenRouter (the AI endpoints call out to it).
 children.push(spawn(process.execPath, [join(here, "mock-openrouter.mjs")], { env: { ...process.env, MOCK_PORT }, stdio: "inherit" }));
+// Mock Resend (transactional email); suites read the captured messages from /__sent.
+children.push(spawn(process.execPath, [join(here, "mock-resend.mjs")], { env: { ...process.env, MOCK_MAIL_PORT }, stdio: "inherit" }));
 
 const env = {
   ...process.env,
@@ -43,6 +46,10 @@ const env = {
   CEL_ADMIN_EMAILS: "matthew@cel.app",
   CEL_RATE_LIMIT_SCALE: "10", // the suites create far more accounts than one IP normally would
   OPENROUTER_BASE_URL: `http://127.0.0.1:${MOCK_PORT}`,
+  RESEND_API_KEY: "re_test_key",
+  RESEND_API_URL: `http://127.0.0.1:${MOCK_MAIL_PORT}/emails`,
+  MAIL_FROM: "Cel <hello@cel.test>",
+  APP_URL: "https://cel.test",
 };
 delete env.R2_BUCKET; delete env.R2_ENDPOINT; // exercise the "no cloud storage" paths
 const server = spawn(process.execPath, [join(root, "dist", "index.cjs")], { cwd: root, env, stdio: ["ignore", "pipe", "pipe"] });
@@ -60,11 +67,11 @@ for (let i = 0; i < 60 && !up; i++) {
 }
 if (!up) { console.error("server did not become healthy:\n" + serverLog); process.exit(1); }
 
-const suites = ["api-core", "share", "script-upload", "exports-and-ws", "media-urls", "ai", "api-modules", "trash-and-snapshots", "accounts", "client-payloads", "roles", "assets-and-export"];
+const suites = ["api-core", "share", "script-upload", "exports-and-ws", "media-urls", "ai", "api-modules", "trash-and-snapshots", "accounts", "client-payloads", "roles", "assets-and-export", "lifecycle"];
 const failed = [];
 for (const name of suites) {
   console.log(`\n=== ${name}`);
-  const res = spawnSync(process.execPath, [join(here, `${name}.mjs`)], { env: { ...process.env, BASE: base }, stdio: "inherit" });
+  const res = spawnSync(process.execPath, [join(here, `${name}.mjs`)], { env: { ...process.env, BASE: base, MAIL_BASE: `http://127.0.0.1:${MOCK_MAIL_PORT}` }, stdio: "inherit" });
   if (res.status !== 0) failed.push(name);
 }
 

@@ -1657,9 +1657,14 @@ function SettingsTab({ project, members }: { project: Project; members: ProjectD
       queryClient.invalidateQueries({ queryKey: queryKeys.project(project.id) });
       setInviteEmail("");
       if (data?.tempPassword) {
-        toast({ title: "Invited & created", description: `Temp password for ${data.user.email}: ${data.tempPassword}` });
+        toast({
+          title: "Account created",
+          description: `We couldn't email ${data.user.email}, so share this temporary password with them yourself: ${data.tempPassword}`,
+        });
+      } else if (data?.emailed) {
+        toast({ title: "Invitation sent", description: `${data.user.email} has been emailed.` });
       } else {
-        toast({ title: "Member added" });
+        toast({ title: "Member added", description: "They already had an account and can open the project now." });
       }
     },
     onError: (err: any) => toast({ title: "Couldn't invite", description: String(err.message || err), variant: "destructive" }),

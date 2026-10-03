@@ -5,6 +5,7 @@ import type { Request } from 'express';
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { seedIfEmpty } from "./seed";
+import { demoEnabled } from "./demo";
 import { registerLorRoutes } from "./lor_routes";
 import { registerAudio2Routes } from "./audio2_routes";
 import { registerApprovalRoutes } from "./approval_routes";
@@ -234,7 +235,7 @@ async function runMigrations() {
   await runMigrations();
   // Demo accounts use a well-known password, so never seed them in production
   // unless explicitly requested (e.g. for a public demo instance).
-  if (process.env.NODE_ENV !== "production" || process.env.CEL_SEED_DEMO === "true") {
+  if (demoEnabled()) {
     try {
       await seedIfEmpty();
     } catch (err) {

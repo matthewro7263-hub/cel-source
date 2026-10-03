@@ -70,11 +70,11 @@ export default function Signup() {
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="email" className="text-sm font-medium">Email</Label>
-            <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required data-testid="input-email" className="glass-input" />
+            <Input id="email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required data-testid="input-email" className="glass-input" />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="password" className="text-sm font-medium">Password</Label>
-            <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} data-testid="input-password" className="glass-input" />
+            <Input id="password" type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} data-testid="input-password" className="glass-input" />
             <p className="text-xs text-muted-foreground">At least 8 characters. Stored with salted scrypt hashing — we never see your password.</p>
           </div>
           <GlassButton

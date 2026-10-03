@@ -7,6 +7,8 @@ export interface AuthUser {
   email: string;
   name: string;
   avatarColor: string;
+  /** Opt-out for non-essential email; absent on sessions cached before this field existed. */
+  emailNotifications?: boolean;
 }
 
 interface AuthCtx {

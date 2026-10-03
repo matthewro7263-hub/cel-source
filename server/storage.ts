@@ -1,5 +1,6 @@
 import { db, pool } from "./db";
-import { eq, and, or, inArray, asc, desc, ilike, like, sql, isNull, isNotNull, lt } from "drizzle-orm";
+import { deleteProjectCascade, deleteAccountData } from "./data_cleanup";
+import { eq, and, or, inArray, asc, desc, ilike, like, sql, isNull, isNotNull, lt, gt } from "drizzle-orm";
 import { randomBytes, scrypt, timingSafeEqual, createHmac } from "node:crypto";
 import { promisify } from "node:util";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -19,7 +20,7 @@ import * as studioSchema from "@shared/studio_schema";
 
 // Re-export individual tables for convenience in methods
 const {
-  users, projects, projectMembers, scripts, storyboards, storyboardPanels,
+  users, passwordResetTokens, projects, projectMembers, scripts, storyboards, storyboardPanels,
   animatics, scenes, comments, assets, commissions, renders,
   animaticProjects, animaticTracks, animaticClips,
   projectAiKeys, aiChatSessions, aiChatMessages, achievements, panelPins,
@@ -211,6 +212,34 @@ const coreStorage = {
   async getUserByEmail(email: string) { return await db.select().from(users).where(sql`lower(${users.email}) = ${email.trim().toLowerCase()}`).then(r => r[0]); },
   async createUser(u: InsertUser) { return await db.insert(users).values(u).returning().then(r => r[0] as any); },
   async updateUser(id: number, patch: Partial<InsertUser>) { return await db.update(users).set(patch).where(eq(users.id, id)).returning().then(r => r[0] as any); },
+  /** Deletes the user's data and anonymises the account; see data_cleanup.ts. */
+  async deleteAccount(userId: number) { await deleteAccountData(userId, await hashPassword(randomBytes(32).toString("hex"))); },
+
+  // ===== PASSWORD RESET / INVITE TOKENS =====
+  async createPasswordResetToken(userId: number, tokenHash: string, expiresAt: Date, kind: "reset" | "invite" = "reset") {
+    await db.insert(passwordResetTokens).values({ userId, tokenHash, expiresAt, kind });
+  },
+  /** Atomically marks a valid, unused token as used and returns its user, or null. Single-use even under races. */
+  async consumePasswordResetToken(tokenHash: string): Promise<number | null> {
+    const rows = await db.update(passwordResetTokens).set({ usedAt: new Date() })
+      .where(and(eq(passwordResetTokens.tokenHash, tokenHash), isNull(passwordResetTokens.usedAt), gt(passwordResetTokens.expiresAt, new Date())))
+      .returning({ userId: passwordResetTokens.userId });
+    return rows[0]?.userId ?? null;
+  },
+  /** Revokes every outstanding token for a user (after a password change, or before issuing a new one). */
+  async revokePasswordResetTokens(userId: number) {
+    await db.update(passwordResetTokens).set({ usedAt: new Date() }).where(and(eq(passwordResetTokens.userId, userId), isNull(passwordResetTokens.usedAt)));
+  },
+  async hasRecentPasswordResetToken(userId: number, withinMs: number) {
+    const rows = await db.select({ id: passwordResetTokens.id }).from(passwordResetTokens)
+      .where(and(eq(passwordResetTokens.userId, userId), gt(passwordResetTokens.createdAt, new Date(Date.now() - withinMs)))).limit(1);
+    return rows.length > 0;
+  },
+  /** Housekeeping: drop tokens that expired or were used more than a day ago. */
+  async purgeStalePasswordResetTokens() {
+    const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    await db.delete(passwordResetTokens).where(or(lt(passwordResetTokens.expiresAt, dayAgo), lt(passwordResetTokens.usedAt, dayAgo)));
+  },
 
   // ===== PROJECTS =====
   async listProjectsForUser(userId: number) {
@@ -251,19 +280,7 @@ const coreStorage = {
       return row;
     },
   async updateProject(id: number, patch: Partial<InsertProject>) { return await db.update(projects).set(patch).where(eq(projects.id, id)).returning().then(r => r[0] as any); },
-  async deleteProject(id: number) {
-      await db.delete(comments).where(eq(comments.projectId, id));
-      await db.delete(scenes).where(eq(scenes.projectId, id));
-      const sbs = await db.select({ id: storyboards.id }).from(storyboards).where(eq(storyboards.projectId, id));
-      if (sbs.length > 0) {
-        await db.delete(storyboardPanels).where(inArray(storyboardPanels.storyboardId, sbs.map((sb) => sb.id)));
-      }
-      await db.delete(storyboards).where(eq(storyboards.projectId, id));
-      await db.delete(animatics).where(eq(animatics.projectId, id));
-      await db.delete(scripts).where(eq(scripts.projectId, id));
-      await db.delete(projectMembers).where(eq(projectMembers.projectId, id));
-      await db.delete(projects).where(eq(projects.id, id));
-    },
+  async deleteProject(id: number) { await deleteProjectCascade(id); },
 
   // ===== MEMBERS =====
   async listMembers(projectId: number) {

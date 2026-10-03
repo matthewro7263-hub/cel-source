@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { useHashLocation } from "wouter/use-hash-location";
+import { useHashLocation } from "@/lib/hashLocation";
 import { useAuth } from "@/lib/auth";
 import { useEffect } from "react";
 import { CelLogo } from "@/components/CelLogo";

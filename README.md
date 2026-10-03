@@ -141,6 +141,10 @@ See [.env.example](./.env.example). The critical ones:
 | `ENCRYPTION_KEY` | **Required in production** (see above) |
 | `CEL_ADMIN_EMAILS` | *(optional)* comma-separated emails allowed to create challenge prompts / snapshots |
 | `CEL_RATE_LIMIT_SCALE` | *(optional)* multiplier for the signup/login/commission/AI rate limits (default `1`); raise it behind a shared office NAT |
+| `RESEND_API_KEY` | *(optional)* enables email (password reset, invites, commission notifications) via [Resend](https://resend.com); without it, reset links are unavailable and invitees get a temporary password |
+| `MAIL_FROM` | *(optional)* sender, e.g. `Cel <hello@your-domain.com>` (must be a verified Resend domain; defaults to Resend's sandbox sender, which only delivers to your own address) |
+| `APP_URL` | *(recommended with email)* public origin used in email links, e.g. `https://cel.onrender.com` (falls back to `RENDER_EXTERNAL_URL`) |
+| `CONTACT_EMAIL` | *(optional)* shown on the Privacy and Terms pages |
 | `CEL_SEED_DEMO` | *(optional)* set to `true` to seed demo accounts in production (they use a public password) |
 | `FREESOUND_API_KEY` | *(optional)* enables sound-effect search |
 | `CEL_DB_DRIVER` | *(optional)* `neon` or `pg`. Defaults to Neon's driver for `*.neon.tech` hosts and node-postgres elsewhere |

@@ -31,16 +31,9 @@ import { StoryboardReviewer } from "@/components/storyboard-reviewer";
 import { BulkImportDialog } from "@/components/bulk-panel-import-dialog";
 import { SketchModal } from "@/components/storyboard-sketch";
 import { PanelPinsOverlay, PinModeToggle, type PinData } from "@/components/panel-pins";
+import { hashQueryParam } from "@/lib/hashQuery";
 
 type StoryboardWithPanels = Storyboard & { panels: Panel[] };
-
-/** Parse query params from the hash route (#/projects/12/storyboards?panel=5), not window.location.search. */
-function getHashQueryParam(param: string): string | null {
-  const hash = window.location.hash.replace(/^#/, "");
-  const queryIndex = hash.indexOf("?");
-  if (queryIndex === -1) return null;
-  return new URLSearchParams(hash.slice(queryIndex + 1)).get(param);
-}
 
 function patchPanelInCache(projectId: number, panelId: number, patch: Partial<Panel>) {
   queryClient.setQueryData<StoryboardWithPanels[]>(
@@ -147,7 +140,7 @@ export default function StoryboardsTab({ projectId }: { projectId: number }) {
 
   useEffect(() => {
     const readPanelDeepLink = () => {
-      const panelParam = getHashQueryParam("panel");
+      const panelParam = hashQueryParam("panel");
       if (panelParam) {
         const panelId = parseInt(panelParam, 10);
         if (!isNaN(panelId)) setDeepLinkPanelId(panelId);

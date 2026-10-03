@@ -1,5 +1,5 @@
 // owner / editor / reviewer: reviewers can read and take part in review, but not change production content.
-import { call, check, summary, png } from "./lib.mjs";
+import { call, check, summary, png, inviteCredentials } from "./lib.mjs";
 
 const u = Date.now();
 const signup = async (n) => (await call("POST", "/api/auth/signup", { email: `${n}${u}@example.com`, name: n, password: "password123" })).json;
@@ -12,7 +12,7 @@ const approvals = (await call("GET", `/api/projects/${pid}/approvals`, undefined
 
 let r = await call("POST", `/api/projects/${pid}/members`, { email: `reviewer${u}@example.com`, role: "reviewer" }, owner);
 const reviewerEmail = r.json.user.email; const reviewerId = r.json.user.id;
-const reviewer = (await call("POST", "/api/auth/login", { email: reviewerEmail, password: r.json.tempPassword })).json.token;
+const reviewer = (await call("POST", "/api/auth/login", { email: reviewerEmail, password: await inviteCredentials(r.json, reviewerEmail) })).json.token;
 check("invite rejects unknown roles", (await call("POST", `/api/projects/${pid}/members`, { email: `x${u}@example.com`, role: "admin" }, owner)).status === 400);
 
 // can read & take part in review

@@ -1,5 +1,5 @@
 import { useEffect, useRef, type MutableRefObject } from "react";
-import { useHashLocation } from "wouter/use-hash-location";
+import { useHashLocation } from "@/lib/hashLocation";
 import {
   detectGlassCapability,
   LIQUID_GL_TUNING,

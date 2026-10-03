@@ -5,15 +5,17 @@ let r = await call("POST", "/api/auth/signup", { email: `owner${u}@example.com`,
 const token = r.json.token;
 const pid = (await call("POST", "/api/projects", { title: "Accounts" }, token)).json.id;
 
-// --- inviting an unknown email must not create an account with a guessable password
-r = await call("POST", `/api/projects/${pid}/members`, { email: `Invitee${u}@Example.com` }, token);
-check("invite creates the account", r.status === 200 && r.json.tempPassword, r);
+// --- inviting an unknown email must not create an account with a guessable password.
+// "fail-" recipients are rejected by the mock mail provider, which exercises the fallback where the
+// owner is handed a random temporary password (the emailed set-password flow is covered in lifecycle.mjs).
+r = await call("POST", `/api/projects/${pid}/members`, { email: `Fail-Invitee${u}@Example.com` }, token);
+check("invite creates the account", r.status === 200 && r.json.tempPassword && r.json.emailed === false, r);
 const temp = r.json.tempPassword;
 check("temp password is random, not a fixed string", temp !== "changeme" && temp.length >= 10, temp);
-check("invited email is stored lowercased", r.json.user.email === `invitee${u}@example.com`, r.json.user);
-r = await call("POST", "/api/auth/login", { email: `invitee${u}@example.com`, password: "changeme" });
+check("invited email is stored lowercased", r.json.user.email === `fail-invitee${u}@example.com`, r.json.user);
+r = await call("POST", "/api/auth/login", { email: `fail-invitee${u}@example.com`, password: "changeme" });
 check("the old fixed password does not work", r.status === 401, r);
-r = await call("POST", "/api/auth/login", { email: `invitee${u}@example.com`, password: temp });
+r = await call("POST", "/api/auth/login", { email: `fail-invitee${u}@example.com`, password: temp });
 check("invitee can sign in with the temp password", r.status === 200, r);
 const inviteeToken = r.json.token;
 
@@ -27,8 +29,8 @@ check("password changed, fresh token returned", r.status === 200 && r.json.token
 const fresh = r.json.token;
 check("old session revoked after password change", (await call("GET", "/api/auth/me", undefined, inviteeToken)).status === 401);
 check("fresh session works", (await call("GET", "/api/auth/me", undefined, fresh)).status === 200);
-check("old password no longer works", (await call("POST", "/api/auth/login", { email: `invitee${u}@example.com`, password: temp })).status === 401);
-check("new password works", (await call("POST", "/api/auth/login", { email: `invitee${u}@example.com`, password: "a-new-password" })).status === 200);
+check("old password no longer works", (await call("POST", "/api/auth/login", { email: `fail-invitee${u}@example.com`, password: temp })).status === 401);
+check("new password works", (await call("POST", "/api/auth/login", { email: `fail-invitee${u}@example.com`, password: "a-new-password" })).status === 200);
 
 // --- discord webhook: only real Discord URLs (SSRF)
 r = await call("PATCH", `/api/projects/${pid}`, { dltDiscordWebhookUrl: "http://169.254.169.254/latest/meta-data/" }, token);

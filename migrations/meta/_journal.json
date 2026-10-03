@@ -57,6 +57,13 @@
       "when": 1710000006000,
       "tag": "0016_schema_drift_fixes",
       "breakpoints": false
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1710000007000,
+      "tag": "0017_email_and_password_reset",
+      "breakpoints": false
     }
   ]
 }

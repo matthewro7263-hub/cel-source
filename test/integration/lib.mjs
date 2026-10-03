@@ -21,3 +21,29 @@ export async function demoProjectId(token) {
   if (!demo) throw new Error("demo project not found; was the database seeded?");
   return demo.id;
 }
+
+// ---- captured email (mock Resend; see mock-resend.mjs) ----
+const mailBase = process.env.MAIL_BASE;
+export async function allMail() { return (await fetch(`${mailBase}/__sent`)).json(); }
+/** Waits (mail is sent in the background) for a message to `to` whose subject matches. */
+export async function waitForMail(to, subject, { timeoutMs = 4000, after = 0 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const hit = (await allMail()).filter((m) => m.to === to && subject.test(m.subject) && m.at >= after).pop();
+    if (hit) return hit;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  return null;
+}
+export const tokenFrom = (mail) => /reset-password\?token=([\w-]+)/.exec(mail?.text ?? "")?.[1];
+/** Credentials for a freshly invited user, whether the server returned a temp password or emailed a set-password link. */
+export async function inviteCredentials(inviteJson, email) {
+  if (inviteJson.tempPassword) return inviteJson.tempPassword;
+  const mail = await waitForMail(email, /invited you/);
+  const token = tokenFrom(mail);
+  if (!token) throw new Error(`no invite email for ${email}`);
+  const password = "invited-password-123";
+  const r = await call("POST", "/api/auth/reset-password", { token, password });
+  if (r.status !== 200) throw new Error(`could not redeem invite: ${JSON.stringify(r.json)}`);
+  return password;
+}

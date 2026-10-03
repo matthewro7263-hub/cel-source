@@ -17,6 +17,11 @@ import { registerIdParamValidators } from "./params";
 import { authenticateToken, extractToken, requireAuth, canAccessProject, canEditProject, invalidateProjectAccess } from "./auth";
 import { checkAchievements } from "./achievements";
 import { mergeTags, parseTagReply, rankSimilar } from "./asset_tags";
+import { appLink, mailConfigured, sendMail } from "./mailer";
+import { commissionRequestEmail, passwordChangedEmail, passwordResetEmail, projectInviteEmail } from "./emails";
+import { hashResetToken, newResetToken } from "./reset_tokens";
+import { isDeletedAccount } from "./data_cleanup";
+import { demoEnabled } from "./demo";
 
 function fireAchievements(ctx: Parameters<typeof checkAchievements>[0]) {
   checkAchievements(ctx).catch((err) => console.error("[achievements]", err));
@@ -93,6 +98,21 @@ const upload = multer({
   const loginLimiter = limiter(15 * 60 * 1000, 20, "Too many login attempts, please try again in 15 minutes.");
   const commissionLimiter = limiter(60 * 60 * 1000, 5, "Too many submissions. Try again later.");
   const aiLimiter = limiter(60 * 1000, 30, "Too many AI requests. Give it a minute and try again.");
+  const forgotLimiter = limiter(60 * 60 * 1000, 5, "Too many password reset requests. Try again in an hour.");
+  const resetLimiter = limiter(15 * 60 * 1000, 10, "Too many attempts. Try again in 15 minutes.");
+  const accountLimiter = limiter(15 * 60 * 1000, 10, "Too many attempts. Try again in 15 minutes.");
+
+  const RESET_TTL_MS = 60 * 60 * 1000;
+  const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+  // Public, non-sensitive switches the client needs before anyone has signed in.
+  app.get("/api/config", (_req, res) => {
+    res.json({
+      demo: demoEnabled() ? { email: "matthew@cel.app", password: "celdemo" } : null,
+      emailEnabled: mailConfigured(),
+      contactEmail: process.env.CONTACT_EMAIL || null,
+    });
+  });
 
   // ===== AUTH =====
   app.post("/api/auth/signup", signupLimiter, async (req, res) => {
@@ -148,7 +168,37 @@ const upload = multer({
       passwordHash: await hashPassword(newPassword),
       tokenVersion: req.user!.tokenVersion + 1,
     });
+    await storage.revokePasswordResetTokens(updated.id);
+    void sendMail(passwordChangedEmail(updated.email, updated.name));
     res.json({ token: createSession(updated.id, updated.tokenVersion) });
+  });
+
+  // Password reset: the emailed token is random, stored only as a hash, single-use and short-lived.
+  app.post("/api/auth/forgot-password", forgotLimiter, async (req, res) => {
+    const { email } = z.object({ email: z.string().email() }).parse(req.body);
+    const user = await storage.getUserByEmail(email);
+    // Same answer whether or not the account exists, so this can't be used to discover who has one.
+    // The 60s check stops one address from being mail-bombed through this form.
+    if (user && !isDeletedAccount(user) && !(await storage.hasRecentPasswordResetToken(user.id, 60_000))) {
+      const { token, hash } = newResetToken();
+      await storage.revokePasswordResetTokens(user.id);
+      await storage.createPasswordResetToken(user.id, hash, new Date(Date.now() + RESET_TTL_MS));
+      void sendMail(passwordResetEmail(user.email, user.name, appLink(`/reset-password?token=${token}`), 1));
+    }
+    res.json({ ok: true });
+  });
+
+  // Also redeems invite tokens (an invited user chooses their first password the same way).
+  app.post("/api/auth/reset-password", resetLimiter, async (req, res) => {
+    const { token, password } = z.object({ token: z.string().min(20).max(200), password: z.string().min(8).max(200) }).parse(req.body);
+    const userId = await storage.consumePasswordResetToken(hashResetToken(token));
+    const user = userId ? await storage.getUser(userId) : undefined;
+    if (!user) return res.status(400).json({ message: "This link is invalid or has expired. Request a new one." });
+    // Bumping tokenVersion signs out every existing session, including an attacker's.
+    const updated = await storage.updateUser(user.id, { passwordHash: await hashPassword(password), tokenVersion: user.tokenVersion + 1 });
+    await storage.revokePasswordResetTokens(user.id);
+    void sendMail(passwordChangedEmail(updated.email, updated.name));
+    res.json({ ok: true });
   });
 
   // Tokens are stateless, so "logout everywhere" revokes them by bumping tokenVersion.
@@ -163,11 +213,24 @@ const upload = multer({
   });
 
   app.patch("/api/auth/me", requireAuth, async (req, res) => {
-    const schema = z.object({ name: z.string().min(1).optional(), avatarColor: z.string().optional() });
+    const schema = z.object({ name: z.string().min(1).max(80).optional(), avatarColor: z.string().optional(), emailNotifications: z.boolean().optional() });
     const patch = schema.parse(req.body);
     const updated = await storage.updateUser(req.user!.id, patch);
     const { passwordHash, ...safe } = updated!;
     res.json(safe);
+  });
+
+  // Permanently deletes everything the account owns and anonymises the user row (see data_cleanup.ts).
+  app.delete("/api/auth/me", requireAuth, accountLimiter, async (req, res) => {
+    const { password, confirmEmail } = z.object({ password: z.string().min(1), confirmEmail: z.string() }).parse(req.body);
+    if (confirmEmail.trim().toLowerCase() !== req.user!.email.toLowerCase()) {
+      return res.status(400).json({ message: "Type your email address exactly to confirm" });
+    }
+    if (!(await verifyPassword(password, req.user!.passwordHash))) {
+      return res.status(403).json({ message: "Password is incorrect" });
+    }
+    await storage.deleteAccount(req.user!.id);
+    res.json({ ok: true });
   });
 
   // ===== PROJECTS =====
@@ -394,6 +457,7 @@ const upload = multer({
     const schema = z.object({ email: z.string().email(), role: z.enum(["editor", "reviewer"]).optional() });
     const body = schema.parse(req.body);
     let user = await storage.getUserByEmail(body.email);
+    const created = !user;
     let tempPassword: string | undefined;
     if (!user) {
       // Never a fixed/guessable password: anyone knowing the email could otherwise sign in as the invitee.
@@ -406,12 +470,28 @@ const upload = multer({
         avatarColor: colors[Math.floor(Math.random() * colors.length)],
       });
     }
+    const role = body.role || "editor";
     if (!(await storage.isMember(id, user.id))) {
-      await storage.addMember({ projectId: id, userId: user.id, role: body.role || "editor" });
+      await storage.addMember({ projectId: id, userId: user.id, role });
       invalidateProjectAccess(id, user.id);
       fireAchievements({ userId: req.user!.id, event: "add_member", projectId: id });
     }
-    res.json({ user: { id: user.id, email: user.email, name: user.name, avatarColor: user.avatarColor }, tempPassword });
+
+    // Email the invitation. A brand-new account gets a one-time "choose your password" link instead of a
+    // password; if email isn't configured (or fails) the owner is handed the temporary password to pass on.
+    let setPasswordUrl: string | undefined;
+    if (created && mailConfigured()) {
+      const { token, hash } = newResetToken();
+      await storage.createPasswordResetToken(user.id, hash, new Date(Date.now() + INVITE_TTL_MS), "invite");
+      setPasswordUrl = appLink(`/reset-password?token=${token}`);
+    }
+    const project = await storage.getProject(id);
+    const mail = await sendMail(projectInviteEmail({
+      to: user.email, name: user.name, inviter: req.user!.name, project: project?.title ?? "a project", role,
+      url: appLink(`/projects/${id}`), setPasswordUrl,
+    }));
+    if (mail.sent) tempPassword = undefined;
+    res.json({ user: { id: user.id, email: user.email, name: user.name, avatarColor: user.avatarColor }, tempPassword, emailed: mail.sent });
   });
 
   app.patch("/api/projects/:id/members/:userId", requireAuth, async (req, res) => {
@@ -1136,7 +1216,8 @@ const upload = multer({
       return res.status(413).json({ message: "Reference image too large (max 10MB)" });
     }
     // Validate that the ownerUserId refers to an existing user
-    if (!(await storage.getUser(body.ownerUserId))) {
+    const artist = await storage.getUser(body.ownerUserId);
+    if (!artist || isDeletedAccount(artist)) {
       return res.status(404).json({ message: "Unknown artist" });
     }
     const commission = await storage.createCommission({
@@ -1152,6 +1233,14 @@ const upload = multer({
       notes: "",
     });
     fireAchievements({ userId: body.ownerUserId, event: "create_commission" });
+    // Tell the artist (unless they've opted out). Deliberately no auto-reply to the client's address:
+    // a public form that emails whatever address it's given is a spam vector.
+    if (artist.emailNotifications) {
+      void sendMail(commissionRequestEmail({
+        to: artist.email, artist: artist.name, clientName: body.clientName, clientEmail: body.clientEmail,
+        type: body.type, budget: body.budgetRange, description: body.description, url: appLink("/commissions"),
+      }));
+    }
     res.json(commission);
   });
 

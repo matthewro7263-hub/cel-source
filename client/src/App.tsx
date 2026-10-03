@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, lazy, Suspense } from "react";
 import { useLiquidGL } from "@/hooks/useLiquidGL";
 import { Switch, Route, Router, Redirect } from "wouter";
-import { useHashLocation } from "wouter/use-hash-location";
+import { useHashLocation } from "@/lib/hashLocation";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -13,6 +13,9 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 import Login from "@/pages/Login";
 import Signup from "@/pages/Signup";
+import ForgotPassword from "@/pages/ForgotPassword";
+import ResetPassword from "@/pages/ResetPassword";
+import { PrivacyPage, TermsPage } from "@/pages/Legal";
 import Landing from "@/pages/Landing";
 const Dashboard = lazy(() => import("@/pages/Dashboard"));
 const ProjectWorkspace = lazy(() => import("@/pages/ProjectWorkspace"));
@@ -149,6 +152,10 @@ function AppRouter() {
         <Route path="/animators">{() => <MarketingSection sectionId="animators" />}</Route>
         <Route path="/login" component={Login} />
         <Route path="/signup" component={Signup} />
+        <Route path="/forgot-password" component={ForgotPassword} />
+        <Route path="/reset-password" component={ResetPassword} />
+        <Route path="/privacy" component={PrivacyPage} />
+        <Route path="/terms" component={TermsPage} />
         <Route path="/share/:token" component={Share} />
         <Route path="/dashboard">
           <ProtectedShell><LazyRoute><Dashboard /></LazyRoute></ProtectedShell>
