@@ -1,5 +1,5 @@
-import { useState, useRef } from "react";
-import { useInfiniteQuery, useMutation } from "@tanstack/react-query";
+import { useState, useRef, useEffect } from "react";
+import { useInfiniteQuery, useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   Upload, Download, Trash2, Search, Layers, User, Box, FileImage,
-  Music, File as FileIcon, X, CloudRain
+  Music, File as FileIcon, Sparkles, Loader2
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { GlassButton } from "@/components/ui/glass-button";
@@ -111,38 +111,15 @@ export function AssetsTab({ projectId }: AssetsTabProps) {
   });
 
   const autoTagAll = useMutation({
-    mutationFn: async () => {
-      await new Promise(r => setTimeout(r, 1000));
-      for (const a of filtered) {
-        if (!a.tags) {
-          await apiRequest("PATCH", `/api/assets/${a.id}`, { tags: "auto-ai, " + a.category.toLowerCase() });
-        }
-      }
-    },
-    onSuccess: () => {
+    mutationFn: async () => (await apiRequest("POST", `/api/projects/${projectId}/assets/auto-tag`, {})).json() as Promise<{ tagged: number; failed: number; message?: string }>,
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId, "assets"] });
-      toast({ title: "Auto-tagging complete", description: "Processed assets with AI vision." });
-    },
-  });
-
-  const driveSync = useMutation({
-    mutationFn: async () => {
-      await new Promise((r) => setTimeout(r, 1500));
-      const fileData = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
-      await apiRequest("POST", `/api/projects/${projectId}/assets`, {
-        filename: `Procreate_Export_${Math.floor(Math.random() * 100)}.png`,
-        mimeType: "image/png",
-        fileData,
-        thumbnailData: fileData,
-        category: "Characters",
-        notes: "Auto-imported from Google Drive Watcher",
-        tags: "procreate, sync",
+      toast({
+        title: data.tagged > 0 ? `Tagged ${data.tagged} asset${data.tagged === 1 ? "" : "s"}` : "Nothing to tag",
+        description: data.message ?? (data.failed ? `${data.failed} couldn't be tagged. Try again in a moment.` : "Review the suggested tags in each asset's details."),
       });
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId, "assets"] });
-      toast({ title: "Drive Sync Complete", description: "Found 1 new file from Procreate." });
-    },
+    onError: (err: Error) => toast({ title: "Auto-tag failed", description: err.message, variant: "destructive" }),
   });
 
   const handleFiles = async (files: FileList | null) => {
@@ -271,23 +248,14 @@ export function AssetsTab({ projectId }: AssetsTabProps) {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => driveSync.mutate()}
-            disabled={driveSync.isPending}
-            data-testid="button-sync-drive"
-            className="text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/10 h-8"
-          >
-            <CloudRain size={13} className="mr-1" />
-            {driveSync.isPending ? "Polling..." : "Drive Watcher"}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
             onClick={() => autoTagAll.mutate()}
             disabled={autoTagAll.isPending}
-            className="text-primary border-primary/20 hover:bg-primary/10 h-8"
+            title="Suggest tags for untagged images using AI (needs an OpenRouter key in Project Settings)"
+            data-testid="button-auto-tag"
+            className="h-8"
           >
-            <Search size={13} className="mr-1" />
-            Auto-tag All
+            {autoTagAll.isPending ? <Loader2 size={13} className="mr-1 animate-spin" /> : <Sparkles size={13} className="mr-1" />}
+            {autoTagAll.isPending ? "Tagging…" : "Auto-tag"}
           </Button>
           <GlassButton
             variant="primary"
@@ -366,20 +334,14 @@ export function AssetsTab({ projectId }: AssetsTabProps) {
         onDelete={(id) => del.mutate(id)}
         onUpdate={(id, patch) => update.mutate({ id, patch })}
         onDownload={downloadAsset}
+        onSelect={setSelectedAsset}
       />
     </div>
   );
 }
 
-function isDriveSyncedAsset(asset: AssetSafe): boolean {
-  const tags = asset.tags.toLowerCase();
-  return tags.includes("sync") || tags.includes("procreate") || asset.notes.toLowerCase().includes("google drive");
-}
-
 function AssetCard({ asset, onClick, onDownload }: { asset: AssetSafe; onClick: () => void; onDownload: () => void }) {
   const isImage = asset.mimeType.startsWith("image/") && asset.thumbnailData;
-  const driveSynced = isDriveSyncedAsset(asset);
-  const sizeStr = "–"; // size not included in listing (fileData excluded)
 
   return (
     <div
@@ -399,20 +361,10 @@ function AssetCard({ asset, onClick, onDownload }: { asset: AssetSafe; onClick: 
             </span>
           </div>
         )}
-        {/* Category + drive sync badges */}
+        {/* Category badge */}
         <span className="absolute top-2 left-2 text-[10px] font-medium px-1.5 py-0.5 rounded bg-black/50 text-white backdrop-blur-sm">
           {asset.category}
         </span>
-        {driveSynced && (
-          <span
-            className="absolute bottom-2 left-2 text-[9px] font-mono font-medium px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 backdrop-blur-sm flex items-center gap-1"
-            title="Imported via Drive Watcher"
-            data-testid={`badge-drive-sync-${asset.id}`}
-          >
-            <CloudRain size={9} />
-            Drive
-          </span>
-        )}
         {/* Download button overlay */}
         <button
           onClick={(e) => { e.stopPropagation(); onDownload(); }}
@@ -433,32 +385,41 @@ function AssetCard({ asset, onClick, onDownload }: { asset: AssetSafe; onClick: 
   );
 }
 
+type SimilarAsset = AssetSafe & { score: number };
+
 function AssetModal({
   asset,
   onClose,
   onDelete,
   onUpdate,
   onDownload,
+  onSelect,
 }: {
   asset: AssetSafe | null;
   onClose: () => void;
   onDelete: (id: number) => void;
   onUpdate: (id: number, patch: { notes?: string; tags?: string; category?: string }) => void;
   onDownload: (asset: AssetSafe) => void;
+  onSelect: (asset: AssetSafe) => void;
 }) {
   const [notes, setNotes] = useState("");
   const [tags, setTags] = useState("");
-  const { toast } = useToast();
+
+  // Reset the form when a different asset is opened. (Setting state during render here used to
+  // overwrite every keystroke with the saved value, so notes and tags couldn't be edited.)
+  useEffect(() => {
+    setNotes(asset?.notes ?? "");
+    setTags(asset?.tags ?? "");
+  }, [asset?.id]);
+
+  const { data: similar } = useQuery({
+    queryKey: ["/api/assets", asset?.id, "similar"],
+    queryFn: async () => ((await apiRequest("GET", `/api/assets/${asset!.id}/similar`)).json()) as Promise<{ items: SimilarAsset[] }>,
+    enabled: !!asset,
+    staleTime: 30_000,
+  });
 
   if (!asset) return null;
-
-  // Keep local state in sync when asset changes
-  if (notes !== asset.notes && asset.notes !== undefined) {
-    setNotes(asset.notes);
-  }
-  if (tags !== asset.tags && asset.tags !== undefined) {
-    setTags(asset.tags);
-  }
 
   const isImage = asset.mimeType.startsWith("image/");
 
@@ -516,14 +477,37 @@ function AssetModal({
             </div>
           </div>
         </div>
+        <div className="pt-1" data-testid="similar-assets">
+          <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Similar assets</span>
+          {similar && similar.items.length > 0 ? (
+            <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
+              {similar.items.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => onSelect(item)}
+                  title={`${item.filename}${item.tags ? ` · ${item.tags}` : ""}`}
+                  className="shrink-0 w-20 text-left"
+                  data-testid={`similar-asset-${item.id}`}
+                >
+                  <div className="aspect-square rounded-md bg-muted overflow-hidden flex items-center justify-center border border-border">
+                    {item.thumbnailData ? (
+                      <img src={item.thumbnailData} alt={item.filename} className="w-full h-full object-cover" loading="lazy" />
+                    ) : (
+                      getAssetIcon(item.mimeType, item.filename)
+                    )}
+                  </div>
+                  <p className="mt-1 text-[10px] truncate">{item.filename}</p>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-1 text-xs text-muted-foreground">
+              {similar ? "Nothing similar yet. Matches are based on shared tags and filename words, so tagging assets improves this." : "Looking…"}
+            </p>
+          )}
+        </div>
         <DialogFooter className="pt-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => toast({ title: "Finding similar assets...", description: "AI vector search returned 5 matches." })}
-          >
-            <Search size={13} className="mr-1" /> Find Similar
-          </Button>
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button variant="ghost" size="sm" className="text-destructive mr-auto">

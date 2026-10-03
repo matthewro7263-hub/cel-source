@@ -140,6 +140,7 @@ See [.env.example](./.env.example). The critical ones:
 | `SESSION_SECRET` | **Required in production.** Signs session tokens. Generate with `openssl rand -hex 32` |
 | `ENCRYPTION_KEY` | **Required in production** (see above) |
 | `CEL_ADMIN_EMAILS` | *(optional)* comma-separated emails allowed to create challenge prompts / snapshots |
+| `CEL_RATE_LIMIT_SCALE` | *(optional)* multiplier for the signup/login/commission/AI rate limits (default `1`); raise it behind a shared office NAT |
 | `CEL_SEED_DEMO` | *(optional)* set to `true` to seed demo accounts in production (they use a public password) |
 | `FREESOUND_API_KEY` | *(optional)* enables sound-effect search |
 | `CEL_DB_DRIVER` | *(optional)* `neon` or `pg`. Defaults to Neon's driver for `*.neon.tech` hosts and node-postgres elsewhere |

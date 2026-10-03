@@ -14,6 +14,9 @@ import {
   Layers,
   PenTool,
   Wand2,
+  Archive,
+  FileText,
+  Webhook,
 } from "lucide-react";
 
 /**
@@ -152,17 +155,19 @@ export default function Landing() {
           </div>
         </section>
 
-        {/* Plays nice with */}
+        {/* Imports / exports (only things that exist today) */}
         <section className="w-full text-center mb-24 flex flex-col items-center">
-          <h2 className="font-extrabold tracking-tight text-3xl sm:text-4xl mb-2">Plays nice with your tools</h2>
-          <p className="text-on-surface/60 mb-10 max-w-xl">Export and import everywhere you already work.</p>
+          <h2 className="font-extrabold tracking-tight text-3xl sm:text-4xl mb-2">Takes your work with it</h2>
+          <p className="text-on-surface/60 mb-10 max-w-xl">Real exports, not lock-in. Your boards and scripts leave as files you can open anywhere.</p>
           <div className="flex flex-wrap justify-center gap-3">
             {[
-              { label: "Blender", icon: Boxes },
-              { label: "Moho", icon: Film },
-              { label: "Procreate", icon: PenTool },
-              { label: "After Effects", icon: Wand2 },
-              { label: "Ko-fi", icon: Sparkles },
+              { label: "Blender · glTF storyboard planes", icon: Boxes },
+              { label: "Blender · lip-sync keyframes", icon: Boxes },
+              { label: "Moho · switch-layer .dat", icon: Film },
+              { label: "WebM animatics", icon: Film },
+              { label: "PDF script import", icon: FileText },
+              { label: "Full project ZIP", icon: Archive },
+              { label: "Discord webhooks", icon: Webhook },
             ].map(({ label, icon: Icon }) => (
               <div key={label} className="landing-pill flex items-center gap-2 px-4 py-2 rounded-full text-xs font-mono uppercase tracking-wider">
                 <Icon className="w-3.5 h-3.5" />
@@ -195,7 +200,7 @@ export default function Landing() {
               id="commissions"
               icon={<Briefcase className="w-7 h-7 text-sky-600" />}
               title="For Commission Creators"
-              body="A real commissions queue: intake forms, statuses, deadlines, and Ko-fi integration. Track your business without spreadsheets or sticky notes."
+              body="A real commissions queue: a public intake form you can share, statuses, deadlines, quotes, and one-click conversion into a project. Track your business without spreadsheets or sticky notes."
               cta="Open the queue"
               blob="blob-peach"
             />
@@ -203,7 +208,7 @@ export default function Landing() {
               id="tinkerers"
               icon={<Code2 className="w-7 h-7 text-sky-600" />}
               title="For Pipeline Tinkerers"
-              body="Cel ships with a clean REST API, Blender-friendly exports, and JSON-everywhere data. Wire it into your own scripts, MCP servers, or Discord bots."
+              body="Cel ships with a REST API, an MCP server, Blender-friendly exports, and JSON everywhere. Wire it into your own scripts, agents, or Discord channel."
               cta="Peek under the hood"
               blob="blob-sky"
             />
@@ -271,11 +276,11 @@ export default function Landing() {
               { label: "Sign up", href: "/signup" },
             ]} />
             <FooterCol title="Made by" links={[
-              { label: "Matthew Reyes", href: "#" },
+              { label: "Matthew Reyes", href: "" },
             ]} />
             <FooterCol title="Legal" links={[
-              { label: "Privacy", href: "#" },
-              { label: "Terms", href: "#" },
+              { label: "Privacy", href: "/privacy" },
+              { label: "Terms", href: "/terms" },
             ]} />
           </div>
         </div>
@@ -320,7 +325,9 @@ function FooterCol({ title, links }: { title: string; links: { label: string; hr
     <div className="flex flex-col gap-3">
       <h4 className="text-xs font-mono uppercase tracking-wider font-bold">{title}</h4>
       {links.map((l) => (
-        l.href.startsWith("/") ? (
+        !l.href ? (
+          <span key={l.label} className="text-sm text-on-surface/70">{l.label}</span>
+        ) : l.href.startsWith("/") ? (
           <Link key={l.label} href={l.href} className="text-sm text-on-surface/70 hover:text-sky-600 transition-colors">
             {l.label}
           </Link>

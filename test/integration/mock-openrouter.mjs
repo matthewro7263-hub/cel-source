@@ -2,6 +2,14 @@ import http from "http";
 http.createServer((req, res) => {
   let body = ""; req.on("data", c => body += c); req.on("end", () => {
     const j = JSON.parse(body);
+    // Vision requests (image_url parts) are the asset auto-tagger; "mock/text-only" rejects them like a non-vision model would.
+    const last = j.messages?.[j.messages.length - 1];
+    if (Array.isArray(last?.content)) {
+      res.setHeader("content-type", "application/json");
+      if (j.model === "mock/text-only") { res.statusCode = 400; return res.end(JSON.stringify({ error: { message: "model does not support image input" } })); }
+      const name = last.content.find((p) => p.type === "text")?.text ?? "";
+      return res.end(JSON.stringify({ choices: [{ message: { content: 'Sure! ```json\n{"tags": ["Mock Tag", "cartoon", "' + name.replace(/^File name:\s*/, "").replace(/[^a-z]/gi, "").slice(0, 8).toLowerCase() + '"]}\n```' } }] }));
+    }
     if (!j.stream) { res.setHeader("content-type","application/json"); return res.end(JSON.stringify({ choices: [{ message: { content: "mock feedback" } }] })); }
     res.setHeader("content-type", "text/event-stream");
     const ev = (o) => `data: ${JSON.stringify(o)}\n\n`;

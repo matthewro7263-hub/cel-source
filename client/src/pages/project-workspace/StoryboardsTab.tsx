@@ -576,6 +576,7 @@ function StoryboardView({
               <StoryboardInspector
                 panel={selectedPanel}
                 projectId={projectId}
+                scenes={scenes}
                 index={panels.findIndex((p) => p.id === selectedPanelId)}
                 onClose={() => setSelectedPanelId(null)}
                 onEdit={(patch) => editPanel.mutate({ id: selectedPanel.id, patch })}
@@ -694,6 +695,7 @@ const SortablePanel = memo(function SortablePanel({
 function StoryboardInspector({
   panel,
   projectId,
+  scenes,
   index,
   onClose,
   onEdit,
@@ -702,6 +704,7 @@ function StoryboardInspector({
 }: {
   panel: Panel;
   projectId: number;
+  scenes: Scene[];
   index: number;
   onClose: () => void;
   onEdit: (patch: Partial<Panel>) => void;
@@ -802,6 +805,24 @@ function StoryboardInspector({
             placeholder="Add notes..."
             className="text-xs resize-none"
           />
+        </div>
+
+        <div className="space-y-1">
+          <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Scene</Label>
+          <Select
+            value={panel.sceneId ? String(panel.sceneId) : "none"}
+            onValueChange={(val) => onEdit({ sceneId: val === "none" ? null : parseInt(val, 10) })}
+          >
+            <SelectTrigger className="text-xs h-8" data-testid="select-panel-scene">
+              <SelectValue placeholder="No scene" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">No scene</SelectItem>
+              {scenes.map((s) => (
+                <SelectItem key={s.id} value={String(s.id)}>Scene {s.number} · {s.title}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         <div className="space-y-1">

@@ -41,6 +41,7 @@ const env = {
   ENCRYPTION_KEY: process.env.ENCRYPTION_KEY ?? "ab".repeat(32),
   CEL_SEED_DEMO: "true",
   CEL_ADMIN_EMAILS: "matthew@cel.app",
+  CEL_RATE_LIMIT_SCALE: "10", // the suites create far more accounts than one IP normally would
   OPENROUTER_BASE_URL: `http://127.0.0.1:${MOCK_PORT}`,
 };
 delete env.R2_BUCKET; delete env.R2_ENDPOINT; // exercise the "no cloud storage" paths
@@ -59,7 +60,7 @@ for (let i = 0; i < 60 && !up; i++) {
 }
 if (!up) { console.error("server did not become healthy:\n" + serverLog); process.exit(1); }
 
-const suites = ["api-core", "share", "script-upload", "exports-and-ws", "media-urls", "ai", "api-modules", "trash-and-snapshots", "accounts", "client-payloads", "roles"];
+const suites = ["api-core", "share", "script-upload", "exports-and-ws", "media-urls", "ai", "api-modules", "trash-and-snapshots", "accounts", "client-payloads", "roles", "assets-and-export"];
 const failed = [];
 for (const name of suites) {
   console.log(`\n=== ${name}`);

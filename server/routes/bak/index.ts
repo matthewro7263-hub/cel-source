@@ -3,11 +3,14 @@ import { Router, Request, Response, NextFunction } from "express";
 import { db } from "../../storage.js";
 import { storage } from "../../storage.js";
 import {
-  scripts, storyboardPanels, scenes, assets, bakSnapshots, bakGltfExports,
+  scripts, storyboardPanels, scenes, assets, bakSnapshots,
   projects, comments, projectMembers, storyboards
 } from "@shared/schema";
-import { eq, isNull, lt, inArray, isNotNull, and, getTableColumns } from "drizzle-orm";
+import { eq, isNull, lt, inArray, isNotNull, and, asc, getTableColumns } from "drizzle-orm";
 import { createHash } from "node:crypto";
+import { presignDownload } from "../../r2.js";
+import { requireCanvasModule } from "../../canvas_lazy.js";
+import { buildStoryboardGltf, gltfFilename, imageSize, parseDataUrl, type GltfPanelInput, type RasterMime } from "../../gltf.js";
 
 export const bakRouter = Router();
 
@@ -133,67 +136,71 @@ bakRouter.get("/projects/:id/snapshots", requireAuth, async (req, res) => {
   res.json(snaps);
 });
 
-// 6. GLTF Export Stub
-bakRouter.post("/scenes/:id/gltf-stub", requireAuth, async (req, res) => {
+// 6. glTF export: one textured plane per storyboard panel in the scene (opens in Blender).
+async function loadPanelImage(panel: { imageData: string | null; r2Key: string | null }): Promise<{ data: Buffer; mime: string } | null> {
+  if (panel.imageData) return parseDataUrl(panel.imageData);
+  if (panel.r2Key) {
+    const response = await fetch(await presignDownload(panel.r2Key, 120)).catch(() => null);
+    if (!response?.ok) return null;
+    return { data: Buffer.from(await response.arrayBuffer()), mime: (response.headers.get("content-type") ?? "").split(";")[0].toLowerCase() };
+  }
+  return null;
+}
+
+/** glTF only allows PNG/JPEG textures; re-encode anything else (WebP, GIF, ...) as PNG. */
+async function toRaster(image: { data: Buffer; mime: string }): Promise<{ data: Buffer; mime: RasterMime; width: number; height: number } | null> {
+  if (image.mime === "image/png" || image.mime === "image/jpeg") {
+    const size = imageSize(image.data);
+    if (size) return { data: image.data, mime: image.mime, ...size };
+  }
+  const canvas = await requireCanvasModule();
+  if (!canvas) return null;
+  try {
+    const decoded = await canvas.loadImage(image.data);
+    const surface = canvas.createCanvas(decoded.width, decoded.height);
+    surface.getContext("2d").drawImage(decoded, 0, 0);
+    return { data: surface.toBuffer("image/png"), mime: "image/png", width: decoded.width, height: decoded.height };
+  } catch {
+    return null;
+  }
+}
+
+const exportSceneGltf = async (req: Request, res: Response) => {
   const sceneId = parseInt(String(req.params.id), 10);
   const sceneObj = await db.select().from(scenes).where(eq(scenes.id, sceneId)).then((r) => r[0]);
-  
-  if (!sceneObj) return res.status(404).json({ message: "Scene not found" });
-  if (!(await canEditProject(sceneObj.projectId, req.user!.id))) {
+
+  if (!sceneObj || sceneObj.deletedAt) return res.status(404).json({ message: "Scene not found" });
+  if (!(await canAccessProject(sceneObj.projectId, req.user!.id))) {
     return res.status(403).json({ message: "Forbidden" });
   }
 
-  const positions = Buffer.from(new Float32Array([
-    -1, -1, 0,
-    1, -1, 0,
-    1, 1, 0,
-    -1, 1, 0,
-  ]).buffer);
-  const indices = Buffer.from(new Uint16Array([0, 1, 2, 0, 2, 3]).buffer);
-  const buffer = Buffer.concat([positions, indices]);
-  const sceneName = `${sceneObj.number}_${sceneObj.title}`.replace(/[^a-z0-9._-]+/gi, "_");
+  const panels = await db.select().from(storyboardPanels)
+    .where(and(eq(storyboardPanels.sceneId, sceneId), isNull(storyboardPanels.deletedAt)))
+    .orderBy(asc(storyboardPanels.orderIdx), asc(storyboardPanels.id));
 
-  const gltf = {
-    asset: { version: "2.0", generator: "Cel local GLTF stub exporter" },
-    scene: 0,
-    scenes: [{ name: sceneName, nodes: [0, 1] }],
-    nodes: [
-      { name: "Camera", translation: [0, 0, 5] },
-      { name: "Storyboard_Plane", mesh: 0 },
-    ],
-    meshes: [{
-      name: "Storyboard_Plane",
-      primitives: [{
-        attributes: { POSITION: 0 },
-        indices: 1,
-        mode: 4,
-      }],
-    }],
-    buffers: [{
-      uri: `data:application/octet-stream;base64,${buffer.toString("base64")}`,
-      byteLength: buffer.byteLength,
-    }],
-    bufferViews: [
-      { buffer: 0, byteOffset: 0, byteLength: positions.byteLength, target: 34962 },
-      { buffer: 0, byteOffset: positions.byteLength, byteLength: indices.byteLength, target: 34963 },
-    ],
-    accessors: [
-      { bufferView: 0, byteOffset: 0, componentType: 5126, count: 4, type: "VEC3", min: [-1, -1, 0], max: [1, 1, 0] },
-      { bufferView: 1, byteOffset: 0, componentType: 5123, count: 6, type: "SCALAR" },
-    ],
-  };
+  const inputs: GltfPanelInput[] = [];
+  let skipped = 0;
+  for (const [i, panel] of panels.entries()) {
+    const raw = await loadPanelImage(panel);
+    const raster = raw ? await toRaster(raw) : null;
+    if (!raster) { skipped++; continue; }
+    inputs.push({
+      number: i + 1, image: raster.data, mime: raster.mime, width: raster.width, height: raster.height,
+      caption: panel.caption, dialogue: panel.dialogue, notes: panel.notes, status: panel.status, frameCount: panel.frameCount,
+    });
+  }
+  if (inputs.length === 0) {
+    return res.status(422).json({ message: panels.length === 0 ? "This scene has no storyboard panels yet." : "None of this scene's panels have an exportable image." });
+  }
 
-  const gltfStr = JSON.stringify(gltf);
-
-  await db.insert(bakGltfExports).values({
-    sceneId,
-    fileData: gltfStr
-  });
-
-  res.setHeader('Content-Type', 'application/json');
-  res.setHeader('Content-Disposition', `attachment; filename="scene_${sceneId}_stub.gltf"`);
-  res.send(gltfStr);
-});
+  const gltf = buildStoryboardGltf(`${sceneObj.number}_${sceneObj.title}`, inputs);
+  res.setHeader("Content-Type", "model/gltf+json");
+  res.setHeader("Content-Disposition", `attachment; filename="${gltfFilename(sceneObj.number, sceneObj.title)}"`);
+  res.setHeader("X-Cel-Panels-Exported", String(inputs.length));
+  res.setHeader("X-Cel-Panels-Skipped", String(skipped));
+  res.send(JSON.stringify(gltf));
+};
+bakRouter.get("/scenes/:id/export/gltf", requireAuth, exportSceneGltf);
 
 // 7. Asset Integrity Scan
 bakRouter.get("/projects/:id/trash/integrity", requireAuth, async (req, res) => {

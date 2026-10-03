@@ -1,5 +1,5 @@
 import { db, pool } from "./db";
-import { eq, and, or, inArray, asc, desc, ilike, sql, isNull, lt } from "drizzle-orm";
+import { eq, and, or, inArray, asc, desc, ilike, like, sql, isNull, isNotNull, lt } from "drizzle-orm";
 import { randomBytes, scrypt, timingSafeEqual, createHmac } from "node:crypto";
 import { promisify } from "node:util";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -532,6 +532,26 @@ const coreStorage = {
       .orderBy(desc(assets.createdAt));
   },
   async getAsset(id: number) { return await db.select().from(assets).where(eq(assets.id, id)).then(r => r[0]); },
+  /** Metadata only: skips the (potentially multi-MB) file payload. */
+  async getAssetMeta(id: number) {
+    return await db
+      .select({ id: assets.id, projectId: assets.projectId, filename: assets.filename, category: assets.category, mimeType: assets.mimeType, tags: assets.tags, deletedAt: assets.deletedAt })
+      .from(assets).where(eq(assets.id, id)).then((r) => r[0]);
+  },
+  async getAssetThumbnails(ids: number[]) {
+    if (ids.length === 0) return new Map<number, string | null>();
+    const rows = await db.select({ id: assets.id, thumbnailData: assets.thumbnailData }).from(assets).where(inArray(assets.id, ids));
+    return new Map(rows.map((r) => [r.id, r.thumbnailData]));
+  },
+  /** Live image assets that have a stored thumbnail (what the vision tagger looks at). */
+  async listAssetsForTagging(projectId: number, ids: number[] | undefined, limit: number) {
+    const conditions = [eq(assets.projectId, projectId), isNull(assets.deletedAt), isNotNull(assets.thumbnailData), like(assets.mimeType, "image/%")];
+    if (ids) conditions.push(inArray(assets.id, ids));
+    else conditions.push(eq(assets.tags, ""));
+    return await db
+      .select({ id: assets.id, filename: assets.filename, category: assets.category, tags: assets.tags, thumbnailData: assets.thumbnailData })
+      .from(assets).where(and(...conditions)).orderBy(desc(assets.id)).limit(limit);
+  },
   async createAsset(a: InsertAsset) { return await db.insert(assets).values({ ...a, createdAt: new Date() }).returning().then(r => r[0] as any); },
   async updateAsset(id: number, patch: Partial<Pick<InsertAsset, 'notes' | 'tags' | 'category'>>) { return await db.update(assets).set(patch).where(eq(assets.id, id)).returning().then(r => r[0] as any); },
   async deleteAsset(id: number) { return await db.update(assets).set({ deletedAt: new Date() }).where(eq(assets.id, id)); },

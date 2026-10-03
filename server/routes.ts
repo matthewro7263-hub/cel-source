@@ -16,6 +16,7 @@ import { encrypt, decrypt } from "./crypto";
 import { registerIdParamValidators } from "./params";
 import { authenticateToken, extractToken, requireAuth, canAccessProject, canEditProject, invalidateProjectAccess } from "./auth";
 import { checkAchievements } from "./achievements";
+import { mergeTags, parseTagReply, rankSimilar } from "./asset_tags";
 
 function fireAchievements(ctx: Parameters<typeof checkAchievements>[0]) {
   checkAchievements(ctx).catch((err) => console.error("[achievements]", err));
@@ -77,10 +78,12 @@ const upload = multer({
   // No cookie-parser — we use Authorization: Bearer <token> only
 
   // ===== RATE LIMITERS (separate bucket per limiter) =====
+  // Multiplies every limit below; raise it behind a shared NAT/office proxy or for integration tests.
+  const rateScale = Number(process.env.CEL_RATE_LIMIT_SCALE) > 0 ? Number(process.env.CEL_RATE_LIMIT_SCALE) : 1;
   const limiter = (windowMs: number, max: number, message: string) =>
     rateLimit({
       windowMs,
-      limit: max,
+      limit: Math.max(1, Math.round(max * rateScale)),
       standardHeaders: true,
       legacyHeaders: false,
       handler: (_req, res) => res.status(429).json({ message }),
@@ -89,6 +92,7 @@ const upload = multer({
   const signupLimiter = limiter(60 * 60 * 1000, 10, "Too many registrations from this IP, please try again in an hour.");
   const loginLimiter = limiter(15 * 60 * 1000, 20, "Too many login attempts, please try again in 15 minutes.");
   const commissionLimiter = limiter(60 * 60 * 1000, 5, "Too many submissions. Try again later.");
+  const aiLimiter = limiter(60 * 1000, 30, "Too many AI requests. Give it a minute and try again.");
 
   // ===== AUTH =====
   app.post("/api/auth/signup", signupLimiter, async (req, res) => {
@@ -666,9 +670,11 @@ const upload = multer({
       r2Key: z.string().min(1).optional(),
       caption: z.string().optional().default(""),
       dialogue: z.string().optional().default(""),
+      sceneId: z.number().int().positive().nullable().optional(),
     }).refine((data) => data.imageData || data.r2Key, { message: "imageData or r2Key required" });
     const body = schema.parse(req.body);
     if (notOwnedKey(req.user!.id, body.r2Key)) return res.status(403).json({ message: "Invalid storage key" });
+    if (body.sceneId && !(await storage.existsInProject("scene", body.sceneId, sb.projectId))) return res.status(400).json({ message: "Scene doesn't belong to this project" });
     if (body.imageData && body.imageData.length > 14 * 1024 * 1024) {
       return res.status(413).json({ message: "Image too large (max 10MB)" });
     }
@@ -681,6 +687,7 @@ const upload = multer({
       r2Key: body.r2Key || null,
       caption: body.caption || "",
       dialogue: body.dialogue || "",
+      sceneId: body.sceneId ?? null,
     });
     fireAchievements({ userId: req.user!.id, event: "create_panel", projectId: sb.projectId });
     res.json(panel);
@@ -703,6 +710,9 @@ const upload = multer({
 
     const body = schema.parse(req.body);
     if (body.panels.some((p) => notOwnedKey(req.user!.id, p.r2Key))) return res.status(403).json({ message: "Invalid storage key" });
+    for (const sceneId of new Set(body.panels.map((p) => p.sceneId).filter((id): id is number => !!id))) {
+      if (!(await storage.existsInProject("scene", sceneId, sb.projectId))) return res.status(400).json({ message: "Scene doesn't belong to this project" });
+    }
     const existingPanels = await storage.listPanels(sbId);
     const startIdx = existingPanels.reduce((max, p) => Math.max(max, p.orderIdx), -1) + 1;
 
@@ -736,9 +746,11 @@ const upload = multer({
       frameCount: z.number().int().optional(),
       imageData: z.string().nullable().optional(),
       r2Key: z.string().nullable().optional(),
+      sceneId: z.number().int().positive().nullable().optional(),
     });
     const patch = schema.parse(req.body);
     if (notOwnedKey(req.user!.id, patch.r2Key)) return res.status(403).json({ message: "Invalid storage key" });
+    if (patch.sceneId && !(await storage.existsInProject("scene", patch.sceneId, sb.projectId))) return res.status(400).json({ message: "Scene doesn't belong to this project" });
     res.json(await storage.updatePanel(id, patch));
   });
   app.delete ("/api/panels/:id", requireAuth, async (req, res) => {
@@ -989,6 +1001,100 @@ const upload = multer({
     if (!updated) return res.status(404).json({ message: "Not found" });
     const { fileData, ...safe } = updated;
     res.json(safe);
+  });
+
+  // Assets that look like this one (shared tags / filename words), best first.
+  app.get("/api/assets/:id/similar", requireAuth, async (req, res) => {
+    const id = parseInt(String(req.params.id), 10);
+    const target = await storage.getAssetMeta(id);
+    if (!target || target.deletedAt) return res.status(404).json({ message: "Not found" });
+    if (!(await canAccessProject(target.projectId, req.user!.id))) return res.status(403).json({ message: "No access" });
+    const candidates = await storage.listAssetsForProjectIds([target.projectId]);
+    const ranked = rankSimilar(target, candidates, 8);
+    const thumbs = await storage.getAssetThumbnails(ranked.map((r) => r.asset.id));
+    res.json({
+      items: ranked.map(({ asset, score }) => ({
+        id: asset.id, projectId: asset.projectId, filename: asset.filename, category: asset.category, mimeType: asset.mimeType,
+        tags: asset.tags, notes: asset.notes, uploaderId: asset.uploaderId, createdAt: asset.createdAt,
+        thumbnailData: thumbs.get(asset.id) ?? null, score,
+      })),
+    });
+  });
+
+  // Tag image assets with a vision model, using the project's own OpenRouter key.
+  app.post("/api/projects/:id/assets/auto-tag", requireAuth, aiLimiter, async (req, res) => {
+    const id = parseInt(String(req.params.id), 10);
+    if (!(await canEditProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
+    const body = z.object({ assetIds: z.array(z.number().int().positive()).max(12).optional() }).parse(req.body ?? {});
+
+    const keyRow = await storage.getProjectAiKey(id);
+    if (!keyRow) return res.status(400).json({ message: "Add an OpenRouter API key in Project Settings → AI to enable auto-tagging." });
+    const apiKey = decrypt(keyRow.encryptedKey);
+
+    const targets = await storage.listAssetsForTagging(id, body.assetIds, 12);
+    if (targets.length === 0) {
+      return res.json({ results: [], tagged: 0, failed: 0, message: body.assetIds ? "None of those assets are images with a preview." : "Every image asset already has tags." });
+    }
+
+    const visionModels = process.env.OPENROUTER_VISION_MODEL
+      ? [process.env.OPENROUTER_VISION_MODEL]
+      : Array.from(new Set([keyRow.model, "google/gemini-2.5-flash"].filter((m): m is string => !!m)));
+    let preferred = 0;
+    const askModel = async (assetName: string, imageUrl: string): Promise<string[]> => {
+      let lastErr = "";
+      for (let m = preferred; m < visionModels.length; m++) {
+        try {
+          const response = await fetch(OPENROUTER_CHAT_URL, {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json", "HTTP-Referer": "https://cel.app", "X-Title": "Cel Storyboard App" },
+            body: JSON.stringify({
+              model: visionModels[m],
+              messages: [
+                { role: "system", content: "You label images for an animation studio's asset library. Reply with ONLY JSON: {\"tags\": [3 to 8 short lowercase tags covering subject, setting, art style, dominant colours and mood]}." },
+                { role: "user", content: [
+                  { type: "text", text: `File name: ${assetName}` },
+                  { type: "image_url", image_url: { url: imageUrl } },
+                ] },
+              ],
+            }),
+            signal: AbortSignal.timeout(45_000),
+          });
+          const data = await response.json().catch(() => null) as any;
+          if (!response.ok) { lastErr = data?.error?.message || response.statusText || String(response.status); continue; }
+          preferred = m;
+          const tags = parseTagReply(String(data?.choices?.[0]?.message?.content ?? ""));
+          if (tags.length === 0) throw new Error("The model didn't return any usable tags.");
+          return tags;
+        } catch (e: any) {
+          lastErr = e?.message || String(e);
+        }
+      }
+      throw new Error(lastErr || "AI request failed");
+    };
+
+    const results: { id: number; filename: string; status: "tagged" | "failed"; tags?: string; error?: string }[] = new Array(targets.length);
+    let cursor = 0;
+    const worker = async () => {
+      while (cursor < targets.length) {
+        const i = cursor++;
+        const t = targets[i];
+        try {
+          const suggested = await askModel(t.filename, t.thumbnailData!);
+          const merged = mergeTags(t.tags, suggested);
+          await storage.updateAsset(t.id, { tags: merged });
+          results[i] = { id: t.id, filename: t.filename, status: "tagged", tags: merged };
+        } catch (e: any) {
+          results[i] = { id: t.id, filename: t.filename, status: "failed", error: e?.message || "AI request failed" };
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(3, targets.length) }, worker));
+
+    const tagged = results.filter((r) => r.status === "tagged").length;
+    if (tagged === 0) {
+      return res.status(502).json({ message: `Auto-tagging failed: ${results[0]?.error ?? "unknown error"}` });
+    }
+    res.json({ results, tagged, failed: results.length - tagged });
   });
 
   app.delete ("/api/assets/:id", requireAuth, async (req, res) => {
@@ -1486,7 +1592,7 @@ const upload = multer({
     res.json({ ok: true });
   });
 
-  app.post("/api/projects/:id/ai/shot-suggest", requireAuth, async (req, res) => {
+  app.post("/api/projects/:id/ai/shot-suggest", requireAuth, aiLimiter, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!(await canEditProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
     const schema = z.object({ scriptText: z.string().min(1) });
@@ -1568,7 +1674,7 @@ const upload = multer({
     res.json(await storage.listAiChatMessages(chatSession.id));
   });
 
-  app.post("/api/projects/:id/ai/chat", requireAuth, async (req, res) => {
+  app.post("/api/projects/:id/ai/chat", requireAuth, aiLimiter, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
     if (!(await canEditProject(id, req.user!.id))) return res.status(403).json({ message: "No access" });
     

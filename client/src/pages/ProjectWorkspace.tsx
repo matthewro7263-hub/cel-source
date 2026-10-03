@@ -1,5 +1,6 @@
 import { useAuth } from "@/lib/auth";
 import { openReviewRoomSocket } from "@/lib/reviewRoomSocket";
+import { downloadAuthed } from "@/lib/download";
 import { useState, useRef, useEffect, useCallback, lazy, Suspense } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -2326,28 +2327,23 @@ export function V4ScriptAiButton({ projectId, scriptContent, onApplyScriptEdit }
 
 export function BakSceneGltfExport({ sceneId }: { sceneId: number }) {
   const { toast } = useToast();
-  
+  const [busy, setBusy] = useState(false);
+
   const handleGltfExport = async () => {
+    setBusy(true);
     try {
-      const res = await apiRequest("POST", `/api/scenes/${sceneId}/gltf-stub`);
-      const blob = await res.blob();
-      const objUrl = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = objUrl;
-      a.download = `scene_${sceneId}_stub.gltf`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(objUrl);
-      document.body.removeChild(a);
-      toast({ title: "GLTF Exported" });
-    } catch (e) {
-      toast({ title: "Failed to export GLTF", variant: "destructive" });
+      await downloadAuthed(`/api/scenes/${sceneId}/export/gltf`, `scene_${sceneId}.gltf`);
+      toast({ title: "glTF exported", description: "One textured plane per storyboard panel. Import it in Blender via File → Import → glTF." });
+    } catch (e: any) {
+      toast({ title: "Couldn't export glTF", description: e?.message, variant: "destructive" });
+    } finally {
+      setBusy(false);
     }
   };
 
   return (
-    <Button variant="outline" size="sm" onClick={handleGltfExport}>
-      <Box className="w-3 h-3 mr-1" /> Export GLTF Stub
+    <Button variant="outline" size="sm" onClick={handleGltfExport} disabled={busy} title="Export this scene's storyboard panels as textured planes for Blender">
+      <Box className="w-3 h-3 mr-1" /> {busy ? "Exporting…" : "Export glTF"}
     </Button>
   );
 }
