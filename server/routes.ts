@@ -14,7 +14,8 @@ import { isDiscordWebhookUrl, notifyDiscord } from "./discord";
 import { sendError } from "./errors";
 import { encrypt, decrypt } from "./crypto";
 import { registerIdParamValidators } from "./params";
-import { authenticateToken, extractToken, requireAuth, canAccessProject, canEditProject, invalidateProjectAccess } from "./auth";
+import { authenticateToken, extractToken, requireAuth, requireAdmin, canAccessProject, canEditProject, invalidateProjectAccess } from "./auth";
+import { runMaintenance } from "./maintenance";
 import { checkAchievements } from "./achievements";
 import { mergeTags, parseTagReply, rankSimilar } from "./asset_tags";
 import { appLink, mailConfigured, sendMail } from "./mailer";
@@ -104,6 +105,11 @@ const upload = multer({
 
   const RESET_TTL_MS = 60 * 60 * 1000;
   const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+  // Runs the housekeeping job now (it also runs on a timer) and reports what it removed.
+  app.post("/api/admin/maintenance", requireAuth, requireAdmin, async (_req, res) => {
+    res.json(await runMaintenance());
+  });
 
   // Public, non-sensitive switches the client needs before anyone has signed in.
   app.get("/api/config", (_req, res) => {

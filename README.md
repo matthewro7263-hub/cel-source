@@ -32,6 +32,8 @@ Cel replaces the patchwork of Notion docs, Google Sheets, Trello boards, and Dri
 | **Collaboration** | Invite members, role-based access (owner / editor / reviewer), in-app review rooms with approval flows. |
 | **Commissions** | A queue for paid work: client briefs, milestone tracking, deliverable approval, and revision history. |
 | **Pipeline** | Bird's-eye dashboard of where every shot in every project actually is. |
+| **Exports** | glTF storyboard planes for Blender, lip-sync keyframes (Blender / Moho), WebM animatics, and a full project ZIP. |
+| **Accounts** | Email invitations, password reset, notification opt-out, and one-click account + data deletion. |
 | **Discord integration** | Push status updates and review-ready pings to your team's Discord. |
 
 ---
@@ -101,6 +103,9 @@ cel-source/
     routes.ts          # All HTTP routes
     storage.ts         # DB access layer (Drizzle queries)
     discord.ts         # Discord webhook integration
+    mailer.ts          # Transactional email (Resend) + emails.ts templates
+    data_cleanup.ts    # Complete project / account / trash deletion (the schema has no FK cascades)
+    maintenance.ts     # Scheduled purge of trash older than 30 days
   shared/              # Code shared between client and server
     schema.ts          # Drizzle schema + Zod validators
   docs/                # In-repo documentation
@@ -120,7 +125,21 @@ createdb cel_it && DATABASE_URL=postgres://localhost:5432/cel_it pnpm test:integ
 ```
 
 `pnpm test:integration` boots `dist/index.cjs`, so it also proves a fresh database migrates and
-that the "no R2 configured" fallbacks work. CI runs all of the above.
+that the "no R2 configured" fallbacks work. It runs against mock OpenRouter and Resend servers (no network,
+no keys) and includes a **schema drift** check: every table, column and index declared in `shared/*.ts` must
+exist in the database the SQL migrations produce. CI runs all of the above.
+
+---
+
+## Operations
+
+* `GET /health` is the liveness probe (Render's health check); `GET /ready` also checks the database and R2.
+* Every response carries an `X-Request-Id` (a proxy-supplied id is reused). It appears in the access log and in
+  5xx response bodies (`requestId`), so a user's error report maps to one log line.
+* Items sent to Trash are permanently deleted after 30 days by an in-process job (first run a minute after boot,
+  then every 6 hours). Admins (`CEL_ADMIN_EMAILS`) can run it on demand: `POST /api/admin/maintenance`.
+* Deleting a project, an account, or an item from Trash removes every dependent row and the cloud files.
+* Password-reset and invite links are single-use, expire (1 hour / 7 days) and are stored only as a SHA-256 hash.
 
 For local development any Postgres works (`DATABASE_URL=postgres://...`); the Neon serverless driver is
 only used for `*.neon.tech` hosts (override with `CEL_DB_DRIVER=neon|pg`).

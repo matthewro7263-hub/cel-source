@@ -62,6 +62,47 @@ async function deleteProjectRows(tx: Tx, id: number) {
   await tx.execute(sql`DELETE FROM projects WHERE id = ${id}`);
 }
 
+export type TrashKind = "script" | "scene" | "asset" | "panel";
+
+/**
+ * Permanently deletes soft-deleted items together with everything that hangs off them (pins, revisions,
+ * renders, time entries, tag links) and their cloud files. Used by "Delete forever", the 30-day purge and
+ * account/project cleanup, so the three can't drift apart.
+ */
+export async function purgeTrashedItems(kind: TrashKind, ids: number[]): Promise<void> {
+  if (ids.length === 0) return;
+  const list = sql`(${sql.join(ids.map((id) => sql`${id}`), sql`, `)})`;
+  let keys: string[] = [];
+  await db.transaction(async (tx) => {
+    const take = async (query: ReturnType<typeof sql>) => (await tx.execute(query)).rows.map((r: any) => r.key as string).filter(Boolean);
+    if (kind === "panel") {
+      keys = await take(sql`SELECT r2_key AS key FROM storyboard_panels WHERE id IN ${list}`);
+      await tx.execute(sql`DELETE FROM panel_pins WHERE panel_id IN ${list}`);
+      await tx.execute(sql`DELETE FROM tag_assignments WHERE entity_kind = 'panel' AND entity_id IN ${list}`);
+      await tx.execute(sql`DELETE FROM storyboard_panels WHERE id IN ${list}`);
+    } else if (kind === "asset") {
+      keys = await take(sql`SELECT r2_key AS key FROM assets WHERE id IN ${list}`);
+      await tx.execute(sql`DELETE FROM lor_asset_versions WHERE asset_id IN ${list}`);
+      await tx.execute(sql`DELETE FROM tag_assignments WHERE entity_kind = 'asset' AND entity_id IN ${list}`);
+      await tx.execute(sql`DELETE FROM assets WHERE id IN ${list}`);
+    } else if (kind === "scene") {
+      for (const table of ["bak_gltf_exports", "renders", "scene_time_entries", "lor_casting_matrix"]) {
+        await tx.execute(sql`DELETE FROM ${sql.identifier(table)} WHERE scene_id IN ${list}`);
+      }
+      for (const table of ["storyboard_panels", "comments", "aud_voice_takes", "cli_feedback"]) {
+        await tx.execute(sql`UPDATE ${sql.identifier(table)} SET scene_id = NULL WHERE scene_id IN ${list}`);
+      }
+      await tx.execute(sql`DELETE FROM tag_assignments WHERE entity_kind = 'scene' AND entity_id IN ${list}`);
+      await tx.execute(sql`DELETE FROM scenes WHERE id IN ${list}`);
+    } else {
+      keys = await take(sql`SELECT original_key AS key FROM scripts WHERE id IN ${list}`);
+      await tx.execute(sql`UPDATE ai_chat_sessions SET script_id = NULL WHERE script_id IN ${list}`);
+      await tx.execute(sql`DELETE FROM scripts WHERE id IN ${list}`);
+    }
+  });
+  await deleteObjectsQuietly(keys);
+}
+
 async function deleteObjectsQuietly(keys: string[]) {
   // R2 is optional; objects that can't be removed are not worth failing the user's request for.
   for (const key of keys) await deleteObject(key).catch(() => {});

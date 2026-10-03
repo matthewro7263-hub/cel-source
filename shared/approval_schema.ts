@@ -1,4 +1,4 @@
-import { pgTable, integer, text, serial, timestamp, boolean } from "drizzle-orm/pg-core";
+import { pgTable, integer, text, serial, timestamp, boolean, index} from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -13,7 +13,9 @@ export const approval_signoffs = pgTable("approval_signoffs", {
   notes: text("notes"),
   approvedAt: timestamp("approved_at", { withTimezone: true }).defaultNow(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (table) => ({
+  approvalSignoffsProjectIdIdx: index("approval_signoffs_project_id_idx").on(table.projectId),
+}));
 
 export const insertApprovalSignoffSchema = createInsertSchema(approval_signoffs, {
   id: () => z.number().optional(),

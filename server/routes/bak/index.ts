@@ -9,6 +9,7 @@ import {
 import { eq, isNull, lt, inArray, isNotNull, and, asc, getTableColumns } from "drizzle-orm";
 import { createHash } from "node:crypto";
 import { presignDownload } from "../../r2.js";
+import { purgeTrashedItems, type TrashKind } from "../../data_cleanup.js";
 import { requireCanvasModule } from "../../canvas_lazy.js";
 import { buildStoryboardGltf, gltfFilename, imageSize, parseDataUrl, type GltfPanelInput, type RasterMime } from "../../gltf.js";
 
@@ -364,14 +365,6 @@ bakRouter.delete("/trash/permanent/:kind/:id", requireAuth, async (req, res) => 
     return res.status(403).json({ message: "No access" });
   }
 
-  if (kind === 'script') {
-    await db.delete(scripts).where(eq(scripts.id, numId));
-  } else if (kind === 'scene') {
-    await db.delete(scenes).where(eq(scenes.id, numId));
-  } else if (kind === 'asset') {
-    await db.delete(assets).where(eq(assets.id, numId));
-  } else if (kind === 'panel') {
-    await db.delete(storyboardPanels).where(eq(storyboardPanels.id, numId));
-  }
+  await purgeTrashedItems(kind as TrashKind, [numId]);
   res.json({ message: "Permanently deleted" });
 });

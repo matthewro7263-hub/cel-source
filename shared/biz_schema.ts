@@ -1,4 +1,4 @@
-import { pgTable, integer, text, real, serial, timestamp, boolean } from "drizzle-orm/pg-core";
+import { pgTable, integer, text, real, serial, timestamp, boolean, index} from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -13,7 +13,10 @@ export const biz_festivals = pgTable("biz_festivals", {
   notes: text("notes"),
   projectId: integer("project_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (table) => ({
+  bizFestivalsUserIdIdx: index("biz_festivals_user_id_idx").on(table.userId),
+  bizFestivalsProjectIdIdx: index("biz_festivals_project_id_idx").on(table.projectId),
+}));
 export const insertBizFestivalSchema = createInsertSchema(biz_festivals, {
   id: () => z.number().optional(),
 }).omit({ id: true, createdAt: true });
@@ -28,7 +31,9 @@ export const biz_contracts = pgTable("biz_contracts", {
   kind: text("kind").notNull(), // commission|nda|model_release
   body: text("body").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (table) => ({
+  bizContractsUserIdIdx: index("biz_contracts_user_id_idx").on(table.userId),
+}));
 export const insertBizContractSchema = createInsertSchema(biz_contracts, {
   id: () => z.number().optional(),
 }).omit({ id: true, createdAt: true });
@@ -46,7 +51,10 @@ export const biz_expenses = pgTable("biz_expenses", {
   notes: text("notes"),
   receiptUrl: text("receipt_url"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (table) => ({
+  bizExpensesUserIdIdx: index("biz_expenses_user_id_idx").on(table.userId),
+  bizExpensesProjectIdIdx: index("biz_expenses_project_id_idx").on(table.projectId),
+}));
 export const insertBizExpenseSchema = createInsertSchema(biz_expenses, {
   id: () => z.number().optional(),
 }).omit({ id: true, createdAt: true });

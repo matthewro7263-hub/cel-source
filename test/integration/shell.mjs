@@ -7,6 +7,12 @@ check("APP_URL placeholders are filled in (absolute social-preview URLs)", !html
 const viewport = html.match(/<meta name="viewport"[^>]*>/)?.[0] ?? "";
 check("viewport doesn't block pinch-zoom", /width=device-width/.test(viewport) && !/maximum-scale|user-scalable/.test(viewport), viewport);
 check("Google Fonts are no longer requested", !/fonts\.googleapis|fonts\.gstatic/.test(html));
+const rid = (await fetch(`${base}/health`)).headers.get("x-request-id");
+check("every response carries a request id", /^[0-9a-f-]{36}$/.test(rid ?? ""), rid);
+check("a sane inbound request id is reused for correlation", (await fetch(`${base}/health`, { headers: { "x-request-id": "render-abc12345" } })).headers.get("x-request-id") === "render-abc12345");
+check("a hostile inbound request id is replaced", /^[0-9a-f-]{36}$/.test((await fetch(`${base}/health`, { headers: { "x-request-id": "bad id\twith spaces" } })).headers.get("x-request-id") ?? ""));
+const badJson = await fetch(`${base}/api/auth/login`, { method: "POST", headers: { "content-type": "application/json" }, body: "{not json" });
+check("malformed JSON is a clean 400, not a 500", badJson.status === 400, badJson.status);
 check("noscript fallback present", /<noscript>/.test(html));
 
 const asset = async (path) => { const r = await fetch(`${base}${path}`); return { status: r.status, type: r.headers.get("content-type") ?? "", cache: r.headers.get("cache-control") ?? "", len: Number(r.headers.get("content-length") ?? 0), body: r }; };

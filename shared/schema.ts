@@ -141,7 +141,9 @@ export const animatics = pgTable("animatics", {
   videoData: text("video_data").notNull(),
   notes: text("notes").notNull().default(""),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (table) => ({
+  animaticsProjectIdIdx: index("animatics_project_id_idx").on(table.projectId),
+}));
 export const insertAnimaticSchema = createInsertSchema(animatics).omit({ id: true, createdAt: true });
 export type InsertAnimatic = z.infer<typeof insertAnimaticSchema>;
 export type Animatic = typeof animatics.$inferSelect;
@@ -225,7 +227,9 @@ export const commissions = pgTable("commissions", {
   quoteCents: integer("quote_cents"), // artist's quote, nullable
   invoicedAt: timestamp("invoiced_at", { withTimezone: true }), // set when an invoice was issued
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (table) => ({
+  commissionsLinkedProjectIdIdx: index("commissions_linked_project_id_idx").on(table.linkedProjectId),
+}));
 export const insertCommissionSchema = createInsertSchema(commissions).omit({ id: true, createdAt: true, linkedProjectId: true, quoteCents: true, invoicedAt: true });
 export type InsertCommission = z.infer<typeof insertCommissionSchema>;
 export type Commission = typeof commissions.$inferSelect;
@@ -239,7 +243,9 @@ export const animaticProjects = pgTable("animatic_projects", {
   totalDurationMs: integer("total_duration_ms").notNull().default(8000),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (table) => ({
+  animaticProjectsProjectIdIdx: index("animatic_projects_project_id_idx").on(table.projectId),
+}));
 export const insertAnimaticProjectSchema = createInsertSchema(animaticProjects).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertAnimaticProject = z.infer<typeof insertAnimaticProjectSchema>;
 export type AnimaticProject = typeof animaticProjects.$inferSelect;
@@ -254,7 +260,9 @@ export const animaticTracks = pgTable("animatic_tracks", {
   muted: boolean("muted").notNull().default(false),
   // Stored as milliunits integer: 1000 = 1.0, 500 = 0.5, 0 = 0.0
   volume: integer("volume").notNull().default(1000),
-});
+}, (table) => ({
+  animaticTracksAnimaticProjectIdIdx: index("animatic_tracks_animatic_project_id_idx").on(table.animaticProjectId),
+}));
 export const insertAnimaticTrackSchema = createInsertSchema(animaticTracks).omit({ id: true });
 export type InsertAnimaticTrack = z.infer<typeof insertAnimaticTrackSchema>;
 export type AnimaticTrack = typeof animaticTracks.$inferSelect;
@@ -273,7 +281,9 @@ export const animaticClips = pgTable("animatic_clips", {
   fadeOutMs: integer("fade_out_ms").notNull().default(0),
   // Stored as milliunits integer: 1000 = 1.0, 500 = 0.5
   volume: integer("volume").notNull().default(1000),
-});
+}, (table) => ({
+  animaticClipsTrackIdIdx: index("animatic_clips_track_id_idx").on(table.trackId),
+}));
 export const insertAnimaticClipSchema = createInsertSchema(animaticClips).omit({ id: true });
 export type InsertAnimaticClip = z.infer<typeof insertAnimaticClipSchema>;
 export type AnimaticClip = typeof animaticClips.$inferSelect;
@@ -289,7 +299,9 @@ export const renders = pgTable("renders", {
   fileUrl: text("file_url").notNull().default(""), // external link to MP4/folder
   notes: text("notes").notNull().default(""),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (table) => ({
+  rendersSceneIdIdx: index("renders_scene_id_idx").on(table.sceneId),
+}));
 export const insertRenderSchema = createInsertSchema(renders).omit({ id: true, createdAt: true });
 export type InsertRender = z.infer<typeof insertRenderSchema>;
 export type Render = typeof renders.$inferSelect;
@@ -303,7 +315,9 @@ export const projectAiKeys = pgTable("project_ai_keys", {
   encryptedKey: text("encrypted_key").notNull(), // AES-256-GCM encrypted via ENCRYPTION_KEY env var
   model: text("model"), // Optional model preference
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (table) => ({
+  projectAiKeysProjectIdIdx: index("project_ai_keys_project_id_idx").on(table.projectId),
+}));
 export const insertProjectAiKeySchema = createInsertSchema(projectAiKeys).omit({ id: true, createdAt: true });
 export type InsertProjectAiKey = z.infer<typeof insertProjectAiKeySchema>;
 export type ProjectAiKey = typeof projectAiKeys.$inferSelect;
@@ -314,7 +328,9 @@ export const aiChatSessions = pgTable("ai_chat_sessions", {
   scriptId: integer("script_id"), // Optional: lock session to a specific script
   title: text("title").notNull().default("AI Assistant"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (table) => ({
+  aiChatSessionsProjectIdIdx: index("ai_chat_sessions_project_id_idx").on(table.projectId),
+}));
 export const insertAiChatSessionSchema = createInsertSchema(aiChatSessions).omit({ id: true, createdAt: true });
 export type InsertAiChatSession = z.infer<typeof insertAiChatSessionSchema>;
 export type AiChatSession = typeof aiChatSessions.$inferSelect;
@@ -327,7 +343,9 @@ export const aiChatMessages = pgTable("ai_chat_messages", {
   toolCalls: text("tool_calls"), // JSON stringified tool_calls array
   toolCallId: text("tool_call_id"), // For 'tool' role responses
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (table) => ({
+  aiChatMessagesSessionIdIdx: index("ai_chat_messages_session_id_idx").on(table.sessionId),
+}));
 export const insertAiChatMessageSchema = createInsertSchema(aiChatMessages).omit({ id: true, createdAt: true });
 export type InsertAiChatMessage = z.infer<typeof insertAiChatMessageSchema>;
 export type AiChatMessage = typeof aiChatSessions.$inferSelect;
@@ -341,7 +359,9 @@ export const achievements = pgTable("achievements", {
   userId: integer("user_id").notNull(),
   code: text("code").notNull(),
   unlockedAt: timestamp("unlocked_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (table) => ({
+  achievementsUserIdIdx: index("achievements_user_id_idx").on(table.userId),
+}));
 export const insertAchievementSchema = createInsertSchema(achievements).omit({ id: true });
 export type InsertAchievement = z.infer<typeof insertAchievementSchema>;
 export type Achievement = typeof achievements.$inferSelect;
@@ -371,7 +391,9 @@ export const panelPins = pgTable("panel_pins", {
   body: text("body").notNull(),
   authorId: integer("author_id").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (table) => ({
+  panelPinsPanelIdIdx: index("panel_pins_panel_id_idx").on(table.panelId),
+}));
 export const insertPanelPinSchema = createInsertSchema(panelPins).omit({ id: true, createdAt: true });
 export type InsertPanelPin = z.infer<typeof insertPanelPinSchema>;
 export type PanelPin = typeof panelPins.$inferSelect;
@@ -386,7 +408,9 @@ export const commissionLineItems = pgTable("commission_line_items", {
   quantity: integer("quantity").notNull().default(1),
   unitPriceCents: integer("unit_price_cents").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (table) => ({
+  commissionLineItemsCommissionIdIdx: index("commission_line_items_commission_id_idx").on(table.commissionId),
+}));
 export const insertCommissionLineItemSchema = createInsertSchema(commissionLineItems).omit({ id: true, createdAt: true });
 export type InsertCommissionLineItem = z.infer<typeof insertCommissionLineItemSchema>;
 export type CommissionLineItem = typeof commissionLineItems.$inferSelect;
@@ -401,7 +425,10 @@ export const inboxItems = pgTable("inbox_items", {
   tags: text("tags").notNull().default(""), // comma-separated
   projectId: integer("project_id"), // nullable
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (table) => ({
+  inboxItemsUserIdIdx: index("inbox_items_user_id_idx").on(table.userId),
+  inboxItemsProjectIdIdx: index("inbox_items_project_id_idx").on(table.projectId),
+}));
 export const insertInboxItemSchema = createInsertSchema(inboxItems).omit({ id: true, createdAt: true });
 export type InsertInboxItem = z.infer<typeof insertInboxItemSchema>;
 export type InboxItem = typeof inboxItems.$inferSelect;
@@ -414,7 +441,9 @@ export const tags = pgTable("tags", {
   userId: integer("user_id").notNull(),
   name: text("name").notNull(),
   color: text("color").notNull().default("#6E4FE8"),
-});
+}, (table) => ({
+  tagsUserIdIdx: index("tags_user_id_idx").on(table.userId),
+}));
 export const insertTagSchema = createInsertSchema(tags).omit({ id: true });
 export type InsertTag = z.infer<typeof insertTagSchema>;
 export type Tag = typeof tags.$inferSelect;
@@ -424,7 +453,10 @@ export const tagAssignments = pgTable("tag_assignments", {
   tagId: integer("tag_id").notNull(),
   entityKind: text("entity_kind").notNull(), // scene | asset | panel | inboxItem
   entityId: integer("entity_id").notNull(),
-});
+}, (table) => ({
+  tagAssignmentsTagIdIdx: index("tag_assignments_tag_id_idx").on(table.tagId),
+  tagAssignmentsEntityIdx: index("tag_assignments_entity_idx").on(table.entityKind, table.entityId),
+}));
 export const insertTagAssignmentSchema = createInsertSchema(tagAssignments).omit({ id: true });
 export type InsertTagAssignment = z.infer<typeof insertTagAssignmentSchema>;
 export type TagAssignment = typeof tagAssignments.$inferSelect;
@@ -439,7 +471,9 @@ export const sceneTimeEntries = pgTable("scene_time_entries", {
   startedAt: bigint("started_at", { mode: "number" }).notNull(), // epoch ms (exceeds int4)
   endedAt: bigint("ended_at", { mode: "number" }), // nullable
   durationMs: integer("duration_ms"), // computed when stopped
-});
+}, (table) => ({
+  sceneTimeEntriesUserIdIdx: index("scene_time_entries_user_id_idx").on(table.userId),
+}));
 export const insertSceneTimeEntrySchema = createInsertSchema(sceneTimeEntries).omit({ id: true });
 export type InsertSceneTimeEntry = z.infer<typeof insertSceneTimeEntrySchema>;
 export type SceneTimeEntry = typeof sceneTimeEntries.$inferSelect;
@@ -456,14 +490,18 @@ export const bakSnapshots = pgTable("bak_snapshots", {
   label: text("label").notNull().default("Snapshot"),
   jsonBlob: text("json_blob").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (table) => ({
+  bakSnapshotsProjectIdIdx: index("bak_snapshots_project_id_idx").on(table.projectId),
+}));
 
 export const bakGltfExports = pgTable("bak_gltf_exports", {
   id: serial("id").primaryKey(),
   sceneId: integer("scene_id").notNull(),
   fileData: text("file_data").notNull(), // base64 or json string
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (table) => ({
+  bakGltfExportsSceneIdIdx: index("bak_gltf_exports_scene_id_idx").on(table.sceneId),
+}));
 
 // ============================================================
 // v5 Agent 5 - Analytics, Heatmap, Webhooks, Commission Hours
@@ -473,7 +511,9 @@ export const dltCommissionHours = pgTable("dlt_commission_hours", {
   commissionId: integer("commission_id").notNull(),
   hours: doublePrecision("hours").notNull().default(0),
   loggedAt: timestamp("logged_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (table) => ({
+  dltCommissionHoursCommissionIdIdx: index("dlt_commission_hours_commission_id_idx").on(table.commissionId),
+}));
 export const insertDltCommissionHoursSchema = createInsertSchema(dltCommissionHours).omit({ id: true, loggedAt: true });
 export type InsertDltCommissionHours = z.infer<typeof insertDltCommissionHoursSchema>;
 export type DltCommissionHours = typeof dltCommissionHours.$inferSelect;
@@ -487,7 +527,10 @@ export const audVoiceTakes = pgTable("aud_voice_takes", {
   sceneId: integer("scene_id"),
   audioData: text("audio_data").notNull(), // base64 WAV
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (table) => ({
+  audVoiceTakesProjectIdIdx: index("aud_voice_takes_project_id_idx").on(table.projectId),
+  audVoiceTakesSceneIdIdx: index("aud_voice_takes_scene_id_idx").on(table.sceneId),
+}));
 export const insertAudVoiceTakeSchema = createInsertSchema(audVoiceTakes).omit({ id: true, createdAt: true });
 
 export type InsertAudVoiceTake = z.infer<typeof insertAudVoiceTakeSchema>;
@@ -500,7 +543,9 @@ export const audCaptions = pgTable("aud_captions", {
   startMs: integer("start_ms").notNull(),
   endMs: integer("end_ms").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (table) => ({
+  audCaptionsAnimaticProjectIdIdx: index("aud_captions_animatic_project_id_idx").on(table.animaticProjectId),
+}));
 export const insertAudCaptionSchema = createInsertSchema(audCaptions).omit({ id: true, createdAt: true });
 export type InsertAudCaption = z.infer<typeof insertAudCaptionSchema>;
 export type AudCaption = typeof audCaptions.$inferSelect;
@@ -515,7 +560,9 @@ export const cli_approvals = pgTable("cli_approvals", {
   signedName: text("signed_name").notNull(),
   signatureData: text("signature_data").notNull(),
   signedAt: timestamp("signed_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (table) => ({
+  cliApprovalsProjectIdIdx: index("cli_approvals_project_id_idx").on(table.projectId),
+}));
 export const insertCliApprovalSchema = createInsertSchema(cli_approvals).omit({ id: true });
 export type InsertCliApproval = z.infer<typeof insertCliApprovalSchema>;
 export type CliApproval = typeof cli_approvals.$inferSelect;
@@ -549,7 +596,9 @@ export const commissionPricingPresets = pgTable("commission_pricing_presets", {
   description: text("description").notNull().default(""),
   priceCents: integer("price_cents").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (table) => ({
+  commissionPricingPresetsProjectIdIdx: index("commission_pricing_presets_project_id_idx").on(table.projectId),
+}));
 export const insertCommissionPricingPresetSchema = createInsertSchema(commissionPricingPresets).omit({ id: true, createdAt: true });
 export type InsertCommissionPricingPreset = z.infer<typeof insertCommissionPricingPresetSchema>;
 export type CommissionPricingPreset = typeof commissionPricingPresets.$inferSelect;

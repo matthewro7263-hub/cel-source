@@ -6,6 +6,7 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { seedIfEmpty } from "./seed";
 import { demoEnabled } from "./demo";
+import { startMaintenance } from "./maintenance";
 import { registerLorRoutes } from "./lor_routes";
 import { registerAudio2Routes } from "./audio2_routes";
 import { registerApprovalRoutes } from "./approval_routes";
@@ -13,6 +14,7 @@ import { registerArchiveRoutes } from "./archive_routes";
 import { registerSpriteSheetRoutes } from "./spritesheet_routes";
 import { startLeaderboardCron } from "./leaderboard_cron";
 import { createServer } from "node:http";
+import { randomUUID } from "node:crypto";
 import type { IncomingMessage } from "node:http";
 import { pool, migrateDatabase } from "./db";
 import { checkR2Health } from "./r2";
@@ -25,6 +27,20 @@ installFriendlyZodMessages();
 const app = express();
 app.set("trust proxy", 1);
 app.disable("x-powered-by");
+
+// Every request gets an id (reusing the proxy's X-Request-Id when it's sane) that appears in the access log,
+// the response header and 5xx error bodies, so "it broke at 3pm" can be tied to one log line.
+declare global {
+  namespace Express {
+    interface Request { id?: string }
+  }
+}
+app.use((req, res, next) => {
+  const incoming = req.get("x-request-id");
+  req.id = incoming && /^[\w.-]{8,64}$/.test(incoming) ? incoming : randomUUID();
+  res.setHeader("X-Request-Id", req.id);
+  next();
+});
 
 // gzip/deflate text compression: the JS bundle drops from ~1MB to ~330KB. Skip what is already
 // compressed or streamed: SSE (compression buffers it, breaking the AI chat), images, zips, media.
@@ -204,7 +220,7 @@ app.use((req, res, next) => {
   res.on("finish", () => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
-      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
+      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms req=${req.id}`;
       const contentLength = res.getHeader("content-length");
       if (contentLength) logLine += ` size=${contentLength}b`;
       log(logLine);
@@ -243,6 +259,7 @@ async function runMigrations() {
     }
   }
   startLeaderboardCron();
+  startMaintenance();
   await registerRoutes(httpServer, app);
   registerLorRoutes(app);
   registerAudio2Routes(app);
@@ -250,7 +267,7 @@ async function runMigrations() {
   registerArchiveRoutes(app);
   registerSpriteSheetRoutes(app);
 
-  app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
+  app.use((err: any, req: Request, res: Response, next: NextFunction) => {
     if (err instanceof ZodError) {
       return res.status(400).json({ message: err.message, issues: err.issues });
     }
@@ -259,13 +276,14 @@ async function runMigrations() {
       ? "Internal Server Error"
       : err.message || "Internal Server Error";
 
-    console.error("Internal Server Error:", err);
+    // Malformed JSON, oversized bodies etc. are the client's problem, not an incident worth a stack trace.
+    if (status >= 500) console.error(`Internal Server Error req=${req.id} ${req.method} ${req.path}:`, err);
 
     if (res.headersSent) {
       return next(err);
     }
 
-    return res.status(status).json({ message });
+    return res.status(status).json(status >= 500 ? { message, requestId: req.id } : { message });
   });
 
   // Unknown API routes must be JSON 404s, not the SPA's index.html (which the client then fails to parse).

@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, integer , serial, boolean} from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, integer , serial, boolean, index} from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -11,7 +11,9 @@ export const lor_continuity_facts = pgTable("lor_continuity_facts", {
   body: text("body").notNull().default(""),
   imageData: text("image_data"), // optional base64
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (table) => ({
+  lorContinuityFactsProjectIdIdx: index("lor_continuity_facts_project_id_idx").on(table.projectId),
+}));
 export const insertLorContinuityFactSchema = createInsertSchema(lor_continuity_facts).omit({ id: true, createdAt: true });
 export type InsertLorContinuityFact = z.infer<typeof insertLorContinuityFactSchema>;
 export type LorContinuityFact = typeof lor_continuity_facts.$inferSelect;
@@ -24,7 +26,9 @@ export const lor_palettes = pgTable("lor_palettes", {
   name: text("name").notNull().default("Palette"),
   colors: text("colors").notNull(), // JSON array of hex strings
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (table) => ({
+  lorPalettesProjectIdIdx: index("lor_palettes_project_id_idx").on(table.projectId),
+}));
 export const insertLorPaletteSchema = createInsertSchema(lor_palettes).omit({ id: true, createdAt: true });
 export type InsertLorPalette = z.infer<typeof insertLorPaletteSchema>;
 export type LorPalette = typeof lor_palettes.$inferSelect;
@@ -37,7 +41,9 @@ export const lor_asset_versions = pgTable("lor_asset_versions", {
   fileData: text("file_data").notNull(),
   approved: boolean("approved").notNull().default(false),
   uploadedAt: timestamp("uploaded_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (table) => ({
+  lorAssetVersionsAssetIdIdx: index("lor_asset_versions_asset_id_idx").on(table.assetId),
+}));
 export const insertLorAssetVersionSchema = createInsertSchema(lor_asset_versions).omit({ id: true, uploadedAt: true });
 export type InsertLorAssetVersion = z.infer<typeof insertLorAssetVersionSchema>;
 export type LorAssetVersion = typeof lor_asset_versions.$inferSelect;
@@ -49,7 +55,10 @@ export const lor_casting_matrix = pgTable("lor_casting_matrix", {
   sceneId: integer("scene_id").notNull(),
   entityId: integer("entity_id").notNull(), // maps to lor_continuity_facts.id
   present: boolean("present").notNull().default(false),
-});
+}, (table) => ({
+  lorCastingMatrixProjectIdIdx: index("lor_casting_matrix_project_id_idx").on(table.projectId),
+  lorCastingMatrixSceneIdIdx: index("lor_casting_matrix_scene_id_idx").on(table.sceneId),
+}));
 export const insertLorCastingMatrixSchema = createInsertSchema(lor_casting_matrix).omit({ id: true });
 export type InsertLorCastingMatrix = z.infer<typeof insertLorCastingMatrixSchema>;
 export type LorCastingMatrix = typeof lor_casting_matrix.$inferSelect;

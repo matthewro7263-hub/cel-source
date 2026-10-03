@@ -67,11 +67,13 @@ for (let i = 0; i < 60 && !up; i++) {
 }
 if (!up) { console.error("server did not become healthy:\n" + serverLog); process.exit(1); }
 
-const suites = ["api-core", "share", "script-upload", "exports-and-ws", "media-urls", "ai", "api-modules", "trash-and-snapshots", "accounts", "client-payloads", "roles", "assets-and-export", "lifecycle", "shell"];
+const suites = ["api-core", "share", "script-upload", "exports-and-ws", "media-urls", "ai", "api-modules", "trash-and-snapshots", "accounts", "client-payloads", "roles", "assets-and-export", "lifecycle", "shell", "maintenance", "schema-drift.ts"];
 const failed = [];
 for (const name of suites) {
   console.log(`\n=== ${name}`);
-  const res = spawnSync(process.execPath, [join(here, `${name}.mjs`)], { env: { ...process.env, BASE: base, MAIL_BASE: `http://127.0.0.1:${MOCK_MAIL_PORT}` }, stdio: "inherit" });
+  // *.ts suites need a TypeScript loader (they import the Drizzle schema).
+  const [cmd, args] = name.endsWith(".ts") ? ["pnpm", ["exec", "tsx", join(here, name)]] : [process.execPath, [join(here, `${name}.mjs`)]];
+  const res = spawnSync(cmd, args, { env: { ...process.env, BASE: base, MAIL_BASE: `http://127.0.0.1:${MOCK_MAIL_PORT}` }, stdio: "inherit" });
   if (res.status !== 0) failed.push(name);
 }
 

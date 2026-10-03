@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, integer, serial } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, integer, serial, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -19,7 +19,12 @@ export const challenge_leaderboard_snapshots = pgTable(
     snapshotAt: timestamp("snapshot_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
-  }
+  },
+  // The snapshot endpoint reads one week ordered by rank.
+  (table) => ({
+    challengeLeaderboardWeekRankIdx: index("challenge_leaderboard_snapshots_week_rank_idx").on(table.weekNumber, table.rank),
+    challengeLeaderboardUserIdIdx: index("challenge_leaderboard_snapshots_user_id_idx").on(table.userId),
+  }),
 );
 
 export const insertChallengeLeaderboardSnapshotSchema = createInsertSchema(
